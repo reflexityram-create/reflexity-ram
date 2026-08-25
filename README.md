@@ -58,6 +58,12 @@ wholesale-lot source. See
 [docs/wholesale-local-design-lab.md](./docs/wholesale-local-design-lab.md) for
 the run command, routes, posting workflow, and production data boundary.
 
+The official combined market shell is live at
+`https://reflexityram.com/wholesale` with zero wholesale lots initially. The
+Stock Studio remains local-only; until authenticated production CRUD exists,
+real lots are published by reviewing `frontend/src/data/wholesaleLots.js` and
+deploying the resulting commit.
+
 ## Verification
 
 ```bash

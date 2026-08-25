@@ -1,9 +1,10 @@
 # Reflexity Wholesale Stock — Local Admin and Customer Demo
 
-Status: `VERIFIED / LOCAL-ONLY` on 2026-08-25. This isolated branch changes the
-local demo and the official `/wholesale` page source, but it has not been
-deployed. The live production storefront, retail catalog, checkout, API,
-authentication, and database remain unchanged.
+Status: `VERIFIED / LIVE SHELL + LOCAL-ONLY STUDIO` on 2026-08-25. The combined
+official `/wholesale` market shell is deployed at `https://reflexityram.com`.
+It launched with zero authoritative wholesale lots. The Stock Studio, its
+synthetic examples, and browser-local persistence remain development-only; the
+retail catalog, checkout, API, authentication, and database were not changed.
 
 ## Product placement
 
@@ -11,7 +12,7 @@ Wholesale remains the existing top-level `/wholesale` destination, using the
 same white, black, and Reflexity yellow visual system as the storefront.
 
 - `/shop` remains the regular retail catalog and checkout path.
-- `/wholesale` is the eventual buyer-facing home for manually published
+- `/wholesale` is the buyer-facing home for manually published
   special stock and direct volume requests.
 - `/liquidators` remains the inbound path for people selling stock to
   Reflexity.
@@ -88,6 +89,11 @@ public, published records from `WHOLESALE_LOTS`. It does not read local demo
 lots or import the demo store. With no authoritative records configured, the
 inventory column renders an honest empty state beside the sourcing rail.
 
+The live production route currently has zero lots. Until a production-backed
+admin service is implemented, publishing a real lot means adding a reviewed
+public record to `frontend/src/data/wholesaleLots.js` and deploying it. The
+local Stock Studio cannot publish to the live storefront.
+
 ## Local persistence boundary
 
 This demo uses the versioned browser-local key
@@ -147,3 +153,7 @@ regular shop, public catalog, feed, sitemap, and Stripe-related behavior.
 - The combined `/wholesale` page rendered inventory first and sourcing second:
   two stock columns plus a sticky 352px sourcing rail at 1920 x 1112, and one
   350px stock column followed by a 350px sourcing card at 390 x 844.
+- Production deployment `58e604ea-6955-4e46-be79-3239635b5a16` serves commit
+  `b760cfc`. Canonical Chrome rendered the live route with zero lot cards, a
+  `0 live lots` count, the empty-stock state, sourcing second, zero overflow at
+  desktop/mobile, and no demo markers or fresh warning/error logs.
