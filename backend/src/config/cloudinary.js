@@ -22,6 +22,18 @@ const uploadProductImages = multer({
   },
 });
 
+// Wholesale uses a separate, one-image folder. It never shares a public ID
+// namespace with retail product assets.
+const uploadWholesaleImageFile = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  fileFilter: (req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/avif'];
+    if (allowed.includes(file.mimetype)) cb(null, true);
+    else cb(new Error('Only JPEG, PNG, WebP, and AVIF images are allowed'), false);
+  },
+});
+
 const uploadProductImage = (file) =>
   new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
@@ -32,6 +44,22 @@ const uploadProductImage = (file) =>
           { width: 1200, height: 960, crop: 'limit', quality: 'auto:good', fetch_format: 'auto' },
         ],
         public_id: `product-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+      },
+      (err, result) => (err ? reject(err) : resolve(result)),
+    );
+    stream.end(file.buffer);
+  });
+
+const uploadWholesaleImage = (file) =>
+  new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: 'reflexity-ram/wholesale',
+        allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'avif'],
+        transformation: [
+          { width: 1600, height: 1200, crop: 'limit', quality: 'auto:good', fetch_format: 'auto' },
+        ],
+        public_id: `wholesale-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
       },
       (err, result) => (err ? reject(err) : resolve(result)),
     );
@@ -75,6 +103,8 @@ module.exports = {
   cloudinary,
   uploadProductImages,
   uploadProductImage,
+  uploadWholesaleImageFile,
+  uploadWholesaleImage,
   deleteImage,
   generateSignedUploadParams,
 };
