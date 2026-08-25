@@ -46,6 +46,26 @@
   the feed has five items, 15 CAD markers, and zero USD markers; the sitemap
   has 24 URLs and `/wholesale` exactly once. All retail image IDs retain the
   `reflexity-ram/products/` prefix.
+- VERIFIED (FRONTEND DEPLOY/CI): UI commit `1670b83` passed GitHub Actions run
+  `32912702380` and deployed through Cloudflare Pages as exact deployment
+  `4fbab27e-8c23-42aa-bcaa-b211f25a41d4`. The served production asset is
+  `/assets/index-PR9OnoEi.js`; it contains both `/admin/wholesale` entry paths
+  and no production demo-store or synthetic-lot marker.
+- VERIFIED (PRODUCTION/BROWSER): Canonical Chrome alias `reflexity` (Profile 6,
+  mapped account `reflexityram@gmail.com`) rendered the deployed public
+  `/wholesale` page at desktop and 390 x 844 mobile widths with zero live lots,
+  the honest empty state, no horizontal overflow, and no Reflexity console
+  error. The public endpoint still returns `{"lots":[]}`, and a second
+  read-only Atlas count after the frontend deployment returned total 0, drafts
+  0, published 0, and archived 0.
+- UNKNOWN (LIVE AUTHENTICATED ADMIN VISUAL): The exact Chrome profile is not
+  currently authenticated to the Reflexity app. The supported Google flow
+  rejected the unrelated signed-in `3chillguythat@gmail.com` identity; choosing
+  another account confirmed `reflexityram@gmail.com` and reached Google's
+  password challenge. No alternate profile, cookie, token minting, or auth
+  bypass was used. Admin behavior is verified by the protected API probes,
+  production build, and focused UI tests; a live signed-in visual pass remains
+  gated on normal Google user authentication.
 - Deployment and operating guide: `docs/wholesale-inventory.md`.
 
 ## 2026-08-25 — Historical wholesale market and local Stock Studio (superseded)
