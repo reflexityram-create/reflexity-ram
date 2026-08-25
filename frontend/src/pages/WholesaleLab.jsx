@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import {
+  AlertTriangle,
   ArrowRight,
   Boxes,
   CheckCircle2,
@@ -13,11 +14,11 @@ import {
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { useSEO } from "@/lib/seo";
-import { WHOLESALE_LOTS } from "@/data/wholesaleLots";
-import { buildWholesaleEmailUrl, publishedWholesaleLots } from "@/lib/wholesaleLots";
+import { publishedWholesaleDemoLots } from "@/lib/wholesaleDemoStore";
+import { buildWholesaleEmailUrl } from "@/lib/wholesaleLots";
+import { useWholesaleDemoLots } from "@/lib/useWholesaleDemoLots";
 import "@/pages/wholesale-lab.css";
 
-const PUBLISHED_LOTS = publishedWholesaleLots(WHOLESALE_LOTS);
 const WHOLESALE_CONTACT_URL = buildWholesaleEmailUrl();
 
 function WholesaleLotCard({ lot }) {
@@ -30,6 +31,7 @@ function WholesaleLotCard({ lot }) {
         ) : (
           <Boxes aria-hidden="true" size={42} />
         )}
+        <i>LOCAL DEMO</i>
         <span>{lot.condition}</span>
       </div>
       <div className="wlp-lot-body">
@@ -40,8 +42,10 @@ function WholesaleLotCard({ lot }) {
           <div><dt>Specification</dt><dd>{[lot.capacityLabel, lot.generation, lot.speedLabel, lot.rank].filter(Boolean).join(" · ")}</dd></div>
           <div><dt>Available</dt><dd>{lot.quantityAvailable} units</dd></div>
           <div><dt>Minimum</dt><dd>{minimum} units</dd></div>
+          <div><dt>Warranty</dt><dd>{lot.warranty}</dd></div>
           <div><dt>Ships from</dt><dd>{lot.shipFrom}</dd></div>
         </dl>
+        {lot.notes && <p className="wlp-lot-note">{lot.notes}</p>}
         <a
           className="wlp-lot-quote"
           href={buildWholesaleEmailUrl([{ lot, quantity: minimum }])}
@@ -60,6 +64,8 @@ export default function WholesaleLab() {
     title: "Wholesale RAM stock | Reflexity local preview",
     description: "Manually posted wholesale-only memory lots and direct bulk sourcing from Reflexity.",
   });
+  const { error: demoError, lots } = useWholesaleDemoLots();
+  const publishedLots = publishedWholesaleDemoLots(lots);
 
   return (
     <div className="wlp-shell">
@@ -111,16 +117,26 @@ export default function WholesaleLab() {
                 <p className="wlp-section-label">POSTED WHOLESALE STOCK</p>
                 <h2 id="wlp-stock-title">Special lots</h2>
               </div>
-              <div className="wlp-stock-count"><strong>{PUBLISHED_LOTS.length}</strong><span>live lot{PUBLISHED_LOTS.length === 1 ? "" : "s"}</span></div>
+              <div className="wlp-stock-count"><strong>{publishedLots.length}</strong><span>live lot{publishedLots.length === 1 ? "" : "s"}</span></div>
             </div>
             <p className="wlp-stock-note">
-              Only wholesale lots posted manually by Reflexity appear here.
-              Products from the regular shop never show in this section.
+              This local customer preview shows only example lots published from
+              the Wholesale Stock Studio. Products from the regular shop never
+              show in this section.
             </p>
 
-            {PUBLISHED_LOTS.length ? (
+            {demoError ? (
+              <div className="wlp-empty is-error">
+                <div className="wlp-empty-icon"><AlertTriangle aria-hidden="true" size={31} /></div>
+                <div>
+                  <p>LOCAL DEMO DATA UNAVAILABLE</p>
+                  <h3>The customer preview is safely empty.</h3>
+                  <span>{demoError}</span>
+                </div>
+              </div>
+            ) : publishedLots.length ? (
               <div className="wlp-lots">
-                {PUBLISHED_LOTS.map((lot) => <WholesaleLotCard key={lot.id} lot={lot} />)}
+                {publishedLots.map((lot) => <WholesaleLotCard key={lot.id} lot={lot} />)}
               </div>
             ) : (
               <div className="wlp-empty">

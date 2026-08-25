@@ -85,7 +85,7 @@ test("the local route is development-only and never reads the regular Product AP
   assert.match(app, /lazy\(\(\) => import\("@\/pages\/WholesaleLab"\)\)/);
   assert.match(app, /path="\/wholesale-lab"/);
   assert.doesNotMatch(page, /useStock|productsApi|\/api\/products|stockQuantity|cartApi|checkoutApi/);
-  assert.match(page, /Products from the regular shop never show in this section\./);
+  assert.match(page, /Products from the regular shop never\s+show in this section\./);
   assert.match(data, /separate from the retail Product API/);
   assert.match(data, /WHOLESALE_LOTS = Object\.freeze\(\[\]\)/);
 });

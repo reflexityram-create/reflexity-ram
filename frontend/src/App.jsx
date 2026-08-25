@@ -28,6 +28,9 @@ import Categories from "@/pages/Categories";
 const WholesaleLab = import.meta.env.DEV
   ? lazy(() => import("@/pages/WholesaleLab"))
   : null;
+const WholesaleAdminLab = import.meta.env.DEV
+  ? lazy(() => import("@/pages/WholesaleAdminLab"))
+  : null;
 
 // Policy pages
 import Shipping from "@/pages/policies/Shipping";
@@ -78,6 +81,12 @@ export default function App() {
             <Route
               path="/wholesale-lab"
               element={<Suspense fallback={null}><WholesaleLab /></Suspense>}
+            />
+          )}
+          {WholesaleAdminLab && (
+            <Route
+              path="/wholesale-admin-lab"
+              element={<Suspense fallback={null}><WholesaleAdminLab /></Suspense>}
             />
           )}
           <Route path="/liquidators" element={<Liquidators />} />

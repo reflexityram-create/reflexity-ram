@@ -46,12 +46,14 @@ The frontend runs on port 5173 and the API on port 5000 by default.
 
 ### Local wholesale stock preview
 
-The isolated wholesale preview is a single responsive white/yellow page for
-manually posted special lots and direct bulk inquiries. It never reads or shows
-the regular retail catalog, and it is development-only, so it is not included
+The isolated wholesale demo includes a white/yellow browser-local Stock Studio
+for creating, drafting, publishing, unpublishing, and removing synthetic special
+lots, restoring the examples without deleting custom lots, and opening the
+connected customer preview. It never reads or shows the regular
+retail catalog, and both routes are development-only, so they are not included
 in production builds. See
 [docs/wholesale-local-design-lab.md](./docs/wholesale-local-design-lab.md) for
-the run command, manual stock schema, product placement, and data boundary.
+the run command, routes, posting workflow, and production data boundary.
 
 ## Verification
 

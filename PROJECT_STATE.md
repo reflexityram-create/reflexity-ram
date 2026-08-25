@@ -1,35 +1,46 @@
 # Project State
 
-## 2026-08-25 — Wholesale and retail inventory separation
+## 2026-08-25 — Local wholesale admin-to-customer demo
 
 - VERIFIED (ARCHITECTURE/STATIC): Wholesale buyer stock belongs at the existing
   top-level `/wholesale` route. `/shop` remains the regular retail catalog and
   checkout path; `/liquidators` remains inbound sell-to-Reflexity intake.
-- VERIFIED (LOCAL/IMPLEMENTATION): Branch `codex/wholesale-stock-lab` contains a
-  development-only `/wholesale-lab` preview using the storefront's white,
-  black, and Reflexity yellow token system. It is now one final page rather
-  than three query-addressable concepts.
-- VERIFIED (DATA/STATIC): Wholesale lots come only from the deliberately empty,
-  manually maintained `frontend/src/data/wholesaleLots.js`. The page has no
-  `useStock`, Product API, retail price, cart, checkout, or Stripe path. A lot is
-  visible only with an explicit ID, published status, allowed visibility, and
-  verified quantity at or above its MOQ. Consequently the current `0 live lots`
-  state is intentional and no regular-shop listing can appear.
+- VERIFIED (LOCAL/IMPLEMENTATION): Branch `codex/wholesale-stock-lab` now has
+  two connected development-only routes using the storefront's white, black,
+  and yellow tokens: `/wholesale-admin-lab` is the owner-facing Wholesale Stock
+  Studio and `/wholesale-lab` is the customer-facing published-lot preview.
+- VERIFIED (LOCAL/DATA): The versioned browser-local store seeds two published
+  synthetic lots and one private draft. Admin can create, edit, save draft,
+  publish, unpublish, remove, and restore examples. Its allowlist forces
+  `isDemo`, `local-demo`, and quote-only fields while stripping retail price,
+  `stockQuantity`, Stripe IDs, and unknown fields. Corrupt schema/JSON fails
+  closed with no customer-visible lots; failed writes do not replace prior
+  serialized state. Restoring seeded examples retains custom demo lots.
+- VERIFIED (BOUNDARY/STATIC): Customer cards require demo identity, published
+  status, local-only visibility, complete publish validation, and quantity at
+  or above MOQ. The two local
+  pages have no `useStock`, Product/admin API, retail price, cart, checkout,
+  Stripe, order, or automatic email path. Every synthetic MPN uses `DEMO-*` and
+  customer cards display `LOCAL DEMO`.
 - VERIFIED (CONTACT/TEST): The requested `Buying in volume?` and `Don't see what
-  you need?` sections open reviewable Gmail drafts addressed to
-  `reflexityram@gmail.com`. Listed-lot requests are bounded by MOQ, increment,
-  and available quantity. Nothing is sent and no order is created from the
-  preview. All 26 frontend tests pass, including eight wholesale boundary and
-  email-composition tests.
-- VERIFIED (BUILD/SECURITY/BROWSER): `npm run verify` passes 26 frontend tests,
-  15 runnable backend tests with the disposable Atlas test intentionally
+  you need?` sections open reviewable Gmail drafts to
+  `reflexityram@gmail.com`. Listed-lot drafts carry exact lot ID, MPN, and
+  MOQ-bounded quantity. All 35 frontend tests pass.
+- VERIFIED (BROWSER): Canonical Chrome alias `reflexity` (Profile 6,
+  `reflexityram@gmail.com`) observed the admin summary at one draft, two
+  published lots, and 72 units. Unpublishing one lot changed the customer
+  preview from two cards to one. After restoring examples, a complete new lot
+  was posted through the form and the customer preview changed from two cards
+  to three with no alert or horizontal overflow. The seed was restored after
+  the test.
+- VERIFIED (BUILD/SECURITY): `npm run verify` passes 35 frontend tests, 15
+  runnable backend tests with the disposable Atlas integration intentionally
   skipped, the Vite production build, and secret scanning. Frontend and backend
-  high-severity audits report zero vulnerabilities, and the production bundle
-  contains none of the development-only page's route, copy, CSS, or data source.
-  Canonical Chrome alias `reflexity` (Profile 6, `reflexityram@gmail.com`) shows
-  the light white/yellow result with zero wholesale cards, zero retail product
-  links, three correctly addressed contact drafts, no browser errors, and no
-  horizontal overflow at 1920 x 1112 or 390 x 844.
+  high-severity audits report zero vulnerabilities. A built-artifact scan finds
+  no admin/customer demo route, component, style, synthetic MPN, or browser-store
+  key in `frontend/dist`. Both routes return HTTP 200 locally, browser logs have
+  no warning/error entries, and the admin/customer layouts have zero horizontal
+  overflow at 390 x 844 and 1920 x 1112.
 - CONTRADICTED / SUPERSEDED (EARLIER LOCAL PROTOTYPE): The dark-green preview
   that displayed five live retail catalog listings as a disclosed reference is
   not the accepted product direction. Its public-API proxy, gallery, inventory
