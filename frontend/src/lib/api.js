@@ -80,6 +80,13 @@ export const productsApi = {
   getBySlug: (slug) => api.get(`/products/${slug}`),
 };
 
+// ─── Wholesale lots API ──────────────────────────────────────────────────────
+// Quote-only wholesale inventory is intentionally separate from retail
+// products, checkout stock, Stripe, orders, and the Merchant feed.
+export const wholesaleApi = {
+  list: (config = {}) => api.get('/wholesale', config),
+};
+
 // Reviews are public to read, but the server only accepts verified purchases.
 export const reviewsApi = {
   list: (slug) => api.get(`/reviews/product/${slug}`),
@@ -121,6 +128,16 @@ export const adminApi = {
   deleteProduct: (id) => api.delete(`/admin/products/${id}`),
   updateStock: (id, stockQuantity) => api.patch(`/admin/products/${id}/stock`, { stockQuantity }),
 
+  // Wholesale lots
+  listWholesaleLots: (params) => api.get('/admin/wholesale', { params }),
+  getWholesaleLot: (id) => api.get(`/admin/wholesale/${id}`, { params: { _t: Date.now() } }),
+  createWholesaleLot: (data) => api.post('/admin/wholesale', data),
+  updateWholesaleLot: (id, data) => api.patch(`/admin/wholesale/${id}`, data),
+  publishWholesaleLot: (id, version) => api.post(`/admin/wholesale/${id}/publish`, { version }),
+  unpublishWholesaleLot: (id, version) => api.post(`/admin/wholesale/${id}/unpublish`, { version }),
+  archiveWholesaleLot: (id, version) => api.delete(`/admin/wholesale/${id}`, { data: { version } }),
+  restoreWholesaleLot: (id, version) => api.post(`/admin/wholesale/${id}/restore`, { version }),
+
   // Orders
   listOrders: (params) => api.get('/admin/orders', { params }),
   getOrder: (id) => api.get(`/admin/orders/${id}`),
@@ -139,6 +156,12 @@ export const adminApi = {
     }),
   deleteImage: (publicId) =>
     api.delete(`/upload/products/${encodeURIComponent(publicId)}`),
+  uploadWholesaleImage: (formData) =>
+    api.post('/upload/wholesale', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  deleteWholesaleImage: (publicId) =>
+    api.delete(`/upload/wholesale/${encodeURIComponent(publicId)}`),
 };
 
 // ─── Editable page content (shipping / returns / warranty / faq) ───────────────

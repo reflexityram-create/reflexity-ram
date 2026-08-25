@@ -44,25 +44,25 @@ npm run dev
 
 The frontend runs on port 5173 and the API on port 5000 by default.
 
-### Local wholesale stock preview
+### Wholesale stock
 
-The isolated wholesale demo includes a white/yellow browser-local Stock Studio
-for creating, drafting, publishing, unpublishing, and removing synthetic special
-lots and restoring the examples without deleting custom lots. On localhost,
-the normal `/wholesale` page combines posted demo inventory on the left with one
-exact-SKU sourcing rail on the right; mobile keeps stock first. The demo never
-reads or shows the regular retail catalog. Its adapter, admin route, alias,
-synthetic records, and browser store are development-only and excluded from
-production builds; production `/wholesale` uses only the authoritative
-wholesale-lot source. See
-[docs/wholesale-local-design-lab.md](./docs/wholesale-local-design-lab.md) for
-the run command, routes, posting workflow, and production data boundary.
+Wholesale stock is a separate, quote-only inventory system. It does not enter
+the retail catalog, cart, checkout, Stripe products, Merchant feed, or retail
+product sitemap.
 
-The official combined market shell is live at
-`https://reflexityram.com/wholesale` with zero wholesale lots initially. The
-Stock Studio remains local-only; until authenticated production CRUD exists,
-real lots are published by reviewing `frontend/src/data/wholesaleLots.js` and
-deploying the resulting commit.
+An authenticated administrator can reach the same listing editor in two ways:
+
+- open **Admin → Products → Wholesale lots** to search every draft, published,
+  and archived lot, then select **Add wholesale listing**; or
+- open the public `/wholesale` page while signed in as an admin and select
+  **Add listing** beside the live stock count.
+
+New listings start as private drafts. Publishing requires a complete tested
+memory specification, an isolated wholesale image, positive available stock,
+and a valid minimum order. Archive is reversible and never hard-deletes the
+record. No wholesale records are seeded automatically. See
+[docs/wholesale-inventory.md](./docs/wholesale-inventory.md) for the data model,
+admin workflow, and deployment boundary.
 
 ## Verification
 

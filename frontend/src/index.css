@@ -797,6 +797,26 @@ html.light .admin-label {
     color: #5b5b66;
 }
 
+.app-nav-group { color: var(--fg-faint); }
+.app-sidebar-link {
+    background: transparent;
+    border-color: transparent;
+    color: var(--fg-muted);
+}
+.app-sidebar-link:hover {
+    background: var(--glass-bg-soft);
+    color: var(--fg-strong);
+}
+.app-sidebar-link.is-active {
+    background: var(--glass-bg);
+    border-color: var(--border-strong);
+    color: var(--fg-strong);
+}
+@media (max-width: 767px) {
+    .app-layout-aside { max-width: 100vw; }
+    .app-layout-aside nav { scrollbar-width: thin; }
+}
+
 /* ─── Editable policy page content ─────────────────────────────────────────── */
 .policy-content > * + * { margin-top: 0.85rem; }
 .policy-content h2 { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.01em; color: #fff; margin-top: 1.75rem; margin-bottom: 0.5rem; }

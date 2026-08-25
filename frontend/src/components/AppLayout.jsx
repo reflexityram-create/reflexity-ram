@@ -1,5 +1,5 @@
 import { Link, useLocation, Navigate } from 'react-router-dom';
-import { User, ShoppingBag, Shield, Settings as SettingsIcon, Package, Users, LogOut, ChevronRight, Cpu } from 'lucide-react';
+import { User, ShoppingBag, Shield, Settings as SettingsIcon, Package, Boxes, Users, LogOut, ChevronRight, Cpu } from 'lucide-react';
 import useAuthStore from '@/lib/authStore';
 import { toast } from 'sonner';
 
@@ -18,9 +18,10 @@ const USER_ITEMS = [
 ];
 
 const ADMIN_ITEMS = [
-  { to: '/admin/products', label: 'Products', icon: Package },
-  { to: '/admin/orders', label: 'Orders', icon: ShoppingBag },
-  { to: '/admin/users', label: 'Users', icon: Users },
+  { to: '/admin/products', label: 'Retail products', icon: Package, group: 'Products' },
+  { to: '/admin/wholesale', label: 'Wholesale lots', icon: Boxes, group: 'Products' },
+  { to: '/admin/orders', label: 'Orders', icon: ShoppingBag, group: 'Operations' },
+  { to: '/admin/users', label: 'Users', icon: Users, group: 'Operations' },
 ];
 
 export default function AppLayout({ children, requireAdmin = false }) {
@@ -56,33 +57,39 @@ export default function AppLayout({ children, requireAdmin = false }) {
   const visibleUserItems = USER_ITEMS.filter((i) => !(i.customerOnly && isAdmin));
 
   return (
-    <div className="min-h-screen flex">
-      <aside className="w-56 shrink-0 border-r flex flex-col"
+    <div className="min-h-screen flex flex-col md:flex-row">
+      <aside className="app-layout-aside sticky top-0 z-40 flex w-full shrink-0 flex-col border-b md:static md:z-auto md:w-56 md:border-b-0 md:border-r"
         style={{ background: "var(--bg-elev)", borderColor: "var(--border)" }}>
         {/* Brand */}
-        <div className="p-5 border-b border-white/5">
+        <div className="flex items-center justify-between border-b p-3 md:block md:p-5" style={{ borderColor: 'var(--border)' }}>
           <Link to="/" className="flex items-center gap-2">
-            <Cpu size={16} className="text-neutral-300" />
+            <Cpu size={16} style={{ color: 'var(--fg-muted)' }} />
             <span className="font-bold text-[13px] tracking-tight">Reflexity RAM</span>
           </Link>
-          <div className="text-[10px] text-neutral-600 mt-0.5 uppercase tracking-widest">
+          <div className="mt-0.5 text-[10px] uppercase tracking-widest" style={{ color: 'var(--fg-faint)' }}>
             {isAdmin ? 'Admin panel' : 'My account'}
           </div>
         </div>
 
-        <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
+        <nav className="flex flex-1 gap-1 overflow-x-auto p-2 md:block md:space-y-0.5 md:overflow-y-auto md:p-3">
           {visibleUserItems.map((item) => <SidebarLink key={item.label} item={item} active={isActive(item)} />)}
 
           {isAdmin && (
             <>
-              <div className="px-3 pt-4 pb-1 text-[10px] uppercase tracking-widest text-neutral-600">Admin</div>
-              {ADMIN_ITEMS.map((item) => <SidebarLink key={item.to} item={item} active={isActive(item)} />)}
+              <div className="app-nav-group hidden px-3 pb-1 pt-4 text-[10px] uppercase tracking-widest md:block">Products</div>
+              {ADMIN_ITEMS.filter((item) => item.group === 'Products').map((item) => (
+                <SidebarLink key={item.to} item={item} active={isActive(item)} />
+              ))}
+              <div className="app-nav-group hidden px-3 pb-1 pt-4 text-[10px] uppercase tracking-widest md:block">Operations</div>
+              {ADMIN_ITEMS.filter((item) => item.group === 'Operations').map((item) => (
+                <SidebarLink key={item.to} item={item} active={isActive(item)} />
+              ))}
             </>
           )}
         </nav>
 
         {/* Footer */}
-        <div className="p-3 border-t border-white/5">
+        <div className="hidden border-t p-3 md:block" style={{ borderColor: 'var(--border)' }}>
           <div className="px-3 py-2 text-[12px] text-neutral-500 mb-1 truncate" title={user.email}>
             {user.email}
           </div>
@@ -102,7 +109,7 @@ export default function AppLayout({ children, requireAdmin = false }) {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto">{children}</main>
+      <main className="min-w-0 flex-1 overflow-auto">{children}</main>
     </div>
   );
 }
@@ -112,11 +119,7 @@ function SidebarLink({ item, active }) {
   return (
     <Link
       to={item.to}
-      className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] transition-all ${
-        active
-          ? 'bg-white/8 text-white border border-white/10'
-          : 'text-neutral-400 hover:text-white hover:bg-white/4'
-      }`}
+      className={`app-sidebar-link flex shrink-0 items-center gap-2.5 rounded-xl border px-3 py-2 text-[12px] transition-all md:py-2.5 md:text-[13px] ${active ? 'is-active' : ''}`}
     >
       <Icon size={14} /> {item.label}
     </Link>

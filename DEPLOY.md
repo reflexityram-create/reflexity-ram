@@ -95,6 +95,27 @@ The health response must report `status=ok`, `env=production`, and Stripe
 enabled. Confirm catalog counts without printing customer, credential, or order
 data.
 
+### Wholesale backend-first release gate
+
+Wholesale administration depends on API routes that older backend deployments
+do not have. Release a wholesale change in two phases even though Render and
+Cloudflare both track `main`:
+
+1. Push a backend-only commit and wait for the exact Render deployment to become
+   live. The simultaneous Pages build is safe because it contains the prior
+   frontend.
+2. Require `GET /api/wholesale` to return HTTP 200 with `{"lots":[]}` and
+   `Cache-Control: no-store`. Require unauthenticated and cookie-only requests to
+   `/api/admin/wholesale` to return `401`, and unauthenticated wholesale uploads
+   to return `401` before file handling.
+3. Recheck the retail product, feed, sitemap, health, and Stripe baselines.
+4. Only then push the frontend/docs commit and wait for the exact Cloudflare
+   Pages deployment.
+
+Do not save, publish, upload, archive, or restore a wholesale lot during a
+deployment smoke test. The authenticated admin workspace and public API must
+both remain empty until the owner deliberately adds real stock.
+
 ## 3. Stripe
 
 Create a production webhook endpoint:
@@ -192,7 +213,12 @@ Required checks:
    exact title, an absolute canonical URL, and an absolute social image URL.
 8. A definitely absent product slug returns 404 with `noindex` metadata.
 9. `/admin` APIs return 401 without an authenticated admin token.
-10. A disallowed CORS origin receives no access-control permission.
+10. `/api/wholesale` returns only complete public quote-only lots, and
+    `/api/admin/wholesale` rejects requests without an explicit Bearer token.
+11. `/admin/products` has Retail and Wholesale workspaces, both wholesale Add
+    shortcuts open the same `/admin/wholesale?new=1` editor, and the public
+    wholesale page shows no sample inventory.
+12. A disallowed CORS origin receives no access-control permission.
 
 Do not place a live order merely as a deployment smoke test. Use Stripe test
 mode and isolated data for end-to-end payment verification.

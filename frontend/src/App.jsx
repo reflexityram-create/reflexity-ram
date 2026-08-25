@@ -45,6 +45,7 @@ import BusinessInfo from "@/pages/policies/BusinessInfo";
 
 // Admin pages
 import AdminProducts from "@/pages/admin/Products";
+import AdminWholesale from "@/pages/admin/WholesaleAdmin";
 import AdminOrders from "@/pages/admin/Orders";
 import AdminUsers from "@/pages/admin/Users";
 import AdminSecurity from "@/pages/admin/Security";
@@ -78,9 +79,7 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route
             path="/wholesale"
-            element={WholesaleLab
-              ? <Suspense fallback={null}><WholesaleLab /></Suspense>
-              : <Wholesale />}
+            element={<Wholesale />}
           />
           {WholesaleLab && (
             <Route
@@ -118,9 +117,10 @@ export default function App() {
           <Route path="/international" element={<International />} />
           <Route path="/business-info" element={<BusinessInfo />} />
 
-          {/* Admin (protected by AdminLayout) */}
+          {/* Admin (each page uses AppLayout requireAdmin) */}
           <Route path="/admin" element={<Navigate to="/admin/products" replace />} />
           <Route path="/admin/products" element={<AdminProducts />} />
+          <Route path="/admin/wholesale" element={<AdminWholesale />} />
           <Route path="/admin/orders" element={<AdminOrders />} />
           <Route path="/admin/users" element={<AdminUsers />} />
           <Route path="/admin/security" element={<AdminSecurity />} />

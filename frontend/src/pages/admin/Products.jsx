@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppLayout from '@/components/AppLayout';
+import ProductWorkspaceNav from '@/components/ProductWorkspaceNav';
 import { adminApi } from '@/lib/api';
 import { formatStorePrice } from '@/lib/currency';
 import { imageUrl } from '@/lib/imageUrl';
@@ -399,7 +400,8 @@ export default function AdminProducts() {
       <div className="p-8">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Products</h1>
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-amber-300">Products / Retail</p>
+            <h1 className="text-2xl font-bold tracking-tight">Retail products</h1>
             <p className="text-neutral-500 text-[13px] mt-0.5">{pagination.total} total products</p>
           </div>
           <button
@@ -410,6 +412,8 @@ export default function AdminProducts() {
             Add product
           </button>
         </div>
+
+        <ProductWorkspaceNav showWholesaleActions />
 
         {stockFilter && (
           <div className="mb-4 flex items-center gap-2 text-[12px] text-amber-300">

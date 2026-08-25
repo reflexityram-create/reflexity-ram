@@ -1,33 +1,27 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowRight,
   Boxes,
   CheckCircle2,
+  Loader2,
   Mail,
   PackageOpen,
+  Plus,
+  Settings2,
   ShieldCheck,
   ShoppingBag,
 } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import { WHOLESALE_LOTS } from "@/data/wholesaleLots";
+import { wholesaleApi } from "@/lib/api";
+import useAuthStore from "@/lib/authStore";
 import { useSEO } from "@/lib/seo";
-import { buildWholesaleEmailUrl } from "@/lib/wholesaleLots";
+import { buildWholesaleEmailUrl, publishedWholesaleLots } from "@/lib/wholesaleLots";
 import "@/pages/wholesale-concepts.css";
 
 const WHOLESALE_GMAIL_URL = buildWholesaleEmailUrl();
-
-function isPublishedPublicWholesaleLot(lot) {
-  const minimum = Math.max(1, Math.floor(Number(lot?.minimumOrderQuantity) || 1));
-  return (
-    typeof lot?.id === "string"
-    && lot.id.length > 0
-    && lot.status === "published"
-    && lot.visibility === "public"
-    && Number(lot.quantityAvailable) >= minimum
-  );
-}
 
 function WholesaleLotCard({ badgeLabel, lot }) {
   const minimum = Math.max(1, Number(lot.minimumOrderQuantity) || 1);
@@ -35,7 +29,7 @@ function WholesaleLotCard({ badgeLabel, lot }) {
     <article className="ws-lot">
       <div className="ws-lot-media">
         {lot.imageUrl ? (
-          <img alt={lot.title} src={lot.imageUrl} />
+          <img alt={lot.imageAlt || lot.title} src={lot.imageUrl} />
         ) : (
           <Boxes aria-hidden="true" size={38} />
         )}
@@ -76,6 +70,8 @@ function WholesaleInventory({
   errorEyebrow,
   errorTitle,
   badgeLabel,
+  adminControls,
+  stockLoading,
 }) {
   return (
     <section className="ws-inventory" aria-labelledby="wholesale-stock-title">
@@ -84,12 +80,24 @@ function WholesaleInventory({
           <p>{inventoryEyebrow}</p>
           <h2 id="wholesale-stock-title">Posted wholesale stock</h2>
         </div>
-        <div className="ws-stock-count"><strong>{lots.length}</strong><span>live lot{lots.length === 1 ? "" : "s"}</span></div>
+        <div className="ws-inventory-tools">
+          {adminControls}
+          <div className="ws-stock-count"><strong>{lots.length}</strong><span>live lot{lots.length === 1 ? "" : "s"}</span></div>
+        </div>
       </div>
 
       {inventoryNote && !stockError && <p className="ws-preview-note">{inventoryNote}</p>}
 
-      {stockError ? (
+      {stockLoading ? (
+        <div className="ws-empty is-loading" role="status">
+          <div className="ws-empty-icon"><Loader2 aria-hidden="true" className="animate-spin" size={28} /></div>
+          <div>
+            <p>CHECKING LIVE INVENTORY</p>
+            <h3>Loading posted stock.</h3>
+            <span>Only published wholesale lots will appear here.</span>
+          </div>
+        </div>
+      ) : stockError ? (
         <div className="ws-empty is-error" role="status">
           <div className="ws-empty-icon"><AlertTriangle aria-hidden="true" size={28} /></div>
           <div>
@@ -124,6 +132,8 @@ export function WholesaleMarket({
   inventoryNote = null,
   errorEyebrow = "STOCK DATA UNAVAILABLE",
   errorTitle = "The stock list is safely empty.",
+  adminControls = null,
+  stockLoading = false,
   seoTitle = "Wholesale DDR4 & DDR5 RAM | Reflexity",
   seoDescription = "Browse posted wholesale RAM lots or send Reflexity an exact-SKU bulk sourcing request.",
 }) {
@@ -162,7 +172,9 @@ export function WholesaleMarket({
                 inventoryNote={inventoryNote}
                 lots={postedLots}
                 stockError={stockError}
+                stockLoading={stockLoading}
                 badgeLabel={badgeLabel}
+                adminControls={adminControls}
               />
 
               <aside className="ws-coming" aria-labelledby="wholesale-desk-title">
@@ -200,5 +212,48 @@ export function WholesaleMarket({
 }
 
 export default function Wholesale() {
-  return <WholesaleMarket postedLots={WHOLESALE_LOTS.filter(isPublishedPublicWholesaleLot)} />;
+  const user = useAuthStore((state) => state.user);
+  const [inventory, setInventory] = useState({ lots: [], loading: true, error: null });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let current = true;
+
+    wholesaleApi.list({ signal: controller.signal })
+      .then(({ data }) => {
+        if (!current) return;
+        const received = Array.isArray(data?.lots) ? data.lots : [];
+        const lots = publishedWholesaleLots(received).filter((lot) => lot.visibility === "public");
+        setInventory({ lots, loading: false, error: null });
+      })
+      .catch((error) => {
+        if (!current || error?.code === "ERR_CANCELED") return;
+        setInventory({
+          lots: [],
+          loading: false,
+          error: "Posted inventory could not be loaded. Send the exact SKU to our sourcing desk while we reconnect.",
+        });
+      });
+
+    return () => {
+      current = false;
+      controller.abort();
+    };
+  }, []);
+
+  const adminControls = user?.role === "admin" ? (
+    <div className="ws-admin-actions" aria-label="Wholesale admin actions">
+      <Link to="/admin/wholesale"><Settings2 aria-hidden="true" size={13} /> Manage</Link>
+      <Link className="is-primary" to="/admin/wholesale?new=1"><Plus aria-hidden="true" size={13} /> Add listing</Link>
+    </div>
+  ) : null;
+
+  return (
+    <WholesaleMarket
+      adminControls={adminControls}
+      postedLots={inventory.lots}
+      stockError={inventory.error}
+      stockLoading={inventory.loading}
+    />
+  );
 }

@@ -1,0 +1,122 @@
+.wholesale-admin {
+  color: var(--fg);
+}
+
+.wholesale-admin .wa-muted {
+  color: var(--fg-muted);
+}
+
+.wholesale-admin .wa-faint {
+  color: var(--fg-faint);
+}
+
+.wholesale-admin .wa-strong {
+  color: var(--fg-strong);
+}
+
+.wholesale-admin .wa-accent-text {
+  color: #ffd84d;
+}
+
+html.light .wholesale-admin .wa-accent-text {
+  color: #8a6500;
+}
+
+.wholesale-admin .wa-divider {
+  border-color: var(--border);
+}
+
+.wholesale-admin .wa-panel {
+  background: var(--glass-bg);
+  border: 1px solid var(--border);
+}
+
+.wholesale-admin .wa-summary-icon {
+  background: rgba(255, 207, 36, 0.1);
+  color: var(--brand-yellow-deep);
+}
+
+.wholesale-admin .wa-image-field {
+  background: var(--glass-bg-soft);
+  border-color: var(--border-strong);
+}
+
+.wholesale-admin .wa-image-preview {
+  background: var(--input-bg);
+  color: var(--fg-faint);
+}
+
+.wholesale-admin .wa-table-row {
+  transition: background 160ms ease;
+}
+
+.wholesale-admin .wa-table-row:hover {
+  background: var(--glass-bg-soft);
+}
+
+.wholesale-admin .wa-icon-button {
+  color: var(--fg-muted);
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.wholesale-admin .wa-icon-button:hover {
+  background: var(--glass-bg-hover);
+  color: var(--fg-strong);
+}
+
+.wholesale-admin .wa-status {
+  border: 1px solid var(--border-strong);
+}
+
+.wholesale-admin .wa-status-draft {
+  background: var(--glass-bg-soft);
+  color: var(--fg-muted);
+}
+
+.wholesale-admin .wa-status-published {
+  background: rgba(255, 207, 36, 0.11);
+  border-color: rgba(181, 133, 0, 0.35);
+  color: #ffd84d;
+}
+
+html.light .wholesale-admin .wa-status-published {
+  color: #6f5200;
+}
+
+.wholesale-admin .wa-status-archived {
+  background: rgba(239, 91, 91, 0.09);
+  border-color: rgba(239, 91, 91, 0.28);
+  color: #ff9898;
+}
+
+html.light .wholesale-admin .wa-status-archived {
+  color: #a92323;
+}
+
+.wholesale-admin .wa-editor {
+  background: var(--bg-elev);
+  border-color: var(--border-strong);
+  color: var(--fg);
+}
+
+.wholesale-admin .wa-editor-bar {
+  background: color-mix(in srgb, var(--bg-elev) 94%, transparent);
+  border-color: var(--border);
+}
+
+.wholesale-admin .wa-error {
+  background: rgba(239, 91, 91, 0.08);
+  border-color: rgba(239, 91, 91, 0.28);
+  color: #ffaaaa;
+}
+
+html.light .wholesale-admin .wa-error {
+  color: #9a2020;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wholesale-admin .wa-table-row,
+  .wholesale-admin .wa-icon-button {
+    transition: none;
+  }
+}

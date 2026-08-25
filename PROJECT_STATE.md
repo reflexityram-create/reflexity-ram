@@ -1,6 +1,54 @@
 # Project State
 
-## 2026-08-25 — Wholesale market release and local Stock Studio
+## 2026-08-25 — Production wholesale inventory administration
+
+- VERIFIED (ARCHITECTURE/STATIC): Wholesale now has its own `WholesaleLot`
+  MongoDB model, public projection, authenticated admin API, and isolated
+  Cloudinary folder. It has no call edge into the retail `Product` model, cart,
+  checkout, Stripe, orders, feed, sitemap generation, or seed scripts.
+- VERIFIED (ADMIN/STATIC): Products contains visibly separate Retail Products
+  and Wholesale Lots workspaces. The Retail Products workspace provides both
+  **Manage all** and direct **Add wholesale listing** controls. An authenticated
+  administrator on `/wholesale` receives the second direct Add entry. Both use
+  the one editor at `/admin/wholesale?new=1`; the technical workspace loads all
+  paginated draft, published, and archived records before local filtering.
+- VERIFIED (LIFECYCLE/TEST): Records start as private drafts. Publish validation,
+  explicit publish/unpublish/archive/restore transitions, soft archive, and
+  revision checks preserve exact state. Missing bodies fail with `400`, stale
+  writes fail with `409`, and public reads fail closed to complete published
+  quote-only lots.
+- VERIFIED (MEDIA/STATIC/TEST): Wholesale uploads and deletes require an
+  explicit Bearer token plus an active administrator. Retail/wholesale folder
+  boundaries are distinct, referenced media returns `409` before Cloudinary
+  deletion, and the editor cleans unattached session uploads during replacement,
+  removal, cancellation, Escape, Back, and unmount.
+- VERIFIED (UI/BUILD/TEST): The editor and product-workspace navigation use the
+  existing white/yellow theme tokens in both light and dark modes. The admin
+  layout adapts to mobile, the editor traps and restores focus, Browser Back
+  closes it, validation details render whether returned as strings or objects,
+  and DDR3 plus the exact server condition enum are selectable. All 39 frontend
+  tests and 27 runnable backend tests pass; one disposable-Atlas integration is
+  intentionally skipped. The production Vite build passes.
+- VERIFIED (BACKEND DEPLOY/CI/RUNTIME): Backend-only commit `93f91c7` passed
+  GitHub Actions run `32912160654` and is the exact live Render deployment
+  `dep-da72i1ap6svc73b903ig`. The public endpoint returns HTTP 200,
+  `Cache-Control: no-store`, and `{"lots":[]}`. Unauthenticated and cookie-only
+  admin reads return `401 Bearer authentication required`; an unauthenticated
+  upload also returns `401` before file handling.
+- VERIFIED (ZERO-DATA/ATLAS READ): No wholesale listing, image, seed record, or
+  startup writer was added. A read-only count against the production model's
+  `wholesalelots` collection after the backend deployment returned total 0,
+  drafts 0, published 0, and archived 0.
+- VERIFIED (BACKEND DEPLOY/RETAIL REGRESSION): Production remains healthy with
+  `env=production` and Stripe enabled. The retail API still has five products
+  with normalized identity checksum
+  `3ae4650073eb0d530fbf34ae43e15afffe44f697302697c00e9415394acffb99`;
+  the feed has five items, 15 CAD markers, and zero USD markers; the sitemap
+  has 24 URLs and `/wholesale` exactly once. All retail image IDs retain the
+  `reflexity-ram/products/` prefix.
+- Deployment and operating guide: `docs/wholesale-inventory.md`.
+
+## 2026-08-25 — Historical wholesale market and local Stock Studio (superseded)
 
 - VERIFIED (ARCHITECTURE/STATIC): Wholesale buyer stock belongs at the existing
   top-level `/wholesale` route. `/shop` remains the regular retail catalog and
@@ -17,7 +65,7 @@
   live lots, and the honest `No stock is posted right now.` state. The desktop
   page at 1920 x 1112 and mobile page at 390 x 844 had zero horizontal overflow,
   no demo/admin text or links, and no fresh browser warning or error.
-- VERIFIED (PRODUCTION/BOUNDARY): `WHOLESALE_LOTS` is intentionally the frozen
+- STALE / SUPERSEDED (FORMER PRODUCTION/BOUNDARY): `WHOLESALE_LOTS` was the frozen
   empty array, so this release publishes no listings. The deployed JS is
   byte-identical to the verified local asset (SHA-256
   `c231bb40d2f84540254811aab8fe2a3b5c195dd9901f36f1862a2540471f0f88`)
@@ -97,11 +145,12 @@
   not the accepted product direction. Its public-API proxy, gallery, inventory
   board, quote workbench, and concept switcher have been removed from this
   branch's working result.
-- VERIFIED (BOUNDARY): A future editable implementation requires a separate
-  `WholesaleLot` model/API and restricted admin CRUD surface. The current
-  `Product` model enters the regular retail API, feed, sitemap, and
+- VERIFIED (HISTORICAL DESIGN DECISION): The proposed editable implementation
+  required a separate `WholesaleLot` model/API and restricted admin CRUD
+  surface; the current production implementation above now satisfies it. The
+  retail `Product` model enters the regular retail API, feed, sitemap, and
   Stripe-related catalog behavior and must not become the wholesale data source.
-  Detailed handoff: `docs/wholesale-local-design-lab.md`.
+  Current handoff: `docs/wholesale-inventory.md`.
 
 ## 2026-08-13 — Live status refresh and legacy Cloudinary closure
 
