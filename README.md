@@ -4,7 +4,7 @@ Production ecommerce storefront for tested server, desktop, and laptop memory.
 
 - Storefront: https://reflexityram.com
 - API: https://reflexity-ram.onrender.com
-- Repository: https://github.com/mohammedyusuf123/reflexity-ram
+- Repository: https://github.com/reflexityram-create/reflexity-ram
 
 ## Architecture
 
@@ -29,7 +29,7 @@ MongoDB automatically.
 Requirements: Node.js 22 and npm.
 
 ```bash
-git clone https://github.com/mohammedyusuf123/reflexity-ram.git
+git clone https://github.com/reflexityram-create/reflexity-ram.git
 cd reflexity-ram
 npm run install:all
 cp backend/.env.example backend/.env
@@ -97,7 +97,7 @@ single controlled operation. It is disabled whenever `SEED_SECRET` is unset.
 Production deploys from `main`:
 
 - Render builds and starts `backend/`.
-- Cloudflare Pages project `reflexity-ram2` builds `frontend/` and discovers
+- Cloudflare Pages project `reflexity-ram` builds `frontend/` and discovers
   the file-routed XML and product-metadata Pages Functions.
 
 See [DEPLOY.md](./DEPLOY.md) for the exact configuration and post-deploy checks.

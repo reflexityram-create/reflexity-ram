@@ -7,7 +7,7 @@ credentials into this repository, commit them, or include them in screenshots.
 
 ```text
 reflexityram.com
-  Cloudflare Pages project: reflexity-ram2
+  Cloudflare Pages project: reflexity-ram
   Root directory: frontend
   Build command: npm ci && npm run build
   Output directory: dist
@@ -128,13 +128,16 @@ the website, shipping options, feed, and Stripe Prices use the same currency.
 
 ## 5. Cloudflare Pages
 
-Configure project `reflexity-ram2`:
+Configure project `reflexity-ram`:
 
 - Production branch: `main`
 - Root directory: `frontend`
 - Build command: `npm ci && npm run build`
 - Output directory: `dist`
 - Environment: `VITE_API_URL=https://reflexity-ram.onrender.com/api`
+
+Project `reflexity-ram2` is retained without custom domains as a rollback
+resource. Do not use it for normal production deployment.
 
 Cloudflare automatically provides SPA fallback because the build does not ship
 a top-level `404.html`. Do not add an external-domain `200` rewrite to
