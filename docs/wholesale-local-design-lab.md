@@ -32,15 +32,24 @@ Then open:
 
 - `http://localhost:5173/wholesale-admin-lab` — owner-facing Wholesale Stock
   Studio.
-- `http://localhost:5173/wholesale-lab` — customer-facing published-lot
-  preview.
+- `http://localhost:5173/wholesale` — primary combined customer page with
+  published demo stock and exact-SKU sourcing.
+- `http://localhost:5173/wholesale-lab` — development-only alias to the same
+  customer view.
 
-Both routes are loaded only when `import.meta.env.DEV` is true and are absent
-from the production bundle.
+The admin route, alias, and browser-local customer adapter are loaded only when
+`import.meta.env.DEV` is true and are absent from the production bundle.
 
-The customer preview is intentionally inventory-first. Its first main section
-is the posted-lot grid; it does not repeat the official wholesale page's pitch,
-service facts, retail link, or volume-contact card.
+The shared customer page combines both buyer jobs without making them compete:
+
+- posted stock is the dominant left column and first mobile section;
+- a single `Need a specific SKU?` card forms the secondary right rail;
+- listed lots each have a specific quote action;
+- the sourcing rail has the only general `Get bulk pricing` action; and
+- a quiet `/liquidators` link handles people selling stock to Reflexity.
+
+There is no retail-shop cross-link, duplicated wholesale pitch, or second
+bottom contact block.
 
 ## Admin-to-customer workflow
 
@@ -67,18 +76,17 @@ The connected customer page renders only records that are:
 Publishing or unpublishing in the Studio changes the customer card count on
 the next navigation or in another local tab. Drafts never appear to customers.
 
-## Official wholesale contact card
+## Shared market shell and official data boundary
 
-The official `/wholesale` page remains separate from the browser-local demo.
-Its existing left-side wholesale introduction is unchanged, while its
-right-side card now uses the preferred `Buying in volume?` presentation:
+`Wholesale.jsx` owns the reusable buyer-facing presentation. In development,
+`WholesaleLab.jsx` is a thin adapter that supplies strictly filtered
+browser-local demo lots to that shell, which is why the normal local Wholesale
+navigation shows both posted examples and sourcing.
 
-- part number and exact specification;
-- quantity and condition preference;
-- destination and required date; and
-- a `Get bulk pricing` action opening the shared reviewable email draft.
-
-The official route does not read local demo lots or import the demo store.
+In a production build, `/wholesale` renders the same premium shell using only
+public, published records from `WHOLESALE_LOTS`. It does not read local demo
+lots or import the demo store. With no authoritative records configured, the
+inventory column renders an honest empty state beside the sourcing rail.
 
 ## Local persistence boundary
 
@@ -98,8 +106,9 @@ This demo uses the versioned browser-local key
 - retains the previous state when a browser write fails.
 
 No Product API, `useStock`, cart, checkout, Stripe, backend mutation, or email
-send occurs. Customer contact actions only open a reviewable Gmail draft to
-`reflexityram@gmail.com` with the exact lot ID, MPN, and MOQ-bounded quantity.
+send occurs. Each listed-lot action opens a reviewable Gmail draft to
+`reflexityram@gmail.com` with that exact lot ID, MPN, and MOQ-bounded quantity;
+the general sourcing action opens a separate structured requirements draft.
 
 Browser storage is appropriate only because this is an explicitly local demo.
 It is not authentication and is not an authoritative inventory system.
@@ -130,10 +139,11 @@ regular shop, public catalog, feed, sitemap, and Stripe-related behavior.
   disposable Atlas integration is intentionally skipped), the Vite production
   build, and secret scanning. Frontend and backend high-severity audits report
   zero vulnerabilities.
-- The production bundle contains no local demo route, component, stylesheet,
-  synthetic MPN, or browser-store key.
+- The production bundle contains no local demo route, adapter, synthetic MPN,
+  demo-store hook, or browser-store key, while retaining the shared official
+  market shell.
 - Admin and customer layouts have zero horizontal overflow at desktop and
   390 x 844, and the checked browser log contains no warning/error entries.
-- The customer preview rendered posted stock as the first section with two
-  desktop cards and one 350px mobile column. The official volume card rendered
-  at 479px desktop and 350px mobile, with its CTA spanning the mobile card.
+- The combined `/wholesale` page rendered inventory first and sourcing second:
+  two stock columns plus a sticky 352px sourcing rail at 1920 x 1112, and one
+  350px stock column followed by a 350px sourcing card at 390 x 844.

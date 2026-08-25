@@ -157,10 +157,10 @@ test("both local views are development-only and contain no retail or production 
 
   assert.match(app, /const WholesaleAdminLab = import\.meta\.env\.DEV/);
   assert.match(app, /path="\/wholesale-admin-lab"/);
-  assert.match(customer, /publishedWholesaleDemoLots\(lots\)/);
+  assert.match(customer, /postedLots=\{error \? \[\] : publishedWholesaleDemoLots\(lots\)\}/);
   assert.match(admin, /LOCAL ADMIN STUDIO · BROWSER-LOCAL ONLY/);
-  assert.match(admin, /Open customer preview/);
-  assert.match(admin, /target="_blank" to="\/wholesale-lab"/);
+  assert.match(admin, /Open combined wholesale preview/);
+  assert.match(admin, /target="_blank" to="\/wholesale"/);
   assert.match(admin, /storageError && <div className="wla-error" role="alert">/);
   assert.doesNotMatch(admin, /storageError \|\| formError/);
   for (const source of [admin, customer]) {

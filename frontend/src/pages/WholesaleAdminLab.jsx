@@ -204,7 +204,7 @@ export default function WholesaleAdminLab() {
               </div>
               <div className="wla-hero-actions">
                 <button className="wla-secondary" onClick={startNew} type="button"><Plus aria-hidden="true" size={16} /> New special lot</button>
-                <Link className="wla-primary" rel="noopener noreferrer" target="_blank" to="/wholesale-lab"><Eye aria-hidden="true" size={16} /> Open customer preview <ArrowRight aria-hidden="true" size={15} /></Link>
+                <Link className="wla-primary" rel="noopener noreferrer" target="_blank" to="/wholesale"><Eye aria-hidden="true" size={16} /> Open combined wholesale preview <ArrowRight aria-hidden="true" size={15} /></Link>
               </div>
             </div>
             <div className="wla-summary" aria-label="Local wholesale stock summary">

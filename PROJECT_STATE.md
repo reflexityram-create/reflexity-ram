@@ -5,12 +5,14 @@
 - VERIFIED (ARCHITECTURE/STATIC): Wholesale buyer stock belongs at the existing
   top-level `/wholesale` route. `/shop` remains the regular retail catalog and
   checkout path; `/liquidators` remains inbound sell-to-Reflexity intake.
-- VERIFIED (LOCAL/IMPLEMENTATION): Branch `codex/wholesale-stock-lab` now has
-  two connected development-only routes using the storefront's white, black,
-  and yellow tokens: `/wholesale-admin-lab` is the owner-facing Wholesale Stock
-  Studio and `/wholesale-lab` is the customer-facing published-lot preview. The
-  customer preview now opens directly on posted inventory; the duplicate
-  wholesale pitch, service facts, retail link, and volume card were removed.
+- VERIFIED (LOCAL/IMPLEMENTATION): Branch `codex/wholesale-stock-lab` now has a
+  shared white, black, and yellow wholesale market shell. On localhost,
+  `/wholesale` reads the browser-local demo store through a development-only
+  adapter; `/wholesale-lab` is an alias to the same customer view and
+  `/wholesale-admin-lab` is the owner-facing Wholesale Stock Studio. Posted
+  lots are the dominant left column, while one compact `Need a specific SKU?`
+  sourcing card occupies the right rail. Mobile preserves inventory before
+  sourcing. There is no repeated bottom contact block.
 - VERIFIED (LOCAL/DATA): The versioned browser-local store seeds two published
   synthetic lots and one private draft. Admin can create, edit, save draft,
   publish, unpublish, remove, and restore examples. Its allowlist forces
@@ -18,34 +20,48 @@
   `stockQuantity`, Stripe IDs, and unknown fields. Corrupt schema/JSON fails
   closed with no customer-visible lots; failed writes do not replace prior
   serialized state. Restoring seeded examples retains custom demo lots.
-- VERIFIED (BOUNDARY/STATIC): Customer cards require demo identity, published
-  status, local-only visibility, complete publish validation, and quantity at
-  or above MOQ. The two local
-  pages have no `useStock`, Product/admin API, retail price, cart, checkout,
-  Stripe, order, or automatic email path. Every synthetic MPN uses `DEMO-*` and
-  customer cards display `LOCAL DEMO`.
-- VERIFIED (CONTACT/TEST): The official `/wholesale` page retains its left-side
-  pitch and now uses the stronger `Buying in volume?` card on the right, with
-  exact specification, quantity/condition, destination/date prompts, and a
-  pre-addressed `Get bulk pricing` draft. The customer preview keeps only its
-  post-inventory `Don't see what you need?` fallback. Listed-lot drafts carry
-  exact lot ID, MPN, and MOQ-bounded quantity. All 36 frontend tests pass.
+- VERIFIED (BOUNDARY/STATIC): Local customer cards require demo identity,
+  published status, local-only visibility, complete publish validation, and
+  quantity at or above MOQ. The development adapter is the only customer-page
+  module that imports the demo store. The production `/wholesale` path uses
+  only public, published records from the separate `WHOLESALE_LOTS` source and
+  does not import browser-local demo state. The local pages have no `useStock`,
+  Product/admin API, retail price, cart, checkout, Stripe, order, or automatic
+  email path. Every synthetic MPN uses `DEMO-*` and local cards display
+  `LOCAL DEMO`.
+- VERIFIED (BOUNDARY/FAILED-PATH): The first shared-shell implementation kept
+  local-preview branches and labels inside `Wholesale.jsx`; the production
+  artifact scan correctly rejected those literals even though demo storage was
+  not imported. The final boundary exports a data-agnostic `WholesaleMarket`,
+  keeps all local labels and lot adaptation in the development-only
+  `WholesaleLab`, and leaves the default wrapper responsible only for filtering
+  authoritative public, published `WHOLESALE_LOTS`.
+- VERIFIED (CONTACT/TEST): Every posted lot has one `Request this lot` action
+  whose accessible label names the exact lot and whose reviewable draft carries
+  the lot ID, MPN, and MOQ-bounded quantity. The single general sourcing rail
+  asks for exact specification, quantity/condition, and destination/date before
+  opening the shared `Get bulk pricing` draft. A quiet sell-stock link routes to
+  `/liquidators`; there is no second generic contact CTA. All 36 frontend tests
+  pass.
 - VERIFIED (BROWSER): Canonical Chrome alias `reflexity` (Profile 6,
   `reflexityram@gmail.com`) observed the admin summary at one draft, two
   published lots, and 72 units. Unpublishing one lot changed the customer
   preview from two cards to one. After restoring examples, a complete new lot
   was posted through the form and the customer preview changed from two cards
   to three with no alert or horizontal overflow. The seed was restored after
-  the test. A subsequent inventory-first check observed `Posted wholesale
-  stock` as the first main section with two cards at desktop and one 350px
-  column at 390 x 844. The upgraded official volume card rendered at both
-  sizes with no overflow, alert, warning, or error.
+  the test. The final combined `/wholesale` check observed two posted cards in
+  the first grid child and the sourcing rail second. Desktop rendered two lot
+  columns plus a sticky 352px rail at 1920 x 1112; mobile rendered one 350px
+  stock column followed by a 350px sourcing card at 390 x 844. Both had zero
+  horizontal overflow or alerts, and a fresh desktop navigation logged no
+  warning or error.
 - VERIFIED (BUILD/SECURITY): `npm run verify` passes 36 frontend tests, 15
   runnable backend tests with the disposable Atlas integration intentionally
   skipped, the Vite production build, and secret scanning. Frontend and backend
   high-severity audits report zero vulnerabilities. A built-artifact scan finds
-  no admin/customer demo route, component, style, synthetic MPN, or browser-store
-  key in `frontend/dist`. Both routes return HTTP 200 locally, browser logs have
+  no admin/customer demo route, component, synthetic MPN, or browser-store key
+  in `frontend/dist`; the production bundle retains the shared official
+  wholesale market shell. All local routes return HTTP 200, browser logs have
   no warning/error entries, and the admin/customer layouts have zero horizontal
   overflow at 390 x 844 and 1920 x 1112.
 - CONTRADICTED / SUPERSEDED (EARLIER LOCAL PROTOTYPE): The dark-green preview

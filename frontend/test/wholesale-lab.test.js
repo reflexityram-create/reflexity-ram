@@ -76,50 +76,64 @@ test("a posted lot produces a review-only email with its exact identity and boun
   assert.match(url.searchParams.get("body"), /Requested quantity: 14/);
 });
 
-test("the local route is development-only and never reads the regular Product API", async () => {
+test("local Wholesale navigation uses the demo adapter without reading the regular Product API", async () => {
   const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
   const page = await readFile(new URL("../src/pages/WholesaleLab.jsx", import.meta.url), "utf8");
   const data = await readFile(new URL("../src/data/wholesaleLots.js", import.meta.url), "utf8");
 
   assert.match(app, /const WholesaleLab = import\.meta\.env\.DEV/);
   assert.match(app, /lazy\(\(\) => import\("@\/pages\/WholesaleLab"\)\)/);
+  assert.match(app, /path="\/wholesale"[\s\S]*?WholesaleLab[\s\S]*?: <Wholesale \/>/);
   assert.match(app, /path="\/wholesale-lab"/);
+  assert.match(page, /import \{ WholesaleMarket \} from "@\/pages\/Wholesale"/);
+  assert.match(page, /publishedWholesaleDemoLots\(lots\)/);
+  assert.match(page, /badgeLabel="LOCAL DEMO"/);
+  assert.match(page, /postedLots=\{error \? \[\] : publishedWholesaleDemoLots\(lots\)\}/);
+  assert.match(page, /stockError=\{error\}/);
   assert.doesNotMatch(page, /useStock|productsApi|\/api\/products|stockQuantity|cartApi|checkoutApi/);
-  assert.match(page, /Regular shop products never enter this preview\./);
   assert.match(data, /separate from the retail Product API/);
   assert.match(data, /WHOLESALE_LOTS = Object\.freeze\(\[\]\)/);
 });
 
-test("the customer preview leads with posted stock and removes repeated wholesale marketing", async () => {
-  const page = await readFile(new URL("../src/pages/WholesaleLab.jsx", import.meta.url), "utf8");
-  const css = await readFile(new URL("../src/pages/wholesale-lab.css", import.meta.url), "utf8");
-
-  const stockIndex = page.indexOf('<section className="wlp-stock"');
-  const contactIndex = page.indexOf('<section className="wlp-contact"');
-  assert.ok(stockIndex >= 0 && contactIndex > stockIndex);
-  assert.match(page, /<h1 id="wlp-stock-title">Posted wholesale stock<\/h1>/);
-  assert.doesNotMatch(page, /wlp-hero|wlp-volume|Special stock\.|BUYING IN VOLUME\?/);
-  assert.match(page, /DON&apos;T SEE WHAT YOU NEED\?/);
-  assert.match(page, /Contact us/);
-  assert.match(css, /var\(--brand-yellow\)/);
-  assert.match(css, /var\(--bg-elev\)/);
-  assert.doesNotMatch(css, /wlp-hero|wlp-volume|#b4eb62|--wl-green|current public catalog/i);
-});
-
-test("the official wholesale page adopts the stronger right-side volume card", async () => {
+test("the combined wholesale page makes inventory primary and exact sourcing secondary", async () => {
   const page = await readFile(new URL("../src/pages/Wholesale.jsx", import.meta.url), "utf8");
   const css = await readFile(new URL("../src/pages/wholesale-concepts.css", import.meta.url), "utf8");
 
+  const stockIndex = page.indexOf("<WholesaleInventory");
+  const sourcingIndex = page.indexOf('<aside className="ws-coming"');
+  assert.ok(stockIndex >= 0 && sourcingIndex > stockIndex);
+  assert.match(page, /Wholesale RAM\.<br \/><em>Ready stock or sourced\.<\/em>/);
+  assert.match(page, /<h2 id="wholesale-stock-title">Posted wholesale stock<\/h2>/);
+  assert.match(page, /NEED A SPECIFIC SKU\?/);
+  assert.match(page, /Tell us the SKU and quantity\./);
+  assert.match(page, /Get bulk pricing/);
+  assert.match(page, /Selling stock to Reflexity\?/);
+  assert.doesNotMatch(page, /DON&apos;T SEE WHAT YOU NEED\?|Send the requirement\./);
+  assert.match(css, /grid-template-columns: minmax\(0,1\.65fr\) minmax\(350px,\.72fr\)/);
+  assert.match(css, /\.ws-coming \{[^}]*position: sticky/s);
+  assert.match(css, /@media \(max-width: 720px\)[\s\S]*?\.ws-lots \{ grid-template-columns: 1fr; \}/);
+  assert.doesNotMatch(css, /#b4eb62|--wl-green|current public catalog/i);
+});
+
+test("the official wholesale shell contains no local-demo code and accepts only public lots", async () => {
+  const page = await readFile(new URL("../src/pages/Wholesale.jsx", import.meta.url), "utf8");
+  const local = await readFile(new URL("../src/pages/WholesaleLab.jsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("../src/pages/wholesale-concepts.css", import.meta.url), "utf8");
+
+  assert.match(page, /import \{ WHOLESALE_LOTS \} from "@\/data\/wholesaleLots"/);
   assert.match(page, /import \{ buildWholesaleEmailUrl \} from "@\/lib\/wholesaleLots"/);
   assert.match(page, /const WHOLESALE_GMAIL_URL = buildWholesaleEmailUrl\(\)/);
-  assert.match(page, /BUYING IN VOLUME\?/);
-  assert.match(page, /Tell us the SKU and quantity\./);
-  assert.match(page, /We do wholesale on server pulls — tell us the SKU and quantity\./);
-  assert.match(page, /Part number and exact specification/);
-  assert.match(page, /Quantity and condition preference/);
-  assert.match(page, /Destination and required date/);
-  assert.match(page, /Get bulk pricing/);
-  assert.doesNotMatch(page, /useWholesaleDemoLots|WHOLESALE_LOTS|WholesaleLab/);
+  assert.match(page, /WHOLESALE_LOTS\.filter\(isPublishedPublicWholesaleLot\)/);
+  assert.match(page, /lot\.status === "published"/);
+  assert.match(page, /lot\.visibility === "public"/);
+  assert.match(page, /export function WholesaleMarket/);
+  assert.doesNotMatch(page, /LOCAL DEMO|LOCAL CUSTOMER PREVIEW|LOCAL DEMO DATA UNAVAILABLE|localPreview|wholesaleDemoStore|useWholesaleDemoLots|localStorage/);
+  assert.match(local, /useWholesaleDemoLots/);
+  assert.match(local, /publishedWholesaleDemoLots/);
+  assert.match(local, /LOCAL CUSTOMER PREVIEW/);
+  assert.match(local, /LOCAL DEMO DATA UNAVAILABLE/);
+  assert.match(local, /badgeLabel="LOCAL DEMO"/);
+  assert.match(page, /aria-label=\{`Request wholesale lot \$\{lot\.title\}`\}/);
   assert.match(css, /\.ws-coming \{[^}]*border-radius: 14px/s);
   assert.match(css, /\.ws-contact-link \{[^}]*width: 100%/s);
   assert.match(css, /\.ws-coming-top > span \{ color: #7a5f00; \}/);

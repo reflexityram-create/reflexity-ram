@@ -76,7 +76,12 @@ export default function App() {
         <Routes>
           {/* Store */}
           <Route path="/" element={<Home />} />
-          <Route path="/wholesale" element={<Wholesale />} />
+          <Route
+            path="/wholesale"
+            element={WholesaleLab
+              ? <Suspense fallback={null}><WholesaleLab /></Suspense>
+              : <Wholesale />}
+          />
           {WholesaleLab && (
             <Route
               path="/wholesale-lab"
