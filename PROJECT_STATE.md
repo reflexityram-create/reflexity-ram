@@ -1,36 +1,45 @@
 # Project State
 
-## 2026-08-25 — Local wholesale stock design lab
+## 2026-08-25 — Wholesale and retail inventory separation
 
 - VERIFIED (ARCHITECTURE/STATIC): Wholesale buyer stock belongs at the existing
-  top-level `/wholesale` route. `/shop` remains retail checkout and
-  `/liquidators` remains inbound sell-to-Reflexity intake. The recommended
-  public composition is a spec-first inventory board with optional gallery and
-  multi-SKU quote-workbench views.
-- VERIFIED (LOCAL/IMPLEMENTATION): Branch `codex/wholesale-stock-lab` adds the
-  development-only `/wholesale-lab` route with three query-addressable concepts:
-  `board`, `market`, and `workbench`. It reads the public catalog through a
-  same-origin Vite proxy, filters/searches exact current stock, and creates only
-  reviewable Gmail quote URLs. It has no catalog write, cart, checkout,
-  wholesale-record, or automatic send path.
-- VERIFIED (DATA/RUNTIME, 2026-08-25): The live public catalog supplied five
-  available Server DDR4 listings and 45 visible units during the local QA run.
-  These are retail catalog records used as a disclosed read-only design
-  reference, not asserted wholesale lots or prices.
-- VERIFIED (BUILD/TEST/BROWSER): 25 frontend tests and the Vite production build
-  pass. The production `dist` output contains no wholesale-lab route, copy, or
-  component CSS. Canonical Chrome profile alias `reflexity` (Profile 6,
-  `reflexityram@gmail.com`) exercised all concepts, search/form-factor filters,
-  workbench selection and quantity controls, and a generated two-unit quote
-  draft. Desktop and 390 x 844 views had no horizontal overflow, broken product
-  images, or fresh console errors. Catalog errors withhold totals instead of
-  asserting zero stock; mobile table headings remain available to assistive
-  technology and every quantity control names its exact MPN/SKU.
-- VERIFIED (BOUNDARY): The current `Product` model enters retail API/feed/sitemap
-  and Stripe-related catalog behavior and has no wholesale MOQ, lot, tier, or
-  sales-channel fields. Real wholesale-only inventory requires a separate
-  `WholesaleLot` model/API or an equivalently fail-closed channel boundary before
-  production entry. Detailed handoff: `docs/wholesale-local-design-lab.md`.
+  top-level `/wholesale` route. `/shop` remains the regular retail catalog and
+  checkout path; `/liquidators` remains inbound sell-to-Reflexity intake.
+- VERIFIED (LOCAL/IMPLEMENTATION): Branch `codex/wholesale-stock-lab` contains a
+  development-only `/wholesale-lab` preview using the storefront's white,
+  black, and Reflexity yellow token system. It is now one final page rather
+  than three query-addressable concepts.
+- VERIFIED (DATA/STATIC): Wholesale lots come only from the deliberately empty,
+  manually maintained `frontend/src/data/wholesaleLots.js`. The page has no
+  `useStock`, Product API, retail price, cart, checkout, or Stripe path. A lot is
+  visible only with an explicit ID, published status, allowed visibility, and
+  verified quantity at or above its MOQ. Consequently the current `0 live lots`
+  state is intentional and no regular-shop listing can appear.
+- VERIFIED (CONTACT/TEST): The requested `Buying in volume?` and `Don't see what
+  you need?` sections open reviewable Gmail drafts addressed to
+  `reflexityram@gmail.com`. Listed-lot requests are bounded by MOQ, increment,
+  and available quantity. Nothing is sent and no order is created from the
+  preview. All 26 frontend tests pass, including eight wholesale boundary and
+  email-composition tests.
+- VERIFIED (BUILD/SECURITY/BROWSER): `npm run verify` passes 26 frontend tests,
+  15 runnable backend tests with the disposable Atlas test intentionally
+  skipped, the Vite production build, and secret scanning. Frontend and backend
+  high-severity audits report zero vulnerabilities, and the production bundle
+  contains none of the development-only page's route, copy, CSS, or data source.
+  Canonical Chrome alias `reflexity` (Profile 6, `reflexityram@gmail.com`) shows
+  the light white/yellow result with zero wholesale cards, zero retail product
+  links, three correctly addressed contact drafts, no browser errors, and no
+  horizontal overflow at 1920 x 1112 or 390 x 844.
+- CONTRADICTED / SUPERSEDED (EARLIER LOCAL PROTOTYPE): The dark-green preview
+  that displayed five live retail catalog listings as a disclosed reference is
+  not the accepted product direction. Its public-API proxy, gallery, inventory
+  board, quote workbench, and concept switcher have been removed from this
+  branch's working result.
+- VERIFIED (BOUNDARY): A future editable implementation requires a separate
+  `WholesaleLot` model/API and restricted admin CRUD surface. The current
+  `Product` model enters the regular retail API, feed, sitemap, and
+  Stripe-related catalog behavior and must not become the wholesale data source.
+  Detailed handoff: `docs/wholesale-local-design-lab.md`.
 
 ## 2026-08-13 — Live status refresh and legacy Cloudinary closure
 
