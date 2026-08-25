@@ -1,5 +1,37 @@
 # Project State
 
+## 2026-08-25 — Local wholesale stock design lab
+
+- VERIFIED (ARCHITECTURE/STATIC): Wholesale buyer stock belongs at the existing
+  top-level `/wholesale` route. `/shop` remains retail checkout and
+  `/liquidators` remains inbound sell-to-Reflexity intake. The recommended
+  public composition is a spec-first inventory board with optional gallery and
+  multi-SKU quote-workbench views.
+- VERIFIED (LOCAL/IMPLEMENTATION): Branch `codex/wholesale-stock-lab` adds the
+  development-only `/wholesale-lab` route with three query-addressable concepts:
+  `board`, `market`, and `workbench`. It reads the public catalog through a
+  same-origin Vite proxy, filters/searches exact current stock, and creates only
+  reviewable Gmail quote URLs. It has no catalog write, cart, checkout,
+  wholesale-record, or automatic send path.
+- VERIFIED (DATA/RUNTIME, 2026-08-25): The live public catalog supplied five
+  available Server DDR4 listings and 45 visible units during the local QA run.
+  These are retail catalog records used as a disclosed read-only design
+  reference, not asserted wholesale lots or prices.
+- VERIFIED (BUILD/TEST/BROWSER): 25 frontend tests and the Vite production build
+  pass. The production `dist` output contains no wholesale-lab route, copy, or
+  component CSS. Canonical Chrome profile alias `reflexity` (Profile 6,
+  `reflexityram@gmail.com`) exercised all concepts, search/form-factor filters,
+  workbench selection and quantity controls, and a generated two-unit quote
+  draft. Desktop and 390 x 844 views had no horizontal overflow, broken product
+  images, or fresh console errors. Catalog errors withhold totals instead of
+  asserting zero stock; mobile table headings remain available to assistive
+  technology and every quantity control names its exact MPN/SKU.
+- VERIFIED (BOUNDARY): The current `Product` model enters retail API/feed/sitemap
+  and Stripe-related catalog behavior and has no wholesale MOQ, lot, tier, or
+  sales-channel fields. Real wholesale-only inventory requires a separate
+  `WholesaleLot` model/API or an equivalently fail-closed channel boundary before
+  production entry. Detailed handoff: `docs/wholesale-local-design-lab.md`.
+
 ## 2026-08-13 — Live status refresh and legacy Cloudinary closure
 
 Human-readable full update: [`docs/security/2026-08-13-cloudinary-and-website-status.md`](docs/security/2026-08-13-cloudinary-and-website-status.md)

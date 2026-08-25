@@ -44,6 +44,14 @@ npm run dev
 
 The frontend runs on port 5173 and the API on port 5000 by default.
 
+### Local wholesale stock concepts
+
+The isolated wholesale design lab contains three responsive inventory and
+quote-flow variations. It is development-only and is not included in production
+builds. See [docs/wholesale-local-design-lab.md](./docs/wholesale-local-design-lab.md)
+for the exact same-origin preview command, product placement recommendation,
+data boundary, and verification evidence.
+
 ## Verification
 
 ```bash

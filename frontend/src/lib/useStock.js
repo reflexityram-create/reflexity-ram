@@ -8,16 +8,23 @@ import { productsApi } from "@/lib/api";
 export function useStock(limit = 12) {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     let alive = true;
+    setLoading(true);
+    setError(false);
     productsApi
       .list({ limit })
       .then((r) => {
         if (!alive) return;
         setProducts(r.data?.products || []);
       })
-      .catch(() => alive && setProducts([]))
+      .catch(() => {
+        if (!alive) return;
+        setProducts([]);
+        setError(true);
+      })
       .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
@@ -28,6 +35,7 @@ export function useStock(limit = 12) {
     p.line === "Server" || ["RDIMM", "LRDIMM"].includes(p.formFactor);
 
   return {
+    error,
     loading,
     products,
     server: products.filter(isServer),

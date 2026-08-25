@@ -1,5 +1,5 @@
 import "@/App.css";
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster, toast } from "sonner";
 
@@ -24,6 +24,10 @@ import VerifyEmail from "@/pages/VerifyEmail";
 import NotFound from "@/pages/NotFound";
 import AuthCallback from "@/pages/AuthCallback";
 import Categories from "@/pages/Categories";
+
+const WholesaleLab = import.meta.env.DEV
+  ? lazy(() => import("@/pages/WholesaleLab"))
+  : null;
 
 // Policy pages
 import Shipping from "@/pages/policies/Shipping";
@@ -70,6 +74,12 @@ export default function App() {
           {/* Store */}
           <Route path="/" element={<Home />} />
           <Route path="/wholesale" element={<Wholesale />} />
+          {WholesaleLab && (
+            <Route
+              path="/wholesale-lab"
+              element={<Suspense fallback={null}><WholesaleLab /></Suspense>}
+            />
+          )}
           <Route path="/liquidators" element={<Liquidators />} />
           <Route path="/guides" element={<Guides />} />
           <Route path="/guides/:slug" element={<Guides />} />
