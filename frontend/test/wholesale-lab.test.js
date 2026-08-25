@@ -85,21 +85,44 @@ test("the local route is development-only and never reads the regular Product AP
   assert.match(app, /lazy\(\(\) => import\("@\/pages\/WholesaleLab"\)\)/);
   assert.match(app, /path="\/wholesale-lab"/);
   assert.doesNotMatch(page, /useStock|productsApi|\/api\/products|stockQuantity|cartApi|checkoutApi/);
-  assert.match(page, /Products from the regular shop never\s+show in this section\./);
+  assert.match(page, /Regular shop products never enter this preview\./);
   assert.match(data, /separate from the retail Product API/);
   assert.match(data, /WHOLESALE_LOTS = Object\.freeze\(\[\]\)/);
 });
 
-test("the corrected page uses Reflexity yellow tokens and the requested contact language", async () => {
+test("the customer preview leads with posted stock and removes repeated wholesale marketing", async () => {
   const page = await readFile(new URL("../src/pages/WholesaleLab.jsx", import.meta.url), "utf8");
   const css = await readFile(new URL("../src/pages/wholesale-lab.css", import.meta.url), "utf8");
 
-  assert.match(page, /BUYING IN VOLUME\?/);
-  assert.match(page, /We do wholesale on server pulls — tell us the SKU and quantity\./);
-  assert.match(page, /Get bulk pricing/);
+  const stockIndex = page.indexOf('<section className="wlp-stock"');
+  const contactIndex = page.indexOf('<section className="wlp-contact"');
+  assert.ok(stockIndex >= 0 && contactIndex > stockIndex);
+  assert.match(page, /<h1 id="wlp-stock-title">Posted wholesale stock<\/h1>/);
+  assert.doesNotMatch(page, /wlp-hero|wlp-volume|Special stock\.|BUYING IN VOLUME\?/);
   assert.match(page, /DON&apos;T SEE WHAT YOU NEED\?/);
   assert.match(page, /Contact us/);
   assert.match(css, /var\(--brand-yellow\)/);
   assert.match(css, /var\(--bg-elev\)/);
-  assert.doesNotMatch(css, /#b4eb62|--wl-green|current public catalog/i);
+  assert.doesNotMatch(css, /wlp-hero|wlp-volume|#b4eb62|--wl-green|current public catalog/i);
+});
+
+test("the official wholesale page adopts the stronger right-side volume card", async () => {
+  const page = await readFile(new URL("../src/pages/Wholesale.jsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("../src/pages/wholesale-concepts.css", import.meta.url), "utf8");
+
+  assert.match(page, /import \{ buildWholesaleEmailUrl \} from "@\/lib\/wholesaleLots"/);
+  assert.match(page, /const WHOLESALE_GMAIL_URL = buildWholesaleEmailUrl\(\)/);
+  assert.match(page, /BUYING IN VOLUME\?/);
+  assert.match(page, /Tell us the SKU and quantity\./);
+  assert.match(page, /We do wholesale on server pulls — tell us the SKU and quantity\./);
+  assert.match(page, /Part number and exact specification/);
+  assert.match(page, /Quantity and condition preference/);
+  assert.match(page, /Destination and required date/);
+  assert.match(page, /Get bulk pricing/);
+  assert.doesNotMatch(page, /useWholesaleDemoLots|WHOLESALE_LOTS|WholesaleLab/);
+  assert.match(css, /\.ws-coming \{[^}]*border-radius: 14px/s);
+  assert.match(css, /\.ws-contact-link \{[^}]*width: 100%/s);
+  assert.match(css, /\.ws-coming-top > span \{ color: #7a5f00; \}/);
+  assert.match(css, /html\.dark \.ws-coming-top > span \{ color: #f0d36f; \}/);
+  assert.match(css, /\.ws-coming-top > div \{ color: var\(--ws-muted\)/);
 });

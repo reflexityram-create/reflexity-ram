@@ -49,9 +49,10 @@ The frontend runs on port 5173 and the API on port 5000 by default.
 The isolated wholesale demo includes a white/yellow browser-local Stock Studio
 for creating, drafting, publishing, unpublishing, and removing synthetic special
 lots, restoring the examples without deleting custom lots, and opening the
-connected customer preview. It never reads or shows the regular
-retail catalog, and both routes are development-only, so they are not included
-in production builds. See
+connected inventory-first customer preview. The official wholesale page keeps
+its own introduction and uses the improved right-side volume contact card. The
+demo never reads or shows the regular retail catalog, and both local routes are
+development-only, so they are not included in production builds. See
 [docs/wholesale-local-design-lab.md](./docs/wholesale-local-design-lab.md) for
 the run command, routes, posting workflow, and production data boundary.
 

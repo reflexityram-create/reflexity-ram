@@ -8,7 +8,9 @@
 - VERIFIED (LOCAL/IMPLEMENTATION): Branch `codex/wholesale-stock-lab` now has
   two connected development-only routes using the storefront's white, black,
   and yellow tokens: `/wholesale-admin-lab` is the owner-facing Wholesale Stock
-  Studio and `/wholesale-lab` is the customer-facing published-lot preview.
+  Studio and `/wholesale-lab` is the customer-facing published-lot preview. The
+  customer preview now opens directly on posted inventory; the duplicate
+  wholesale pitch, service facts, retail link, and volume card were removed.
 - VERIFIED (LOCAL/DATA): The versioned browser-local store seeds two published
   synthetic lots and one private draft. Admin can create, edit, save draft,
   publish, unpublish, remove, and restore examples. Its allowlist forces
@@ -22,18 +24,23 @@
   pages have no `useStock`, Product/admin API, retail price, cart, checkout,
   Stripe, order, or automatic email path. Every synthetic MPN uses `DEMO-*` and
   customer cards display `LOCAL DEMO`.
-- VERIFIED (CONTACT/TEST): The requested `Buying in volume?` and `Don't see what
-  you need?` sections open reviewable Gmail drafts to
-  `reflexityram@gmail.com`. Listed-lot drafts carry exact lot ID, MPN, and
-  MOQ-bounded quantity. All 35 frontend tests pass.
+- VERIFIED (CONTACT/TEST): The official `/wholesale` page retains its left-side
+  pitch and now uses the stronger `Buying in volume?` card on the right, with
+  exact specification, quantity/condition, destination/date prompts, and a
+  pre-addressed `Get bulk pricing` draft. The customer preview keeps only its
+  post-inventory `Don't see what you need?` fallback. Listed-lot drafts carry
+  exact lot ID, MPN, and MOQ-bounded quantity. All 36 frontend tests pass.
 - VERIFIED (BROWSER): Canonical Chrome alias `reflexity` (Profile 6,
   `reflexityram@gmail.com`) observed the admin summary at one draft, two
   published lots, and 72 units. Unpublishing one lot changed the customer
   preview from two cards to one. After restoring examples, a complete new lot
   was posted through the form and the customer preview changed from two cards
   to three with no alert or horizontal overflow. The seed was restored after
-  the test.
-- VERIFIED (BUILD/SECURITY): `npm run verify` passes 35 frontend tests, 15
+  the test. A subsequent inventory-first check observed `Posted wholesale
+  stock` as the first main section with two cards at desktop and one 350px
+  column at 390 x 844. The upgraded official volume card rendered at both
+  sizes with no overflow, alert, warning, or error.
+- VERIFIED (BUILD/SECURITY): `npm run verify` passes 36 frontend tests, 15
   runnable backend tests with the disposable Atlas integration intentionally
   skipped, the Vite production build, and secret scanning. Frontend and backend
   high-severity audits report zero vulnerabilities. A built-artifact scan finds

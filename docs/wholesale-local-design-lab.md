@@ -1,8 +1,9 @@
 # Reflexity Wholesale Stock — Local Admin and Customer Demo
 
-Status: `VERIFIED / LOCAL-ONLY` on 2026-08-25. This isolated branch has not
-changed or deployed the production storefront, retail catalog, checkout, API,
-authentication, or database.
+Status: `VERIFIED / LOCAL-ONLY` on 2026-08-25. This isolated branch changes the
+local demo and the official `/wholesale` page source, but it has not been
+deployed. The live production storefront, retail catalog, checkout, API,
+authentication, and database remain unchanged.
 
 ## Product placement
 
@@ -37,6 +38,10 @@ Then open:
 Both routes are loaded only when `import.meta.env.DEV` is true and are absent
 from the production bundle.
 
+The customer preview is intentionally inventory-first. Its first main section
+is the posted-lot grid; it does not repeat the official wholesale page's pitch,
+service facts, retail link, or volume-contact card.
+
 ## Admin-to-customer workflow
 
 The Stock Studio can:
@@ -61,6 +66,19 @@ The connected customer page renders only records that are:
 
 Publishing or unpublishing in the Studio changes the customer card count on
 the next navigation or in another local tab. Drafts never appear to customers.
+
+## Official wholesale contact card
+
+The official `/wholesale` page remains separate from the browser-local demo.
+Its existing left-side wholesale introduction is unchanged, while its
+right-side card now uses the preferred `Buying in volume?` presentation:
+
+- part number and exact specification;
+- quantity and condition preference;
+- destination and required date; and
+- a `Get bulk pricing` action opening the shared reviewable email draft.
+
+The official route does not read local demo lots or import the demo store.
 
 ## Local persistence boundary
 
@@ -97,17 +115,18 @@ regular shop, public catalog, feed, sitemap, and Stripe-related behavior.
 
 `VERIFIED / TEST` on 2026-08-25:
 
-- 35 frontend tests pass, including local seeding, corrupt-state fail-closed
+- 36 frontend tests pass, including local seeding, corrupt-state fail-closed
   behavior, allowlist enforcement, publish validation, round-trip persistence,
   tampered-record filtering, non-destructive example restoration, exact
   removal, write-failure preservation, route separation, customer filtering,
-  quote composition, and white/yellow token checks.
+  quote composition, inventory-first composition, official/local separation,
+  and white/yellow token checks.
 - The canonical `reflexity` Chrome profile exercised a published lot becoming a
   draft (`2 -> 1` customer cards), restored the examples, then created and
   published a new lot (`2 -> 3` customer cards) without any alert or overflow.
 - The three example lots were restored after the interaction test so the demo
   opens in its intended starting state.
-- `npm run verify` passes 35 frontend tests, 15 runnable backend tests (the
+- `npm run verify` passes 36 frontend tests, 15 runnable backend tests (the
   disposable Atlas integration is intentionally skipped), the Vite production
   build, and secret scanning. Frontend and backend high-severity audits report
   zero vulnerabilities.
@@ -115,3 +134,6 @@ regular shop, public catalog, feed, sitemap, and Stripe-related behavior.
   synthetic MPN, or browser-store key.
 - Admin and customer layouts have zero horizontal overflow at desktop and
   390 x 844, and the checked browser log contains no warning/error entries.
+- The customer preview rendered posted stock as the first section with two
+  desktop cards and one 350px mobile column. The official volume card rendered
+  at 479px desktop and 350px mobile, with its CTA spanning the mobile card.

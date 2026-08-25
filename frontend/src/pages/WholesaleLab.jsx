@@ -3,12 +3,8 @@ import {
   AlertTriangle,
   ArrowRight,
   Boxes,
-  CheckCircle2,
   Mail,
-  MapPin,
   PackageOpen,
-  Server,
-  ShieldCheck,
   ShoppingBag,
 } from "lucide-react";
 import Header from "@/components/Header";
@@ -36,7 +32,7 @@ function WholesaleLotCard({ lot }) {
       </div>
       <div className="wlp-lot-body">
         <div className="wlp-lot-kicker"><span>{lot.formFactor}</span><span>{lot.testStatus}</span></div>
-        <h3>{lot.title}</h3>
+        <h2>{lot.title}</h2>
         <p className="wlp-lot-mpn">{lot.mpn}</p>
         <dl>
           <div><dt>Specification</dt><dd>{[lot.capacityLabel, lot.generation, lot.speedLabel, lot.rank].filter(Boolean).join(" · ")}</dd></div>
@@ -71,58 +67,18 @@ export default function WholesaleLab() {
     <div className="wlp-shell">
       <Header />
       <main className="wlp-page">
-        <section className="wlp-hero">
-          <div className="wlp-grid" aria-hidden="true" />
-          <div className="wlp-glow" aria-hidden="true" />
-          <div className="wlp-wrap wlp-hero-grid">
-            <div className="wlp-copy">
-              <p className="wlp-eyebrow"><span /> REFLEXITY WHOLESALE</p>
-              <h1>Special stock.<br /><em>Posted separately.</em></h1>
-              <p className="wlp-lede">
-                Wholesale inventory is separate from the regular shop. Reflexity
-                manually posts verified server pulls, bulk lots, and one-off stock
-                here when it becomes available.
-              </p>
-              <div className="wlp-facts" aria-label="Wholesale service details">
-                <span><ShieldCheck aria-hidden="true" size={16} /> Manually verified</span>
-                <span><Server aria-hidden="true" size={16} /> Quote-only lots</span>
-                <span><MapPin aria-hidden="true" size={16} /> Toronto, Canada</span>
-              </div>
-              <p className="wlp-retail-link">
-                Looking for regular stock? <Link to="/shop">Shop retail RAM</Link>.
-              </p>
-            </div>
-
-            <aside className="wlp-volume" aria-labelledby="wlp-volume-title">
-              <div className="wlp-volume-top"><span>BUYING IN VOLUME?</span><i>DIRECT CONTACT</i></div>
-              <div className="wlp-volume-icon"><Mail aria-hidden="true" size={25} /></div>
-              <h2 id="wlp-volume-title">Tell us the SKU and quantity.</h2>
-              <p>We do wholesale on server pulls — tell us the SKU and quantity.</p>
-              <div className="wlp-volume-list">
-                <span><CheckCircle2 aria-hidden="true" size={16} /> Part number and exact specification</span>
-                <span><CheckCircle2 aria-hidden="true" size={16} /> Quantity and condition preference</span>
-                <span><CheckCircle2 aria-hidden="true" size={16} /> Destination and required date</span>
-              </div>
-              <a className="wlp-primary" href={WHOLESALE_CONTACT_URL} rel="noopener noreferrer" target="_blank">
-                Get bulk pricing <ArrowRight aria-hidden="true" size={16} />
-              </a>
-            </aside>
-          </div>
-        </section>
-
         <section className="wlp-stock" aria-labelledby="wlp-stock-title">
           <div className="wlp-wrap">
             <div className="wlp-stock-head">
               <div>
-                <p className="wlp-section-label">POSTED WHOLESALE STOCK</p>
-                <h2 id="wlp-stock-title">Special lots</h2>
+                <p className="wlp-section-label">CUSTOMER PREVIEW</p>
+                <h1 id="wlp-stock-title">Posted wholesale stock</h1>
               </div>
               <div className="wlp-stock-count"><strong>{publishedLots.length}</strong><span>live lot{publishedLots.length === 1 ? "" : "s"}</span></div>
             </div>
             <p className="wlp-stock-note">
-              This local customer preview shows only example lots published from
-              the Wholesale Stock Studio. Products from the regular shop never
-              show in this section.
+              Only example lots published from the Stock Studio appear here.
+              Regular shop products never enter this preview.
             </p>
 
             {demoError ? (
@@ -130,7 +86,7 @@ export default function WholesaleLab() {
                 <div className="wlp-empty-icon"><AlertTriangle aria-hidden="true" size={31} /></div>
                 <div>
                   <p>LOCAL DEMO DATA UNAVAILABLE</p>
-                  <h3>The customer preview is safely empty.</h3>
+                  <h2>The customer preview is safely empty.</h2>
                   <span>{demoError}</span>
                 </div>
               </div>
@@ -143,7 +99,7 @@ export default function WholesaleLab() {
                 <div className="wlp-empty-icon"><PackageOpen aria-hidden="true" size={31} /></div>
                 <div>
                   <p>NO LIVE WHOLESALE LOTS</p>
-                  <h3>No wholesale stock is posted right now.</h3>
+                  <h2>No wholesale stock is posted right now.</h2>
                   <span>
                     New server pulls and special lots will appear here only after
                     Reflexity verifies and publishes them manually.

@@ -102,17 +102,19 @@ html.dark .ws-pitch h1 em { color: #f0d36f; }
 .ws-retail-link { margin: 17px 0 0; color: var(--ws-faint); font-size: 10px; }
 .ws-retail-link a { color: #a88308; text-decoration: underline; text-underline-offset: 3px; }
 
-.ws-coming { padding: 28px; border: 1px solid rgba(198,155,8,.28); border-radius: 7px; background: var(--ws-card); box-shadow: var(--ws-shadow); }
-.ws-coming-top { display: flex; align-items: center; justify-content: space-between; padding-bottom: 19px; border-bottom: 1px solid var(--ws-line); color: var(--ws-faint); font: 750 8px/1 monospace; letter-spacing: .12em; }
-.ws-coming-top > div { display: flex; align-items: center; gap: 7px; color: #b38d09; }
-.ws-coming-top i { width: 7px; height: 7px; border-radius: 50%; background: #ffcf24; box-shadow: 0 0 12px rgba(255,207,36,.55); }
-.ws-coming-icon { display: grid; width: 54px; height: 54px; margin-top: 31px; place-items: center; border: 1px solid rgba(198,155,8,.3); border-radius: 50%; color: #c99e0a; background: rgba(255,207,36,.045); }
-.ws-coming h2 { max-width: 410px; margin: 23px 0 0; color: var(--ws-text); font: 620 31px/1.08 "Instrument Sans", sans-serif; letter-spacing: -.045em; }
-.ws-coming > p { max-width: 440px; margin: 15px 0 0; color: var(--ws-muted); font-size: 13px; line-height: 1.65; }
-.ws-coming-list { display: grid; gap: 11px; margin-top: 25px; padding: 20px 0; border-block: 1px solid var(--ws-line); }
-.ws-coming-list span { display: flex; align-items: center; gap: 10px; color: var(--ws-soft); font-size: 11px; }
+.ws-coming { padding: 27px; border: 1px solid var(--ws-line-strong); border-radius: 14px; background: var(--ws-card); box-shadow: var(--ws-shadow); }
+.ws-coming-top { display: flex; align-items: center; justify-content: space-between; padding-bottom: 18px; border-bottom: 1px solid var(--ws-line); color: var(--ws-faint); font: 750 12px/1 "IBM Plex Mono", monospace; letter-spacing: .08em; }
+.ws-coming-top > span { color: #7a5f00; }
+html.dark .ws-coming-top > span { color: #f0d36f; }
+.ws-coming-top > div { color: var(--ws-muted); font-size: 11px; font-weight: 650; letter-spacing: .04em; }
+.ws-coming-icon { display: grid; width: 54px; height: 54px; margin-top: 28px; place-items: center; border: 1px solid rgba(198,155,8,.3); border-radius: 50%; color: #171815; background: rgba(255,207,36,.16); }
+html.dark .ws-coming-icon { color: #ffcf24; background: rgba(255,207,36,.08); }
+.ws-coming h2 { max-width: 410px; margin: 21px 0 0; color: var(--ws-text); font: 620 clamp(28px,3vw,36px)/1.05 "Instrument Sans", sans-serif; letter-spacing: -.045em; }
+.ws-coming > p { max-width: 440px; margin: 13px 0 0; color: var(--ws-muted); font-size: 14px; line-height: 1.6; }
+.ws-coming-list { display: grid; gap: 11px; margin-top: 23px; padding: 19px 0; border-block: 1px solid var(--ws-line); }
+.ws-coming-list span { display: flex; align-items: center; gap: 9px; color: var(--ws-soft); font-size: 12px; }
 .ws-coming-list svg { color: #c99e0a; }
-.ws-contact-link { display: inline-flex; align-items: center; justify-content: center; margin-top: 20px; padding: 13px 17px; border: 1px solid rgba(198,155,8,.4); border-radius: 4px; color: #171815; background: #ffcf24; font: 700 10px/1.4 monospace; letter-spacing: .04em; text-decoration: none; transition: transform .18s ease, background .18s ease; }
+.ws-contact-link { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 46px; margin-top: 20px; padding: 11px 17px; border: 1px solid rgba(198,155,8,.4); border-radius: 8px; color: #171815; background: #ffcf24; font: 750 13px/1.4 "Instrument Sans", sans-serif; text-decoration: none; transition: transform .18s ease, background .18s ease; }
 .ws-contact-link:hover { background: #f4c213; transform: translateY(-1px); }
 .ws-contact-link:focus-visible { outline: 2px solid #ffcf24; outline-offset: 3px; }
 
