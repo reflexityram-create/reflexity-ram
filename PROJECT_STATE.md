@@ -2,10 +2,11 @@
 
 ## 2026-08-25 — Production wholesale inventory administration
 
-- VERIFIED (ARCHITECTURE/STATIC): Wholesale now has its own `WholesaleLot`
-  MongoDB model, public projection, authenticated admin API, and isolated
-  Cloudinary folder. It has no call edge into the retail `Product` model, cart,
-  checkout, Stripe, orders, feed, sitemap generation, or seed scripts.
+- VERIFIED (ARCHITECTURE/STATIC/TEST): Wholesale uses its own `WholesaleLot`
+  model plus a durable `WholesaleMediaAsset` ownership registry, public
+  projection, authenticated admin API, and isolated Cloudinary folder. It has
+  no call edge into the retail `Product` model, cart, checkout, Stripe, orders,
+  feed, sitemap generation, or seed scripts.
 - VERIFIED (ADMIN/STATIC): Products contains visibly separate Retail Products
   and Wholesale Lots workspaces. The Retail Products workspace provides both
   **Manage all** and direct **Add wholesale listing** controls. An authenticated
@@ -16,56 +17,64 @@
   explicit publish/unpublish/archive/restore transitions, soft archive, and
   revision checks preserve exact state. Missing bodies fail with `400`, stale
   writes fail with `409`, and public reads fail closed to complete published
-  quote-only lots.
-- VERIFIED (MEDIA/STATIC/TEST): Wholesale uploads and deletes require an
-  explicit Bearer token plus an active administrator. Retail/wholesale folder
-  boundaries are distinct, referenced media returns `409` before Cloudinary
-  deletion, and the editor cleans unattached session uploads during replacement,
-  removal, cancellation, Escape, Back, and unmount.
-- VERIFIED (UI/BUILD/TEST): The editor and product-workspace navigation use the
-  existing white/yellow theme tokens in both light and dark modes. The admin
-  layout adapts to mobile, the editor traps and restores focus, Browser Back
-  closes it, validation details render whether returned as strings or objects,
-  and DDR3 plus the exact server condition enum are selectable. All 39 frontend
-  tests and 27 runnable backend tests pass; one disposable-Atlas integration is
-  intentionally skipped. The production Vite build passes.
-- VERIFIED (BACKEND DEPLOY/CI/RUNTIME): Backend-only commit `93f91c7` passed
-  GitHub Actions run `32912160654` and is the exact live Render deployment
-  `dep-da72i1ap6svc73b903ig`. The public endpoint returns HTTP 200,
+  quote-only lots with a fixed 1,000-candidate defensive scan ceiling.
+- VERIFIED (AUTH/STATIC/TEST/RUNTIME): Wholesale uploads and mutations require
+  an explicit case-insensitive Bearer token plus an active administrator. A
+  supplied malformed or rejected Authorization header is authoritative and
+  cannot fall back to a valid cookie. The frontend clears expired or malformed
+  bearer state from persisted and in-memory auth, propagates logout between
+  tabs, and preserves valid percent characters in Google callback payloads.
+- VERIFIED (MEDIA/LIFECYCLE/STATIC/TEST): Media moves through durable
+  available/claiming/attached/deleting/deleted ownership states with bounded
+  leases. Publication requires the exact registry asset attached to the exact
+  lot and URL; published lots must be unpublished before image replacement.
+  Ambiguous Mongo or Cloudinary outcomes retain their claim/deletion gate and
+  retry idempotently instead of deleting a potentially committed asset.
+  Resumed writes after claim expiry remain draft/private. Mongo uniquely indexes
+  `WholesaleLot.image.publicId` (partial) and registry `publicId`; both indexes
+  are awaited before accepting traffic.
+- VERIFIED (UI/BUILD/TEST): The white/yellow editor is portalled outside the
+  complete inert and `aria-hidden` application shell, keeps assertive/polite
+  feedback inside the live dialog, traps focus, and restores focus after
+  Cancel, Escape, or Browser Back. Back during upload cleans any returned
+  unattached asset without a false success message. The layout fits a 390 x 844
+  viewport without horizontal overflow. All 42 frontend tests and 49 runnable
+  backend tests pass; one disposable-Atlas integration is intentionally skipped.
+  The production build and secret scan pass, and root/frontend/backend audits
+  report zero vulnerabilities.
+- VERIFIED (BACKEND DEPLOY/CI/RUNTIME): Backend commit
+  `68c74088caf37c8dedc4fcb7e6f64be5b0eb5607` passed GitHub Actions run
+  `32919123860` and is the exact live Render deployment
+  `dep-da742l67bikc73ffp7v0`. The public endpoint returns HTTP 200,
   `Cache-Control: no-store`, and `{"lots":[]}`. Unauthenticated and cookie-only
-  admin reads return `401 Bearer authentication required`; an unauthenticated
-  upload also returns `401` before file handling.
+  admin reads both return `401` before application authentication.
 - VERIFIED (ZERO-DATA/ATLAS READ): No wholesale listing, image, seed record, or
-  startup writer was added. A read-only count against the production model's
-  `wholesalelots` collection after the backend deployment returned total 0,
-  drafts 0, published 0, and archived 0.
+  startup writer was added. A current read-only production count returned zero
+  `wholesalelots` (draft, published, and archived) and zero
+  `wholesalemediaassets`; the exact unique partial lot-image index and unique
+  registry-public-ID index are active.
 - VERIFIED (BACKEND DEPLOY/RETAIL REGRESSION): Production remains healthy with
   `env=production` and Stripe enabled. The retail API still has five products
-  with normalized identity checksum
-  `3ae4650073eb0d530fbf34ae43e15afffe44f697302697c00e9415394acffb99`;
-  the feed has five items, 15 CAD markers, and zero USD markers; the sitemap
-  has 24 URLs and `/wholesale` exactly once. All retail image IDs retain the
-  `reflexity-ram/products/` prefix.
-- VERIFIED (FRONTEND DEPLOY/CI): UI commit `1670b83` passed GitHub Actions run
-  `32912702380` and deployed through Cloudflare Pages as exact deployment
-  `4fbab27e-8c23-42aa-bcaa-b211f25a41d4`. The served production asset is
-  `/assets/index-PR9OnoEi.js`; it contains both `/admin/wholesale` entry paths
-  and no production demo-store or synthetic-lot marker.
-- VERIFIED (PRODUCTION/BROWSER): Canonical Chrome alias `reflexity` (Profile 6,
-  mapped account `reflexityram@gmail.com`) rendered the deployed public
-  `/wholesale` page at desktop and 390 x 844 mobile widths with zero live lots,
-  the honest empty state, no horizontal overflow, and no Reflexity console
-  error. The public endpoint still returns `{"lots":[]}`, and a second
-  read-only Atlas count after the frontend deployment returned total 0, drafts
-  0, published 0, and archived 0.
-- UNKNOWN (LIVE AUTHENTICATED ADMIN VISUAL): The exact Chrome profile is not
-  currently authenticated to the Reflexity app. The supported Google flow
-  rejected the unrelated signed-in `3chillguythat@gmail.com` identity; choosing
-  another account confirmed `reflexityram@gmail.com` and reached Google's
-  password challenge. No alternate profile, cookie, token minting, or auth
-  bypass was used. Admin behavior is verified by the protected API probes,
-  production build, and focused UI tests; a live signed-in visual pass remains
-  gated on normal Google user authentication.
+  and all retail image IDs retain the `reflexity-ram/products/` prefix. The live
+  feed has five items, 15 CAD markers, and zero USD markers; the sitemap has 24
+  URLs and `/wholesale` exactly once.
+- VERIFIED (FRONTEND DEPLOY/CI): Auth/modal commit
+  `3fcc7163f7d65c64f92bf5927f25c2a455c697f6` passed GitHub Actions run
+  `32919296260`. Focus-restoration commit
+  `4f02f50cbe97b312abf18f2fae68d0201371fcfd` passed run `32919536922` and is
+  Cloudflare Pages production deployment
+  `08f981d7-9888-4cf2-bf2a-7e54e97077ed`. The apex serves its exact built asset
+  `/assets/index-Dt2Axj6P.js`.
+- VERIFIED (PRODUCTION/BROWSER): `ai-chrome verify reflexity` bound Profile 6,
+  visible profile `Reflexity`, and Google account `reflexityram@gmail.com` with
+  `AUTOMATION_VERIFIED`. The normal Google flow is complete and the deployed
+  admin renders the signed-in Reflexity principal (`reflexityram@gmail.com`,
+  Mohammed). Live Cancel, Escape, and Browser Back each closed the new-listing
+  editor without saving, cleaned URL/inert/ARIA/overflow state, and restored
+  focus to **Add wholesale listing**. The mobile editor fit 390 x 844; the public
+  page showed zero posted lots plus exact sourcing and signed-in Manage/Add
+  controls; `/admin/products` showed five retail rows and both wholesale entry
+  points. The browser was returned to its normal desktop viewport.
 - Deployment and operating guide: `docs/wholesale-inventory.md`.
 
 ## 2026-08-25 — Historical wholesale market and local Stock Studio (superseded)

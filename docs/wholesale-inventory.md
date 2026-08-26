@@ -25,8 +25,10 @@ Both owner entry points open the same protected editor:
 
 The shared editor is addressed by `/admin/wholesale?new=1` for a new draft and
 `/admin/wholesale?edit=<id>` for an existing lot. Browser Back closes it. The
-dialog traps keyboard focus, restores focus on close, and becomes full-width on
-small screens.
+dialog is portalled outside the signed-in application root so that the complete
+background shell can become inert and `aria-hidden`. It traps keyboard focus,
+keeps status and error announcements inside the live dialog, restores focus on
+Cancel, Escape, and Browser Back, and becomes full-width on small screens.
 
 New work always starts as a private draft. The administrator can save an
 incomplete draft, but publishing requires:
@@ -48,6 +50,14 @@ instead of overwriting newer work.
 
 MongoDB model: `backend/src/models/WholesaleLot.js`
 
+Durable media ownership model: `backend/src/models/WholesaleMediaAsset.js`
+
+Each lot image public ID has at most one lot owner, and each registry public ID
+is unique. Both indexes are initialized before the API starts accepting traffic.
+Registry records move through `available`, `claiming`, `attached`, `deleting`,
+and `deleted` states with bounded leases so concurrent save/delete operations
+cannot both win.
+
 Public API:
 
 - `GET /api/wholesale` — safe public projection only, maximum 100 live lots,
@@ -67,18 +77,31 @@ Admin API (explicit Bearer token, active user, and admin role required):
 The admin workspace follows pagination until it has loaded every record, then
 searches and filters the complete set locally.
 
+The Authorization header is authoritative whenever supplied. A malformed or
+rejected bearer never falls back to a valid browser cookie. The frontend clears
+expired or malformed persisted auth from both storage and in-memory state and
+propagates logout to other open tabs.
+
 Wholesale uploads use `POST /api/upload/wholesale` and
 `DELETE /api/upload/wholesale/:publicId`. Retail and wholesale media folders
-cannot delete across each other. The API refuses to delete a wholesale image
-while any wholesale lot still references it. The editor cleans up unattached
+cannot delete across each other. Uploads use cryptographic UUID public IDs and
+Cloudinary overwrite is disabled. The API refuses to delete an attached image,
+and publication requires the exact registry asset, exact URL, and exact owning
+lot. A published lot must be unpublished before its image can change.
+
+Ambiguous Mongo or Cloudinary results preserve their ownership/deletion lease
+instead of assuming failure and deleting a possibly committed asset. Cloudinary
+deletion retries idempotently. A write that resumes after its claim expired or
+was deleted remains private and cannot publish. The editor cleans unattached
 uploads on remove, replace, cancel, Escape, Back, or unmount; it detaches an old
 saved image before attempting media deletion.
 
 ## Zero-listing and deployment rules
 
 There is no wholesale seed hook, sample record, startup writer, or retail-data
-fallback. A deployment must begin and end with zero wholesale records unless an
-administrator deliberately saves a listing.
+fallback. A deployment must begin and end with zero wholesale lots and zero
+wholesale media registry records unless an administrator deliberately uploads
+or saves a listing.
 
 Production uses Render for the backend and Cloudflare Pages for the frontend.
 Deploy backend support first, then verify `GET /api/wholesale` returns
