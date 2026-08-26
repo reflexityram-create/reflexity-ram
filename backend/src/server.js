@@ -21,6 +21,8 @@ const feedRoutes = require('./routes/feed');
 const reviewRoutes = require('./routes/reviews');
 const { fixMerchantProductData } = require('./migrations/fixMerchantProductData');
 const { syncActiveProductPrices } = require('./migrations/syncStoreCurrency');
+const WholesaleLot = require('./models/WholesaleLot');
+const WholesaleMediaAsset = require('./models/WholesaleMediaAsset');
 
 // Stripe routes are only loaded when a real key is configured.
 // This prevents a crash if STRIPE_SECRET_KEY is missing or empty.
@@ -172,6 +174,10 @@ mongoose
   .connect(process.env.MONGODB_URI)
   .then(async () => {
     console.log('✅ MongoDB connected');
+    // Do not accept the first wholesale admin write until Mongo has installed
+    // the media registry and one-image/one-lot ownership indexes.
+    await Promise.all([WholesaleLot.init(), WholesaleMediaAsset.init()]);
+    console.log('✅ Wholesale media ownership indexes ready');
     try {
       await fixMerchantProductData();
     } catch (err) {

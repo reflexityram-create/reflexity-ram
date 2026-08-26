@@ -1,28 +1,46 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
-/**
- * Verify JWT token from Authorization header or cookie
- */
-const authenticate = async (req, res, next) => {
-  try {
-    let token;
+function authorizationHeader(req) {
+  const headers = req.headers || {};
+  const key = Object.keys(headers).find((name) => name.toLowerCase() === 'authorization');
+  return key ? { present: true, value: headers[key] } : { present: false, value: undefined };
+}
 
-    // Check Authorization header first
-    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
-      token = req.headers.authorization.split(' ')[1];
-    }
-    // Fall back to cookie
-    else if (req.cookies && req.cookies.accessToken) {
-      token = req.cookies.accessToken;
-    }
+function bearerToken(value) {
+  if (typeof value !== 'string') return null;
+  const match = /^Bearer\s+(\S+)$/i.exec(value);
+  return match ? match[1] : null;
+}
+
+function accessTokenFromRequest(req) {
+  const header = authorizationHeader(req);
+  // A supplied Authorization header is an explicit credential attempt. Never
+  // silently switch to a cookie when it is malformed or invalid; that would let
+  // a stale/cross-origin header change which identity authorizes the request.
+  if (header.present) return { source: 'authorization', token: bearerToken(header.value) };
+  return { source: 'cookie', token: req.cookies?.accessToken || null };
+}
+
+function requireExplicitBearer(req, res, next) {
+  const header = authorizationHeader(req);
+  if (!header.present || !bearerToken(header.value)) {
+    return res.status(401).json({ error: 'Bearer authentication required' });
+  }
+  return next();
+}
+
+function createAuthenticate({ jwtImpl = jwt, UserModel = User } = {}) {
+  return async (req, res, next) => {
+  try {
+    const { token } = accessTokenFromRequest(req);
 
     if (!token) {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id).select('-password');
+    const decoded = jwtImpl.verify(token, process.env.JWT_SECRET);
+    const user = await UserModel.findById(decoded.id).select('-password');
 
     if (!user || !user.isActive) {
       return res.status(401).json({ error: 'User not found or deactivated' });
@@ -36,19 +54,20 @@ const authenticate = async (req, res, next) => {
     }
     return res.status(401).json({ error: 'Invalid token' });
   }
-};
+  };
+}
+
+/**
+ * Verify JWT token from Authorization header or cookie.
+ */
+const authenticate = createAuthenticate();
 
 /**
  * Optional authentication — attaches user if token present, but doesn't block
  */
 const optionalAuth = async (req, res, next) => {
   try {
-    let token;
-    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
-      token = req.headers.authorization.split(' ')[1];
-    } else if (req.cookies && req.cookies.accessToken) {
-      token = req.cookies.accessToken;
-    }
+    const { token } = accessTokenFromRequest(req);
 
     if (token) {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -110,8 +129,12 @@ const clearAuthCookie = (res) => {
 
 module.exports = {
   authenticate,
+  authorizationHeader,
+  bearerToken,
+  createAuthenticate,
   optionalAuth,
   requireAdmin,
+  requireExplicitBearer,
   generateAccessToken,
   setAuthCookie,
   clearAuthCookie,

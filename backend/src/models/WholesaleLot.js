@@ -48,6 +48,13 @@ const wholesaleLotSchema = new mongoose.Schema({
 });
 
 wholesaleLotSchema.index({ status: 1, visibility: 1, archivedAt: 1, publishedAt: -1 });
+// One Cloudinary wholesale asset can belong to at most one lot, including a
+// private or archived lot. The partial index permits any number of image-less
+// drafts while making media ownership authoritative in MongoDB.
+wholesaleLotSchema.index(
+  { 'image.publicId': 1 },
+  { unique: true, partialFilterExpression: { 'image.publicId': { $type: 'string' } } },
+);
 
 // Route transitions are the normal publishing path, but the schema retains the
 // invariant for any future internal writer that calls document.save().

@@ -56,16 +56,35 @@ function isWholesaleImage(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   if (typeof value.url !== 'string' || typeof value.publicId !== 'string') return false;
   if (value.url.length > 2048 || value.publicId.length > 360) return false;
-  if (!value.publicId.startsWith(WHOLESALE_IMAGE_PREFIX)) return false;
+  if (!new RegExp(`^${WHOLESALE_IMAGE_PREFIX}[A-Za-z0-9][A-Za-z0-9._-]*$`).test(value.publicId)) return false;
   try {
     const parsed = new URL(value.url);
-    return parsed.protocol === 'https:'
-      && parsed.hostname === 'res.cloudinary.com'
-      && !parsed.username
-      && !parsed.password
-      && (!parsed.port || parsed.port === '443')
-      && parsed.pathname.startsWith(`/${WHOLESALE_CLOUDINARY_CLOUD}/image/upload/`)
-      && parsed.pathname.includes(`/${WHOLESALE_IMAGE_PREFIX}`);
+    if (parsed.protocol !== 'https:'
+      || parsed.hostname !== 'res.cloudinary.com'
+      || parsed.username
+      || parsed.password
+      || parsed.port
+      || parsed.search
+      || parsed.hash) return false;
+
+    const segments = parsed.pathname.split('/').filter(Boolean);
+    if (segments.length < 7
+      || segments[0] !== WHOLESALE_CLOUDINARY_CLOUD
+      || segments[1] !== 'image'
+      || segments[2] !== 'upload') return false;
+
+    // Cloudinary delivery URLs may carry transformations before their immutable
+    // version segment. Everything after that version is the delivered asset,
+    // and must be exactly the accepted public ID plus its image format.
+    const versionIndex = segments.findIndex((segment, index) => index >= 3 && /^v\d+$/.test(segment));
+    if (versionIndex === -1 || versionIndex === segments.length - 1) return false;
+    const assetSegments = segments.slice(versionIndex + 1);
+    const lastSegment = assetSegments.at(-1);
+    const format = lastSegment.match(/^(.+)\.(jpg|jpeg|png|webp|avif)$/i);
+    if (!format) return false;
+    assetSegments[assetSegments.length - 1] = format[1];
+    const deliveredPublicId = assetSegments.map((segment) => decodeURIComponent(segment)).join('/');
+    return deliveredPublicId === value.publicId;
   } catch {
     return false;
   }

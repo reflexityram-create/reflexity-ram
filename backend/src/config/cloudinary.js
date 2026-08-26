@@ -1,4 +1,5 @@
 const cloudinary = require('cloudinary').v2;
+const crypto = require('crypto');
 const multer = require('multer');
 
 cloudinary.config({
@@ -59,7 +60,11 @@ const uploadWholesaleImage = (file) =>
         transformation: [
           { width: 1600, height: 1200, crop: 'limit', quality: 'auto:good', fetch_format: 'auto' },
         ],
-        public_id: `wholesale-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+        // Wholesale media participates in a durable Mongo ownership registry.
+        // A cryptographic ID plus overwrite:false makes a collision fail closed
+        // instead of replacing an asset already owned by another listing.
+        public_id: `wholesale-${crypto.randomUUID()}`,
+        overwrite: false,
       },
       (err, result) => (err ? reject(err) : resolve(result)),
     );

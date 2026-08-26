@@ -1,23 +1,23 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const WholesaleLot = require('../models/WholesaleLot');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const WholesaleMediaAsset = require('../models/WholesaleMediaAsset');
+const { authenticate, requireAdmin, requireExplicitBearer } = require('../middleware/auth');
 const {
   adminWholesaleLot,
   cleanWholesaleLotInput,
   makeLotCode,
   publicationErrors,
 } = require('../utils/wholesaleLots');
+const {
+  claimWholesaleMedia,
+  finalizeWholesaleMediaClaim,
+  reconcileWholesaleMedia,
+  releaseAttachedWholesaleMedia,
+  releaseWholesaleMediaClaim,
+} = require('../utils/wholesaleMedia');
 
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
-
-function requireExplicitBearer(req, res, next) {
-  const authorization = req.get('authorization') || '';
-  if (!/^Bearer\s+\S+$/i.test(authorization)) {
-    return res.status(401).json({ error: 'Bearer authentication required' });
-  }
-  return next();
-}
 
 function readVersion(value) {
   const version = Number(value);
@@ -31,10 +31,108 @@ function readPositiveInteger(value, fallback, maximum) {
 }
 
 function internalError(res, err, message) {
-  if (err?.code === 11000) return res.status(409).json({ error: 'That wholesale lot code is already in use.' });
+  if (err?.code === 11000) {
+    const duplicateField = Object.keys(err.keyPattern || err.keyValue || {})[0];
+    if (duplicateField === 'image.publicId') {
+      return res.status(409).json({ error: 'That wholesale image is already attached to another listing.' });
+    }
+    return res.status(409).json({ error: 'That wholesale lot code is already in use.' });
+  }
   if (err?.name === 'ValidationError') return res.status(400).json({ error: 'That wholesale lot contains invalid values.' });
   console.error(message, err);
   return res.status(500).json({ error: 'Unable to complete that wholesale action.' });
+}
+
+function asLean(query) {
+  return typeof query?.lean === 'function' ? query.lean() : query;
+}
+
+function isDefiniteNoCommitError(error) {
+  return Boolean(error
+    && (error.code === 11000
+      || ['ValidationError', 'CastError', 'StrictModeError'].includes(error.name)));
+}
+
+function idsEqual(left, right) {
+  return String(left) === String(right);
+}
+
+async function hasAttachedWholesaleMedia({ Model, MediaModel, lotId, image }) {
+  const media = await reconcileWholesaleMedia({
+    MediaModel,
+    WholesaleLotModel: Model,
+    publicId: image.publicId,
+  });
+  return Boolean(media
+    && media.state === 'attached'
+    && idsEqual(media.lotId, lotId)
+    && media.url === image.url);
+}
+
+async function confirmWholesaleMediaClaim({ Model, MediaModel, lotId, image, imageClaim }) {
+  try {
+    const finalized = await finalizeWholesaleMediaClaim({
+      MediaModel,
+      publicId: image.publicId,
+      claimId: imageClaim.claimId,
+      lotId,
+    });
+    if (finalized) return true;
+  } catch (mediaErr) {
+    // The finalization write itself can commit before a transport failure. The
+    // authoritative reconciliation below determines the actual outcome.
+    console.error('Wholesale media claim finalization check error', mediaErr);
+  }
+  try {
+    return await hasAttachedWholesaleMedia({ Model, MediaModel, lotId, image });
+  } catch (mediaErr) {
+    console.error('Wholesale media ownership confirmation error', mediaErr);
+    return false;
+  }
+}
+
+async function recoverClaimAfterLotWriteError({ Model, MediaModel, lotId, image, imageClaim, writeError }) {
+  let committedLot;
+  try {
+    committedLot = await asLean(Model.findOne({
+      _id: lotId,
+      'image.publicId': image.publicId,
+      'image.url': image.url,
+    }));
+  } catch (readErr) {
+    console.error('Wholesale lot write outcome check error', readErr);
+    return { state: 'uncertain' };
+  }
+
+  if (committedLot) {
+    const confirmed = await confirmWholesaleMediaClaim({
+      Model,
+      MediaModel,
+      lotId,
+      image,
+      imageClaim,
+    });
+    return confirmed
+      ? { state: 'committed', lot: committedLot }
+      : { state: 'uncertain' };
+  }
+
+  // A transport/timeout rejection can race a delayed server-side commit even
+  // when an immediate primary read returns null. Preserve the lease unless the
+  // concrete error proves Mongo rejected the write before committing it.
+  if (!isDefiniteNoCommitError(writeError)) return { state: 'uncertain' };
+
+  try {
+    const released = await releaseWholesaleMediaClaim({
+      MediaModel,
+      publicId: image.publicId,
+      claimId: imageClaim.claimId,
+    });
+    return released ? { state: 'not_committed' } : { state: 'uncertain' };
+  } catch (releaseErr) {
+    console.error('Wholesale media recovery release error', releaseErr);
+    return { state: 'uncertain' };
+  }
 }
 
 async function allocateLotCode(Model) {
@@ -58,6 +156,7 @@ async function staleOrMissing(Model, id, res) {
 
 function createAdminWholesaleRouter(dependencies = {}) {
   const Model = dependencies.WholesaleLot || WholesaleLot;
+  const MediaModel = dependencies.WholesaleMediaAsset || WholesaleMediaAsset;
   const authenticateRequest = dependencies.authenticate || authenticate;
   const requireAdminRequest = dependencies.requireAdmin || requireAdmin;
   const router = express.Router();
@@ -114,8 +213,20 @@ function createAdminWholesaleRouter(dependencies = {}) {
   router.post('/', async (req, res) => {
     const { data, errors } = cleanWholesaleLotInput(req.body);
     if (errors.length) return res.status(400).json({ error: errors[0] });
+    const lotId = new mongoose.Types.ObjectId();
+    let imageClaim = null;
     try {
+      if (data.image) {
+        imageClaim = await claimWholesaleMedia({
+          MediaModel,
+          WholesaleLotModel: Model,
+          image: data.image,
+          lotId,
+        });
+        if (!imageClaim) return res.status(409).json({ error: 'That wholesale image is not available to attach.' });
+      }
       const lot = await Model.create({
+        _id: lotId,
         ...data,
         lotCode: await allocateLotCode(Model),
         status: 'draft',
@@ -124,8 +235,36 @@ function createAdminWholesaleRouter(dependencies = {}) {
         createdBy: req.user._id,
         updatedBy: req.user._id,
       });
+      if (imageClaim) {
+        const confirmed = await confirmWholesaleMediaClaim({
+          Model,
+          MediaModel,
+          lotId,
+          image: data.image,
+          imageClaim,
+        });
+        if (!confirmed) {
+          return res.status(503).json({ error: 'Wholesale listing was saved privately, but its image is not ready. Refresh and replace the image before publishing.' });
+        }
+      }
       return res.status(201).json({ lot: adminWholesaleLot(lot) });
     } catch (err) {
+      if (imageClaim) {
+        const recovery = await recoverClaimAfterLotWriteError({
+          Model,
+          MediaModel,
+          lotId,
+          image: data.image,
+          imageClaim,
+          writeError: err,
+        });
+        if (recovery.state === 'committed') {
+          return res.status(201).json({ lot: adminWholesaleLot(recovery.lot) });
+        }
+        if (recovery.state === 'uncertain') {
+          return res.status(503).json({ error: 'Wholesale listing save is still being confirmed. Refresh shortly.' });
+        }
+      }
       return internalError(res, err, 'Create wholesale lot error');
     }
   });
@@ -137,22 +276,97 @@ function createAdminWholesaleRouter(dependencies = {}) {
     const { data, errors } = cleanWholesaleLotInput(req.body);
     if (errors.length) return res.status(400).json({ error: errors[0] });
     if (!Object.keys(data).length) return res.status(400).json({ error: 'No wholesale fields were provided.' });
+    let imageClaim = null;
+    let previousImage = null;
+    let changingImage = false;
     try {
       const current = await Model.findOne({ _id: req.params.id, __v: version }).lean();
       if (!current) return staleOrMissing(Model, req.params.id, res);
       if (current.status === 'archived') return res.status(409).json({ error: 'Restore this wholesale lot before editing it.' });
+      previousImage = current.image || null;
+      changingImage = Object.prototype.hasOwnProperty.call(data, 'image')
+        && (!data.image || !previousImage
+          || data.image.publicId !== previousImage.publicId
+          || data.image.url !== previousImage.url);
       if (current.status === 'published') {
+        if (changingImage) {
+          return res.status(409).json({ error: 'Unpublish this wholesale lot before replacing or removing its image.' });
+        }
         const publishErrors = publicationErrors({ ...current, ...data });
         if (publishErrors.length) return res.status(422).json({ error: publishErrors[0], details: publishErrors });
+      }
+      if (changingImage && data.image) {
+        imageClaim = await claimWholesaleMedia({
+          MediaModel,
+          WholesaleLotModel: Model,
+          image: data.image,
+          lotId: current._id,
+        });
+        if (!imageClaim) return res.status(409).json({ error: 'That wholesale image is not available to attach.' });
       }
       const lot = await Model.findOneAndUpdate(
         { _id: req.params.id, __v: version, status: { $ne: 'archived' } },
         { $set: { ...data, updatedBy: req.user._id }, $inc: { __v: 1 } },
         { returnDocument: 'after', runValidators: true },
       ).lean();
-      if (!lot) return staleOrMissing(Model, req.params.id, res);
+      if (!lot) {
+        if (imageClaim) {
+          try { await releaseWholesaleMediaClaim({ MediaModel, publicId: data.image.publicId, claimId: imageClaim.claimId }); } catch (releaseErr) { console.error('Release stale wholesale media claim error', releaseErr); }
+        }
+        return staleOrMissing(Model, req.params.id, res);
+      }
+      const mediaConfirmed = !imageClaim || await confirmWholesaleMediaClaim({
+        Model,
+        MediaModel,
+        lotId: current._id,
+        image: data.image,
+        imageClaim,
+      });
+      if (changingImage && previousImage) {
+        try {
+          await releaseAttachedWholesaleMedia({
+            MediaModel,
+            WholesaleLotModel: Model,
+            publicId: previousImage.publicId,
+            lotId: current._id,
+          });
+        } catch (mediaErr) {
+          console.error('Release replaced wholesale media error', mediaErr);
+        }
+      }
+      if (!mediaConfirmed) {
+        return res.status(503).json({ error: 'Wholesale listing was saved privately, but its image is not ready. Refresh and replace the image before publishing.' });
+      }
       return res.json({ lot: adminWholesaleLot(lot) });
     } catch (err) {
+      if (imageClaim) {
+        const recovery = await recoverClaimAfterLotWriteError({
+          Model,
+          MediaModel,
+          lotId: req.params.id,
+          image: data.image,
+          imageClaim,
+          writeError: err,
+        });
+        if (recovery.state === 'committed') {
+          if (previousImage) {
+            try {
+              await releaseAttachedWholesaleMedia({
+                MediaModel,
+                WholesaleLotModel: Model,
+                publicId: previousImage.publicId,
+                lotId: req.params.id,
+              });
+            } catch (mediaErr) {
+              console.error('Recover replaced wholesale media release error', mediaErr);
+            }
+          }
+          return res.json({ lot: adminWholesaleLot(recovery.lot) });
+        }
+        if (recovery.state === 'uncertain') {
+          return res.status(503).json({ error: 'Wholesale listing save is still being confirmed. Refresh shortly.' });
+        }
+      }
       return internalError(res, err, 'Update wholesale lot error');
     }
   });
@@ -172,6 +386,21 @@ function createAdminWholesaleRouter(dependencies = {}) {
         if (current.status === 'published') return res.status(409).json({ error: 'This wholesale lot is already published.' });
         const errors = publicationErrors(current);
         if (errors.length) return res.status(422).json({ error: errors[0], details: errors });
+        let mediaReady;
+        try {
+          mediaReady = await hasAttachedWholesaleMedia({
+            Model,
+            MediaModel,
+            lotId: current._id,
+            image: current.image,
+          });
+        } catch (mediaErr) {
+          console.error('Publish wholesale media ownership check error', mediaErr);
+          return res.status(503).json({ error: 'Wholesale image ownership is still being confirmed. Retry shortly.' });
+        }
+        if (!mediaReady) {
+          return res.status(409).json({ error: 'Replace this wholesale image before publishing the lot.' });
+        }
         expectedStatus = 'draft';
         set = { status: 'published', visibility: 'public', quoteOnly: true, publishedAt: now, publishedBy: req.user._id, archivedAt: null, updatedBy: req.user._id };
       } else if (action === 'unpublish') {
@@ -210,4 +439,3 @@ function createAdminWholesaleRouter(dependencies = {}) {
 const router = createAdminWholesaleRouter();
 module.exports = router;
 module.exports.createAdminWholesaleRouter = createAdminWholesaleRouter;
-module.exports.requireExplicitBearer = requireExplicitBearer;
