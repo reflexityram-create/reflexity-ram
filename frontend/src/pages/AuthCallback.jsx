@@ -2,8 +2,8 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import useAuthStore from '@/lib/authStore';
+import { authApi } from '@/lib/api';
 import useCartStore from '@/lib/cartStore';
-import { parseCallbackUser } from '@/lib/callbackUser';
 
 const ERROR_MESSAGES = {
   google_denied:         'Google sign-in was cancelled.',
@@ -16,13 +16,15 @@ const ERROR_MESSAGES = {
 
 export default function AuthCallback() {
   const navigate = useNavigate();
-  const setGoogleAuth = useAuthStore((s) => s.setGoogleAuth);
+  const setAuthToken = useAuthStore((s) => s.setAuthToken);
+  const setAuthenticatedUser = useAuthStore((s) => s.setAuthenticatedUser);
+  const clearAuth = useAuthStore((s) => s.clearAuth);
   const fetchCart = useCartStore((s) => s.fetchCart);
 
   useEffect(() => {
-    // Success payload arrives in the URL FRAGMENT (#token=…&user=…) so it
-    // never reaches server/CDN access logs; error codes arrive as a query
-    // param. Query token/user is kept as a fallback for deploy overlap.
+    // Success payload arrives in the URL fragment so it never reaches
+    // server/CDN access logs. The token authenticates /me; no user object
+    // supplied by the browser is trusted for identity or role decisions.
     const query = new URLSearchParams(window.location.search);
     const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
     window.history.replaceState({}, '', '/auth/callback');
@@ -34,26 +36,32 @@ export default function AuthCallback() {
       return;
     }
 
-    const token   = hash.get('token') || query.get('token');
-    const userRaw = hash.get('user') || query.get('user');
+    const token = hash.get('token');
 
-    if (!token || !userRaw) {
+    if (!token) {
       toast.error('Authentication failed. Please try again.');
       navigate('/', { replace: true });
       return;
     }
 
-    try {
-      const user = parseCallbackUser(userRaw);
-      if (!user) throw new Error('Invalid callback user');
-      setGoogleAuth(token, user);
-      fetchCart();
-      toast.success(`Welcome, ${user.firstName}!`);
-      navigate('/', { replace: true });
-    } catch {
-      toast.error('Authentication failed. Please try again.');
-      navigate('/', { replace: true });
-    }
+    let active = true;
+    void (async () => {
+      try {
+        setAuthToken(token);
+        const { data } = await authApi.me();
+        if (!active || !data?.user) throw new Error('Missing authenticated user');
+        setAuthenticatedUser(data.user);
+        fetchCart();
+        toast.success(`Welcome, ${data.user.firstName || 'back'}!`);
+        navigate('/', { replace: true });
+      } catch {
+        if (!active) return;
+        clearAuth();
+        toast.error('Authentication failed. Please try again.');
+        navigate('/', { replace: true });
+      }
+    })();
+    return () => { active = false; };
   }, []);
 
   return (

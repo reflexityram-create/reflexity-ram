@@ -21,8 +21,15 @@ const {
 } = require('../utils/email');
 const { assertPermanentEmail } = require('../utils/disposableEmail');
 const { mergeGuestCartForUser } = require('../utils/guestCartMerge');
+const { validGuestSessionId } = require('../utils/guestSession');
 
 const router = express.Router();
+const bcryptPasswordBytes = (value) => {
+  if (typeof value !== 'string' || Buffer.byteLength(value, 'utf8') > 72) {
+    throw new Error('Password must be at most 72 UTF-8 bytes');
+  }
+  return true;
+};
 
 // ─── POST /api/auth/signup ─────────────────────────────────────────────────────
 router.post(
@@ -30,8 +37,9 @@ router.post(
   [
     body('email').isEmail().normalizeEmail().withMessage('Valid email required'),
     body('password')
-      .isLength({ min: 8 })
-      .withMessage('Password must be at least 8 characters')
+      .isLength({ min: 8, max: 72 })
+      .withMessage('Password must be between 8 and 72 characters')
+      .custom(bcryptPasswordBytes)
       .matches(/[A-Z]/).withMessage('Password must contain at least one uppercase letter')
       .matches(/[0-9]/).withMessage('Password must contain at least one number'),
     body('firstName').trim().notEmpty().withMessage('First name required').isLength({ max: 50 }),
@@ -62,7 +70,7 @@ router.post(
         emailVerificationExpires: verificationExpires,
       });
 
-      const sessionId = req.body.sessionId || req.cookies?.cartSessionId;
+      const sessionId = validGuestSessionId(req.body.sessionId) || validGuestSessionId(req.cookies?.cartSessionId);
       await mergeGuestCartForUser(user._id, sessionId);
 
       // Send verification email (non-blocking)
@@ -76,7 +84,7 @@ router.post(
         console.error('Verification email failed:', emailErr.message);
       }
 
-      const token = generateAccessToken(user._id);
+      const token = generateAccessToken(user._id, user.authVersion);
       setAuthCookie(res, token);
 
       res.status(201).json({
@@ -106,7 +114,10 @@ router.post(
   '/login',
   [
     body('email').isEmail().normalizeEmail().withMessage('Valid email required'),
-    body('password').notEmpty().withMessage('Password required'),
+    body('password')
+      .isString()
+      .notEmpty().withMessage('Password required')
+      .isLength({ max: 256 }).withMessage('Password is too long'),
   ],
   validate,
   async (req, res) => {
@@ -141,10 +152,10 @@ router.post(
       user.lastLoginAt = new Date();
       await user.save({ validateBeforeSave: false });
 
-      const sessionId = req.body.sessionId || req.cookies?.cartSessionId;
+      const sessionId = validGuestSessionId(req.body.sessionId) || validGuestSessionId(req.cookies?.cartSessionId);
       await mergeGuestCartForUser(user._id, sessionId);
 
-      const token = generateAccessToken(user._id);
+      const token = generateAccessToken(user._id, user.authVersion);
       setAuthCookie(res, token);
 
       res.json({
@@ -179,7 +190,11 @@ router.get('/me', authenticate, async (req, res) => {
 });
 
 // ─── POST /api/auth/verify-email ──────────────────────────────────────────────
-router.post('/verify-email', async (req, res) => {
+router.post(
+  '/verify-email',
+  [body('token').matches(/^[a-f0-9]{64}$/i).withMessage('Invalid verification token')],
+  validate,
+  async (req, res) => {
   try {
     const { token } = req.body;
     if (!token) return res.status(400).json({ error: 'Token required' });
@@ -203,7 +218,8 @@ router.post('/verify-email', async (req, res) => {
     console.error('Email verify error:', err);
     res.status(500).json({ error: 'Verification failed' });
   }
-});
+  },
+);
 
 // ─── POST /api/auth/resend-verification ───────────────────────────────────────
 router.post('/resend-verification', authenticate, async (req, res) => {
@@ -279,10 +295,11 @@ router.post(
 router.post(
   '/reset-password',
   [
-    body('token').notEmpty().withMessage('Reset token required'),
+    body('token').matches(/^[a-f0-9]{64}$/i).withMessage('Invalid reset token'),
     body('password')
-      .isLength({ min: 8 })
-      .withMessage('Password must be at least 8 characters')
+      .isLength({ min: 8, max: 72 })
+      .withMessage('Password must be between 8 and 72 characters')
+      .custom(bcryptPasswordBytes)
       .matches(/[A-Z]/).withMessage('Must contain uppercase letter')
       .matches(/[0-9]/).withMessage('Must contain a number'),
   ],
@@ -301,6 +318,7 @@ router.post(
       }
 
       user.password = password;
+      user.authVersion = (user.authVersion || 0) + 1;
       user.passwordResetToken = undefined;
       user.passwordResetExpires = undefined;
       await user.save();
@@ -321,7 +339,8 @@ router.patch(
   [
     body('firstName').optional().trim().notEmpty().isLength({ max: 50 }),
     body('lastName').optional().trim().notEmpty().isLength({ max: 50 }),
-    body('phone').optional().trim(),
+    body('phone').optional().trim().isLength({ max: 40 }).withMessage('Phone number is too long'),
+    body('defaultAddress').optional().isObject().withMessage('Default address must be an object'),
   ],
   validate,
   async (req, res) => {
@@ -331,12 +350,25 @@ router.patch(
       if (firstName) updates.firstName = firstName;
       if (lastName) updates.lastName = lastName;
       if (phone !== undefined) updates.phone = phone;
-      if (defaultAddress) updates.defaultAddress = defaultAddress;
+      if (defaultAddress) {
+        const limits = { firstName: 50, lastName: 50, line1: 120, line2: 120, city: 80, state: 80, zip: 20, country: 2, phone: 40 };
+        const address = {};
+        for (const [field, value] of Object.entries(defaultAddress)) {
+          if (!Object.prototype.hasOwnProperty.call(limits, field)) continue;
+          if (typeof value !== 'string' || value.trim().length > limits[field]) {
+            return res.status(400).json({ error: `Invalid default address ${field}` });
+          }
+          address[field] = value.trim();
+        }
+        updates.defaultAddress = address;
+      }
 
       const user = await User.findByIdAndUpdate(req.user._id, updates, {
         returnDocument: 'after',
         runValidators: true,
       });
+
+      if (!user) return res.status(404).json({ error: 'User not found' });
 
       res.json({ user });
     } catch (err) {
@@ -351,10 +383,14 @@ router.post(
   '/change-password',
   authenticate,
   [
-    body('currentPassword').notEmpty().withMessage('Current password required'),
+    body('currentPassword')
+      .isString()
+      .notEmpty().withMessage('Current password required')
+      .isLength({ max: 256 }).withMessage('Current password is too long'),
     body('newPassword')
-      .isLength({ min: 8 })
-      .withMessage('New password must be at least 8 characters')
+      .isLength({ min: 8, max: 72 })
+      .withMessage('New password must be between 8 and 72 characters')
+      .custom(bcryptPasswordBytes)
       .matches(/[A-Z]/).withMessage('Must contain uppercase letter')
       .matches(/[0-9]/).withMessage('Must contain a number'),
   ],
@@ -364,16 +400,26 @@ router.post(
       const { currentPassword, newPassword } = req.body;
       const user = await User.findById(req.user._id).select('+password');
 
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      if (!user.password) {
+        return res.status(400).json({ error: 'This account uses Google sign-in and has no password to change.' });
+      }
+
       const isMatch = await user.comparePassword(currentPassword);
       if (!isMatch) {
         return res.status(400).json({ error: 'Current password is incorrect' });
       }
 
       user.password = newPassword;
+      user.authVersion = (user.authVersion || 0) + 1;
       // validateBeforeSave:false prevents other required fields from blocking this targeted update
       await user.save({ validateBeforeSave: false });
 
-      res.json({ message: 'Password changed successfully' });
+      // Revoke every previously issued token while keeping this verified
+      // password-change session usable with a fresh versioned bearer.
+      const token = generateAccessToken(user._id, user.authVersion);
+      setAuthCookie(res, token);
+      res.json({ message: 'Password changed successfully', token });
     } catch (err) {
       console.error('Change password error:', err);
       res.status(500).json({ error: 'Failed to change password' });
@@ -459,20 +505,16 @@ router.get('/google/callback', async (req, res) => {
 
     if (!user.isActive) return fail('account_deactivated');
 
-    const token = generateAccessToken(user._id);
+    const sessionId = validGuestSessionId(req.cookies?.cartSessionId);
+    await mergeGuestCartForUser(user._id, sessionId);
+
+    const token = generateAccessToken(user._id, user.authVersion);
     setAuthCookie(res, token);
 
-    const userData = encodeURIComponent(JSON.stringify({
-      id: user._id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      role: user.role,
-      isEmailVerified: user.isEmailVerified,
-      avatar: user.avatar || null,
-    }));
-
-    res.redirect(`${FRONTEND_URL}/auth/callback#token=${token}&user=${userData}`);
+    // The fragment carries only the bearer needed for the frontend's
+    // authoritative /auth/me lookup. Duplicating profile or role data in the
+    // URL creates needless browser-history and extension exposure.
+    res.redirect(`${FRONTEND_URL}/auth/callback#token=${token}`);
   } catch (err) {
     console.error('Google OAuth callback error:', err.message, err);
     fail('server_error');

@@ -4,25 +4,21 @@ const Cart = require('../models/Cart');
 const Product = require('../models/Product');
 const { validate } = require('../middleware/validate');
 const { optionalAuth } = require('../middleware/auth');
+const { validGuestSessionId } = require('../utils/guestSession');
+const { CartMutationError, mutateCartWithRetry } = require('../utils/cartConcurrency');
 
 const router = express.Router();
-
-// Helper: get or create cart for user or session
-const getOrCreateCart = async (userId, sessionId) => {
-  const filter = userId ? { user: userId } : { sessionId };
-  let cart = await Cart.findOne(filter);
-  if (!cart) {
-    cart = new Cart(userId ? { user: userId } : { sessionId });
-  }
-  // Refresh expiry on access
-  cart.expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-  return cart;
+const guestSessionIdFrom = (req) => validGuestSessionId(req.headers['x-session-id'] || req.cookies?.cartSessionId);
+const sendCartError = (res, err, fallback) => {
+  if (err instanceof CartMutationError) return res.status(err.status).json({ error: err.message });
+  console.error(fallback, err);
+  return res.status(500).json({ error: fallback.replace(/^Failed to /, 'Failed to ') });
 };
 
 // ─── GET /api/cart ─────────────────────────────────────────────────────────────
 router.get('/', optionalAuth, async (req, res) => {
   try {
-    const sessionId = req.headers['x-session-id'] || req.cookies?.cartSessionId;
+    const sessionId = guestSessionIdFrom(req);
     const userId = req.user?._id;
 
     if (!userId && !sessionId) {
@@ -80,7 +76,7 @@ router.post(
   async (req, res) => {
     try {
       const { slug, qty = 1 } = req.body;
-      const sessionId = req.headers['x-session-id'] || req.cookies?.cartSessionId;
+      const sessionId = guestSessionIdFrom(req);
       const userId = req.user?._id;
 
       if (!userId && !sessionId) {
@@ -96,36 +92,22 @@ router.post(
         return res.status(400).json({ error: 'Product is out of stock' });
       }
 
-      const cart = await getOrCreateCart(userId, sessionId);
-
-      const existingItem = cart.items.find(i => i.slug === slug);
-      if (existingItem) {
-        const newQty = existingItem.qty + qty;
-        if (newQty > product.stockQuantity) {
-          return res.status(400).json({
-            error: `Only ${product.stockQuantity} units available`,
+      const filter = userId ? { user: userId } : { sessionId };
+      const cart = await mutateCartWithRetry(filter, async (draft) => {
+        const existingItem = draft.items.find(i => i.slug === slug);
+        if (existingItem) {
+          const newQty = existingItem.qty + qty;
+          if (newQty > product.stockQuantity) throw new CartMutationError(400, `Only ${product.stockQuantity} units available`);
+          existingItem.qty = newQty;
+          existingItem.price = product.price;
+        } else {
+          if (qty > product.stockQuantity) throw new CartMutationError(400, `Only ${product.stockQuantity} units available`);
+          draft.items.push({
+            product: product._id, slug: product.slug, sku: product.sku, name: product.name,
+            price: product.price, image: product.images?.[0]?.url || '', qty,
           });
         }
-        existingItem.qty = newQty;
-        existingItem.price = product.price; // Always use current price
-      } else {
-        if (qty > product.stockQuantity) {
-          return res.status(400).json({
-            error: `Only ${product.stockQuantity} units available`,
-          });
-        }
-        cart.items.push({
-          product: product._id,
-          slug: product.slug,
-          sku: product.sku,
-          name: product.name,
-          price: product.price,
-          image: product.images?.[0]?.url || '',
-          qty,
-        });
-      }
-
-      await cart.save();
+      }, { create: true });
 
       const subtotal = cart.items.reduce((sum, i) => sum + i.price * i.qty, 0);
       const itemCount = cart.items.reduce((sum, i) => sum + i.qty, 0);
@@ -135,8 +117,7 @@ router.post(
         cart: { items: cart.items, subtotal, itemCount },
       });
     } catch (err) {
-      console.error('Cart add error:', err);
-      res.status(500).json({ error: 'Failed to add to cart' });
+      sendCartError(res, err, 'Failed to add to cart');
     }
   }
 );
@@ -153,39 +134,27 @@ router.patch(
   async (req, res) => {
     try {
       const { slug, qty } = req.body;
-      const sessionId = req.headers['x-session-id'] || req.cookies?.cartSessionId;
+      const sessionId = guestSessionIdFrom(req);
       const userId = req.user?._id;
+      if (!userId && !sessionId) return res.status(401).json({ error: 'Authentication or valid guest session required' });
 
       const filter = userId ? { user: userId } : { sessionId };
-      const cart = await Cart.findOne(filter);
-
+      const cart = await mutateCartWithRetry(filter, async (draft) => {
+        if (qty === 0) {
+          draft.items = draft.items.filter(i => i.slug !== slug);
+          return;
+        }
+        const item = draft.items.find(i => i.slug === slug);
+        if (!item) throw new CartMutationError(404, 'Item not in cart');
+        const product = await Product.findOne({ slug, isActive: true });
+        if (!product) throw new CartMutationError(400, 'Product is no longer available');
+        if (qty > product.stockQuantity) throw new CartMutationError(400, `Only ${product.stockQuantity} units available`);
+        item.qty = qty;
+        item.price = product.price;
+      });
       if (!cart) {
         return res.status(404).json({ error: 'Cart not found' });
       }
-
-      if (qty === 0) {
-        cart.items = cart.items.filter(i => i.slug !== slug);
-      } else {
-        const item = cart.items.find(i => i.slug === slug);
-        if (!item) {
-          return res.status(404).json({ error: 'Item not in cart' });
-        }
-        // Enforce stock on quantity changes (previously unchecked — carts
-        // could hold impossible quantities until checkout rejected them).
-        const product = await Product.findOne({ slug, isActive: true });
-        if (!product) {
-          return res.status(400).json({ error: 'Product is no longer available' });
-        }
-        if (qty > product.stockQuantity) {
-          return res.status(400).json({
-            error: `Only ${product.stockQuantity} units available`,
-          });
-        }
-        item.qty = qty;
-        item.price = product.price; // keep cart price current, same as /add
-      }
-
-      await cart.save();
 
       const subtotal = cart.items.reduce((sum, i) => sum + i.price * i.qty, 0);
       const itemCount = cart.items.reduce((sum, i) => sum + i.qty, 0);
@@ -195,8 +164,7 @@ router.patch(
         cart: { items: cart.items, subtotal, itemCount },
       });
     } catch (err) {
-      console.error('Cart update error:', err);
-      res.status(500).json({ error: 'Failed to update cart' });
+      sendCartError(res, err, 'Failed to update cart');
     }
   }
 );
@@ -205,18 +173,15 @@ router.patch(
 router.delete('/remove/:slug', optionalAuth, async (req, res) => {
   try {
     const { slug } = req.params;
-    const sessionId = req.headers['x-session-id'] || req.cookies?.cartSessionId;
+    const sessionId = guestSessionIdFrom(req);
     const userId = req.user?._id;
+    if (!userId && !sessionId) return res.status(401).json({ error: 'Authentication or valid guest session required' });
 
     const filter = userId ? { user: userId } : { sessionId };
-    const cart = await Cart.findOne(filter);
-
-    if (!cart) {
-      return res.status(404).json({ error: 'Cart not found' });
-    }
-
-    cart.items = cart.items.filter(i => i.slug !== slug);
-    await cart.save();
+    const cart = await mutateCartWithRetry(filter, async (draft) => {
+      draft.items = draft.items.filter(i => i.slug !== slug);
+    });
+    if (!cart) return res.status(404).json({ error: 'Cart not found' });
 
     const subtotal = cart.items.reduce((sum, i) => sum + i.price * i.qty, 0);
     const itemCount = cart.items.reduce((sum, i) => sum + i.qty, 0);
@@ -226,16 +191,16 @@ router.delete('/remove/:slug', optionalAuth, async (req, res) => {
       cart: { items: cart.items, subtotal, itemCount },
     });
   } catch (err) {
-    console.error('Cart remove error:', err);
-    res.status(500).json({ error: 'Failed to remove item' });
+    sendCartError(res, err, 'Failed to remove item');
   }
 });
 
 // ─── DELETE /api/cart/clear ────────────────────────────────────────────────────
 router.delete('/clear', optionalAuth, async (req, res) => {
   try {
-    const sessionId = req.headers['x-session-id'] || req.cookies?.cartSessionId;
+    const sessionId = guestSessionIdFrom(req);
     const userId = req.user?._id;
+    if (!userId && !sessionId) return res.status(401).json({ error: 'Authentication or valid guest session required' });
 
     const filter = userId ? { user: userId } : { sessionId };
     await Cart.findOneAndUpdate(filter, { items: [], discount: 0, couponCode: undefined });

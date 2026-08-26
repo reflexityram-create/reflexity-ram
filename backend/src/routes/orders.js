@@ -1,9 +1,10 @@
 const express = require('express');
-const { query: queryValidator, param } = require('express-validator');
+const { query: queryValidator, param, header: headerValidator } = require('express-validator');
 const Order = require('../models/Order');
 const { validate } = require('../middleware/validate');
 const { authenticate, optionalAuth } = require('../middleware/auth');
 const { orderBelongsToUser } = require('../utils/orderAccess');
+const { customerOrderResponse } = require('../utils/customerOrders');
 
 const router = express.Router();
 
@@ -32,7 +33,7 @@ router.get(
       ]);
 
       res.json({
-        orders,
+        orders: orders.map(customerOrderResponse),
         pagination: {
           page,
           limit,
@@ -51,16 +52,23 @@ router.get(
 router.get(
   '/:orderNumber',
   optionalAuth,
-  [param('orderNumber').trim().notEmpty()],
+  [
+    param('orderNumber').trim().notEmpty().isLength({ max: 80 }),
+    headerValidator('x-order-email')
+      .optional()
+      .isString()
+      .trim()
+      .isLength({ max: 254 })
+      .isEmail()
+      .toLowerCase(),
+  ],
   validate,
   async (req, res) => {
     try {
       const { orderNumber } = req.params;
       const order = await Order.findOne({ orderNumber }).populate('user', 'email').lean();
 
-      if (!order) {
-        return res.status(404).json({ error: 'Order not found' });
-      }
+      if (!order) return res.status(404).json({ error: 'Order not found' });
 
       // Access control:
       //  - admins can view any order
@@ -72,17 +80,17 @@ router.get(
       if (!isAdmin) {
         if (order.user) {
           if (!req.user || !orderBelongsToUser(order.user, req.user._id)) {
-            return res.status(403).json({ error: 'Access denied' });
+            return res.status(404).json({ error: 'Order not found' });
           }
         } else {
-          const { email } = req.query;
+          const email = req.get('x-order-email');
           if (!email || !order.guestEmail || order.guestEmail !== email.toLowerCase().trim()) {
-            return res.status(403).json({ error: 'Access denied' });
+            return res.status(404).json({ error: 'Order not found' });
           }
         }
       }
 
-      res.json({ order });
+      res.json({ order: customerOrderResponse(order) });
     } catch (err) {
       console.error('Order detail error:', err);
       res.status(500).json({ error: 'Failed to fetch order' });

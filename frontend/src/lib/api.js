@@ -33,7 +33,10 @@ api.interceptors.response.use(
   (error) => {
     const { response } = error;
     if (response?.status === 401) {
-      if (response.data?.code === 'TOKEN_EXPIRED' || response.data?.error === 'Invalid token') {
+      const authError = String(response.data?.error || '').toLowerCase();
+      if (response.data?.code === 'TOKEN_EXPIRED' || response.data?.code === 'SESSION_REVOKED'
+        || response.data?.error === 'Invalid token'
+        || authError.includes('user not found') || authError.includes('deactivated')) {
         console.warn('[Auth] Token invalid or expired, clearing session');
         clearPersistedAuthSnapshot();
         window.dispatchEvent(new CustomEvent('auth:expired'));
@@ -78,7 +81,7 @@ export const productsApi = {
   list: (params, config = {}) => api.get('/products', { ...config, params }),
   featured: () => api.get('/products/featured'),
   filters: () => api.get('/products/filters'),
-  getBySlug: (slug) => api.get(`/products/${slug}`),
+  getBySlug: (slug, config = {}) => api.get(`/products/${slug}`, config),
 };
 
 // ─── Wholesale lots API ──────────────────────────────────────────────────────
@@ -90,7 +93,7 @@ export const wholesaleApi = {
 
 // Reviews are public to read, but the server only accepts verified purchases.
 export const reviewsApi = {
-  list: (slug) => api.get(`/reviews/product/${slug}`),
+  list: (slug, config = {}) => api.get(`/reviews/product/${slug}`, config),
   create: (slug, data) => api.post(`/reviews/product/${slug}`, data),
 };
 
@@ -107,7 +110,9 @@ export const cartApi = {
 export const ordersApi = {
   list: (params) => api.get('/orders', { params }),
   getByNumber: (orderNumber, email) =>
-    api.get(`/orders/${orderNumber}`, { params: email ? { email } : {} }),
+    api.get(`/orders/${orderNumber}`, {
+      headers: email ? { 'x-order-email': email } : {},
+    }),
 };
 
 // ─── Stripe API ───────────────────────────────────────────────────────────────
@@ -141,7 +146,7 @@ export const adminApi = {
 
   // Orders
   listOrders: (params) => api.get('/admin/orders', { params }),
-  getOrder: (id) => api.get(`/admin/orders/${id}`),
+  getOrder: (id, config = {}) => api.get(`/admin/orders/${id}`, config),
   updateOrderStatus: (id, data) => api.patch(`/admin/orders/${id}/status`, data),
   archiveOrder: (id, archived) => api.patch(`/admin/orders/${id}/archive`, { archived }),
 

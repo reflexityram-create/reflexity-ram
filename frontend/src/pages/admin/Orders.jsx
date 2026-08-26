@@ -1,11 +1,27 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Loader2, Search, ChevronLeft, ChevronRight, X, Package, Truck } from 'lucide-react';
 import { toast } from 'sonner';
 import AppLayout from '@/components/AppLayout';
 import { adminApi } from '@/lib/api';
 import { imageUrl } from '@/lib/imageUrl';
 
-const STATUS_OPTIONS = ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'];
+const NEXT_STATUS = Object.freeze({
+  pending: ['processing', 'cancelled'],
+  processing: ['shipped', 'cancelled'],
+  shipped: ['delivered'],
+  delivered: [],
+  cancelled: [],
+  refunded: [],
+});
+function statusOptions(order) {
+  const current = order?.status;
+  if (!current) return [];
+  const next = NEXT_STATUS[current] || [];
+  const allowed = order.paymentStatus === 'paid' ? next.filter((status) => status !== 'cancelled') : next;
+  // Keep the current value visible for read-only terminal/refunded states,
+  // but never present refunded as an admin transition.
+  return [current, ...allowed.filter((status) => status !== current && status !== 'refunded')];
+}
 const STATUS_PILLS = {
   pending: 'pill-amber',
   processing: 'pill-blue',
@@ -20,15 +36,45 @@ function OrderDetailModal({ orderId, onClose }) {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [statusForm, setStatusForm] = useState({ status: '', trackingNumber: '', note: '' });
+  const dialogRef = useRef(null);
+  const triggerRef = useRef(null);
 
   useEffect(() => {
-    adminApi.getOrder(orderId)
+    const controller = new AbortController();
+    let active = true;
+    triggerRef.current = document.activeElement;
+    setLoading(true);
+    setOrder(null);
+    setStatusForm({ status: '', trackingNumber: '', note: '' });
+    adminApi.getOrder(orderId, { signal: controller.signal })
       .then(({ data }) => {
+        if (!active) return;
         setOrder(data.order);
         setStatusForm(f => ({ ...f, status: data.order.status }));
       })
-      .catch(() => toast.error('Failed to load order'))
-      .finally(() => setLoading(false));
+      .catch((error) => {
+        if (active && error?.code !== 'ERR_CANCELED') toast.error('Failed to load order');
+      })
+      .finally(() => active && setLoading(false));
+    const focusTimer = window.setTimeout(() => dialogRef.current?.querySelector('button,select,input')?.focus(), 0);
+    const onKey = (event) => {
+      if (event.key === 'Escape') onClose();
+      if (event.key !== 'Tab' || !dialogRef.current) return;
+      const focusable = [...dialogRef.current.querySelectorAll('button,select,input,textarea')].filter((el) => !el.disabled);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      active = false;
+      controller.abort();
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', onKey);
+      triggerRef.current?.focus?.();
+    };
   }, [orderId]);
 
   const handleStatusUpdate = async (e) => {
@@ -46,15 +92,15 @@ function OrderDetailModal({ orderId, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-auto">
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-auto" role="dialog" aria-modal="true" aria-labelledby="order-detail-title" ref={dialogRef}>
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
       <div className="relative z-10 w-full max-w-2xl glass rounded-2xl p-6 my-8">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="font-bold text-lg">Order details</h2>
+            <h2 id="order-detail-title" className="font-bold text-lg">Order details</h2>
             {order && <div className="mono text-[12px] text-neutral-500 mt-0.5">{order.orderNumber}</div>}
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-neutral-500 hover:text-white hover:bg-white/5">
+          <button aria-label="Close order details" onClick={onClose} className="p-1.5 rounded-lg text-neutral-500 hover:text-white hover:bg-white/5">
             <X size={16} />
           </button>
         </div>
@@ -123,7 +169,7 @@ function OrderDetailModal({ orderId, onClose }) {
                 value={statusForm.status}
                 onChange={e => setStatusForm(f => ({ ...f, status: e.target.value }))}
               >
-                {STATUS_OPTIONS.map(s => (
+                {statusOptions(order).map(s => (
                   <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
                 ))}
               </select>

@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { Shield, Lock, Key, AlertTriangle, Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppLayout from '@/components/AppLayout';
-import { authApi } from '@/lib/api';
+import useAuthStore from '@/lib/authStore';
 
 export default function Security() {
+  const changePassword = useAuthStore((state) => state.changePassword);
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -16,11 +17,12 @@ export default function Security() {
     if (next.length < 12) return toast.error('Use at least 12 characters');
     setSaving(true);
     try {
-      await authApi.changePassword({ currentPassword: current, newPassword: next });
+      const result = await changePassword({ currentPassword: current, newPassword: next });
+      if (!result.success) throw new Error(result.message || 'Failed to change password');
       toast.success('Password changed');
       setCurrent(''); setNext(''); setConfirm('');
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to change password');
+      toast.error(err.message || 'Failed to change password');
     } finally {
       setSaving(false);
     }

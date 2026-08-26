@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Eye, EyeOff, Loader2, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import useAuthStore from '@/lib/authStore';
@@ -12,6 +12,8 @@ export default function AuthModal({ open, onClose, initialTab = 'signin' }) {
   const [showPw, setShowPw] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
   const [forgotLoading, setForgotLoading] = useState(false);
+  const dialogRef = useRef(null);
+  const triggerRef = useRef(null);
 
   // Sync the active tab when the modal opens or the trigger requests a
   // different tab. Without this, useState(initialTab) only applies once on
@@ -19,6 +21,27 @@ export default function AuthModal({ open, onClose, initialTab = 'signin' }) {
   useEffect(() => {
     if (open) setTab(initialTab);
   }, [open, initialTab]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    triggerRef.current = document.activeElement;
+    const focusTimer = window.setTimeout(() => dialogRef.current?.querySelector('button,input')?.focus(), 0);
+    const onKey = (event) => {
+      if (event.key === 'Escape') onClose();
+      if (event.key !== 'Tab' || !dialogRef.current) return;
+      const focusable = [...dialogRef.current.querySelectorAll('button,input,a')].filter((el) => !el.disabled && el.tabIndex !== -1);
+      if (!focusable.length) return;
+      const first = focusable[0]; const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', onKey);
+      triggerRef.current?.focus?.();
+    };
+  }, [open, onClose]);
 
   const { login, signup, isLoading } = useAuthStore();
   const { fetchCart } = useCartStore();
@@ -81,6 +104,10 @@ export default function AuthModal({ open, onClose, initialTab = 'signin' }) {
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center p-4"
       data-testid="auth-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="auth-modal-title"
+      ref={dialogRef}
     >
       {/* Backdrop */}
       <div
@@ -98,13 +125,14 @@ export default function AuthModal({ open, onClose, initialTab = 'signin' }) {
           onClick={onClose}
           className="absolute top-4 right-4 p-1.5 rounded-lg text-neutral-500 hover:text-white hover:bg-white/5 transition-colors"
           data-testid="auth-modal-close"
+          aria-label="Close sign-in dialog"
         >
           <X size={16} />
         </button>
 
         {/* Header */}
         <div className="mb-6">
-          <h2 className="text-xl font-bold tracking-tight">
+          <h2 id="auth-modal-title" className="text-xl font-bold tracking-tight">
             {tab === TABS.signin && 'Welcome back'}
             {tab === TABS.signup && 'Create account'}
             {tab === TABS.forgot && 'Reset password'}
@@ -187,7 +215,7 @@ export default function AuthModal({ open, onClose, initialTab = 'signin' }) {
                 type="button"
                 onClick={() => setShowPw((v) => !v)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white"
-                tabIndex={-1}
+                aria-label={showPw ? 'Hide password' : 'Show password'}
               >
                 {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
@@ -260,7 +288,7 @@ export default function AuthModal({ open, onClose, initialTab = 'signin' }) {
                 type="button"
                 onClick={() => setShowPw((v) => !v)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white"
-                tabIndex={-1}
+                aria-label={showPw ? 'Hide password' : 'Show password'}
               >
                 {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>

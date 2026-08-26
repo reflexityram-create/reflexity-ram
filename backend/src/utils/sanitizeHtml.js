@@ -27,6 +27,15 @@ const ALLOWED_ATTRS = {
 
 const stripTag = (tag) => `</${tag}>`;
 
+const decodeHtmlEntities = (value) => value
+  .replace(/&#(x[0-9a-f]+|[0-9]+);?/gi, (_, code) => {
+    const radix = code[0].toLowerCase() === 'x' ? 16 : 10;
+    const number = parseInt(code.slice(radix === 16 ? 1 : 0), radix);
+    return Number.isInteger(number) && number >= 0 && number <= 0x10ffff
+      ? String.fromCodePoint(number) : _;
+  })
+  .replace(/&(colon|tab|newline);/gi, (_, name) => ({ colon: ':', tab: '\t', newline: '\n' }[name.toLowerCase()]));
+
 function sanitizeHtml(input) {
   if (!input || typeof input !== 'string') return '';
 
@@ -66,7 +75,7 @@ function sanitizeHtml(input) {
       if (!allowed.has(name)) continue;
       // Block dangerous URL schemes on href
       if (name === 'href') {
-        const v = value.trim().toLowerCase();
+        const v = decodeHtmlEntities(value).replace(/[\u0000-\u0020]/g, '').trim().toLowerCase();
         if (v.startsWith('javascript:') || v.startsWith('data:') || v.startsWith('vbscript:')) continue;
       }
       // Escape quotes defensively

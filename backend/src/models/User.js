@@ -2,15 +2,15 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
 const addressSchema = new mongoose.Schema({
-  firstName: { type: String, trim: true },
-  lastName: { type: String, trim: true },
-  line1: { type: String, trim: true },
-  line2: { type: String, trim: true },
-  city: { type: String, trim: true },
-  state: { type: String, trim: true },
-  zip: { type: String, trim: true },
-  country: { type: String, trim: true, default: 'US' },
-  phone: { type: String, trim: true },
+  firstName: { type: String, trim: true, maxlength: 50 },
+  lastName: { type: String, trim: true, maxlength: 50 },
+  line1: { type: String, trim: true, maxlength: 120 },
+  line2: { type: String, trim: true, maxlength: 120 },
+  city: { type: String, trim: true, maxlength: 80 },
+  state: { type: String, trim: true, maxlength: 80 },
+  zip: { type: String, trim: true, maxlength: 20 },
+  country: { type: String, trim: true, uppercase: true, maxlength: 2, default: 'US' },
+  phone: { type: String, trim: true, maxlength: 40 },
 }, { _id: false });
 
 const userSchema = new mongoose.Schema({
@@ -39,7 +39,8 @@ const userSchema = new mongoose.Schema({
     trim: true,
     maxlength: [50, 'Last name too long'],
   },
-  phone: { type: String, trim: true },
+  phone: { type: String, trim: true, maxlength: 40 },
+  authVersion: { type: Number, default: 0, min: 0 },
   role: {
     type: String,
     enum: ['customer', 'admin'],
@@ -66,6 +67,7 @@ const userSchema = new mongoose.Schema({
       delete ret.emailVerificationExpires;
       delete ret.passwordResetToken;
       delete ret.passwordResetExpires;
+      delete ret.authVersion;
       return ret;
     },
   },

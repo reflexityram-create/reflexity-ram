@@ -2,6 +2,16 @@ const Product = require('../models/Product');
 const Order = require('../models/Order');
 
 const NON_FULFILLABLE_STATUSES = new Set(['cancelled', 'refunded']);
+const cancellationClaimFilter = (orderId, expected) => {
+  if (!expected || typeof expected.status !== 'string' || typeof expected.paymentStatus !== 'string') {
+    throw new Error('Cancellation requires an exact expected order state');
+  }
+  return {
+    _id: orderId,
+    status: expected.status,
+    paymentStatus: expected.paymentStatus,
+  };
+};
 const stockDecrementClaimFilter = (orderId) => ({
   _id: orderId,
   stockDecremented: { $ne: true },
@@ -160,10 +170,11 @@ const restoreStockForOrder = async (order) => (
  * crash can therefore leave neither side applied, never a cancelled order
  * whose stock is still missing.
  */
-const cancelOrderAndRestoreStock = async (orderId, updates) => {
+const cancelOrderAndRestoreStock = async (orderId, updates, expected) => {
   return withStockTransaction(async (session) => {
-    const cancelled = await Order.findByIdAndUpdate(
-      orderId,
+    const filter = cancellationClaimFilter(orderId, expected);
+    const cancelled = await Order.findOneAndUpdate(
+      filter,
       updates,
       { returnDocument: 'after', session }
     );
@@ -179,6 +190,7 @@ module.exports = {
   decrementStockForOrder,
   restoreStockForOrder,
   cancelOrderAndRestoreStock,
+  cancellationClaimFilter,
   shouldDecrementStockForFulfillment,
   stockDecrementClaimFilter,
 };

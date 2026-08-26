@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-export function useSEO({ title, description }) {
+export function useSEO({ title, description, noindex = false }) {
   useEffect(() => {
     const fullTitle = title
       ? title.endsWith("Reflexity RAM") ? title : `${title} — Reflexity RAM`
@@ -38,5 +38,34 @@ export function useSEO({ title, description }) {
       document.head.appendChild(ogUrl);
     }
     ogUrl.setAttribute("content", `${window.location.origin}${window.location.pathname}`);
-  }, [title, description]);
+
+    let robots = document.querySelector('meta[name="robots"]');
+    let previousRobots = null;
+    if (noindex) {
+      if (robots) {
+        previousRobots = {
+          content: robots.getAttribute("content"),
+          marker: robots.getAttribute("data-reflexity-seo"),
+        };
+      } else {
+        robots = document.createElement("meta");
+        robots.setAttribute("name", "robots");
+        document.head.appendChild(robots);
+      }
+      robots.setAttribute("content", "noindex, nofollow");
+      robots.setAttribute("data-reflexity-seo", "not-found");
+    }
+
+    return () => {
+      if (!noindex || !robots || robots.getAttribute("data-reflexity-seo") !== "not-found") return;
+      if (previousRobots) {
+        if (previousRobots.content == null) robots.removeAttribute("content");
+        else robots.setAttribute("content", previousRobots.content);
+        if (previousRobots.marker == null) robots.removeAttribute("data-reflexity-seo");
+        else robots.setAttribute("data-reflexity-seo", previousRobots.marker);
+      } else {
+        robots.remove();
+      }
+    };
+  }, [title, description, noindex]);
 }

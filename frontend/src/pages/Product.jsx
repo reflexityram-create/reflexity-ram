@@ -27,6 +27,7 @@ import useAuthStore from "@/lib/authStore";
 import { useSEO } from "@/lib/seo";
 import { productsApi } from "@/lib/api";
 import { reviewsApi } from "@/lib/api";
+import { serializeJsonLd } from "@/lib/safeJsonLd";
 import {
   formatStorePrice,
   formatStorePriceWithCode,
@@ -73,30 +74,40 @@ export default function Product() {
 
   // Fetch product from API on every slug change — always fresh data
   useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
     setLoading(true);
     setNotFound(false);
     setP(null);
     setImgIdx(0);
-    productsApi.getBySlug(slug)
+    productsApi.getBySlug(slug, { signal: controller.signal })
       .then(({ data }) => {
+        if (!active) return;
         const product = data?.product;
         if (!product) { setNotFound(true); return; }
         setP(product);
         if (product) addViewed(product.slug);
         // Fetch related products (same generation, excluding this one)
-        productsApi.list({ generation: product.generation, limit: 4 })
+        productsApi.list({ generation: product.generation, limit: 4 }, { signal: controller.signal })
           .then(({ data: d }) => {
+            if (!active) return;
             setRelated((d.products || []).filter((x) => x.slug !== product.slug).slice(0, 3));
           })
-          .catch(() => {});
+          .catch((error) => { if (active && error?.code !== 'ERR_CANCELED') return; });
       })
-      .catch(() => setNotFound(true))
-      .finally(() => setLoading(false));
+      .catch((error) => { if (active && error?.code !== 'ERR_CANCELED') setNotFound(true); })
+      .finally(() => active && setLoading(false));
+    return () => { active = false; controller.abort(); };
   }, [slug]);
 
   useEffect(() => {
     if (!p?.slug) return;
-    reviewsApi.list(p.slug).then(({ data }) => setReviewData(data)).catch(() => {});
+    const controller = new AbortController();
+    let active = true;
+    reviewsApi.list(p.slug, { signal: controller.signal }).then(({ data }) => {
+      if (active) setReviewData(data);
+    }).catch(() => {});
+    return () => { active = false; controller.abort(); };
   }, [p?.slug]);
 
   const recentlyViewed = useMemo(() => {
@@ -236,7 +247,7 @@ export default function Product() {
       {jsonLd && (
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
         />
       )}
       <main className="page pb-32 md:pb-16" data-testid="product-page">

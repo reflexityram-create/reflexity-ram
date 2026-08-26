@@ -7,8 +7,10 @@ import EmptyState from '@/components/EmptyState';
 import useCartStore from '@/lib/cartStore';
 import { imageUrl } from '@/lib/imageUrl';
 import { formatStorePrice, STORE_CURRENCY_NAME } from '@/lib/currency';
+import { useSEO } from '@/lib/seo';
 
 export default function Cart() {
+  useSEO({ title: 'Cart', description: 'Review your Reflexity RAM order before checkout.' });
   const { items, subtotal, itemCount, isLoading, fetchCart, updateItem, removeItem } = useCartStore();
 
   useEffect(() => {

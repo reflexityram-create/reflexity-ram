@@ -114,8 +114,20 @@ test("static and edge storefront responses enforce the same CSP", async () => {
 
   assert.ok(policy);
   assert.match(policy, /https:\/\/static\.cloudflareinsights\.com/);
+  assert.doesNotMatch(policy, /script-src[^;]*'unsafe-inline'/);
+  assert.match(policy, /script-src-attr 'none'/);
+  assert.equal(
+    STOREFRONT_SECURITY_HEADERS["Strict-Transport-Security"],
+    "max-age=63072000; includeSubDomains",
+  );
+  assert.equal(STOREFRONT_SECURITY_HEADERS["Referrer-Policy"], "no-referrer");
   assert.doesNotMatch(staticHeaders, /Content-Security-Policy-Report-Only/i);
   assert.match(staticHeaders, new RegExp(`Content-Security-Policy: ${policy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+  assert.match(staticHeaders, /Strict-Transport-Security: max-age=63072000; includeSubDomains/);
+  assert.match(staticHeaders, /Referrer-Policy: no-referrer/);
+  for (const script of ["theme", "analytics", "error"]) {
+    assert.match(staticHeaders, new RegExp(`/${script}-bootstrap\\.js[\\s\\S]*?max-age=0, must-revalidate`));
+  }
 });
 
 test("product edge metadata uses the exact live API contract and escapes values", async () => {
@@ -142,7 +154,7 @@ test("product edge metadata uses the exact live API contract and escapes values"
   assert.deepEqual(calls[0].init.cf, { cacheEverything: true, cacheTtl: 300 });
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("x-reflexity-seo"), "product-edge");
-  assert.equal(response.headers.get("strict-transport-security"), "max-age=31536000");
+  assert.equal(response.headers.get("strict-transport-security"), "max-age=63072000; includeSubDomains");
   assert.equal(
     response.headers.get("content-security-policy"),
     STOREFRONT_SECURITY_HEADERS["Content-Security-Policy"],
