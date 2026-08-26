@@ -1,5 +1,81 @@
 # Project State
 
+## 2026-08-26 — Comprehensive non-payment hardening and recovered deployment
+
+- VERIFIED (SOURCE/TEST/REVIEW): Pull requests `#6` through `#9` hardened the
+  storefront, authenticated administration, guest order proof, carts, wholesale
+  inventory, rate limiting, request bounds, browser security policy, startup
+  indexes, and explicit CORS denial. The final release head is
+  `e0143c88b52ac150966f94b04997314f25c3522d`. The full gate passes 51 frontend
+  tests and 73 backend tests; the two explicitly disposable Atlas integrations
+  remain opt-in and skipped by default. The production frontend build, secret
+  scan, `git diff --check`, and root/frontend/backend dependency audits pass with
+  zero vulnerabilities. Independent release, cart-migration, and startup-index
+  reviews found no blocker.
+- VERIFIED (RENDER/ROOT CAUSE): Failed deployment
+  `dep-da76jm3l550s73ahl970` reached MongoDB startup but found legacy non-unique
+  sparse `carts.user_1` and `carts.sessionId_1` indexes where current ownership
+  requires uniqueness. The in-place migration prepared the existing indexes,
+  normalized explicit null ownership, verified no duplicate owner group, and
+  converted both indexes without dropping the collection. A disposable Atlas
+  fixture reproduced the populated legacy state, upgrade, second-run
+  idempotence, and post-upgrade duplicate rejection.
+- VERIFIED (RENDER/SECOND FAILURE): Deployment
+  `dep-da76rmu7bikc73fhstig` successfully completed the cart migration, then
+  exposed a separate legacy `Order.stripePaymentIntentId` option mismatch during
+  general Mongoose index enforcement. Startup now ensures every non-payment
+  index while deliberately omitting both payment-provider index declarations
+  from that unrelated enforcement pass. No payment-provider index was dropped,
+  converted, recreated, or modified.
+- VERIFIED (ATLAS READBACK/PRESERVATION): Production still has all three carts;
+  no duplicate owner group or dual-owned cart existed, and zero cart document
+  was deleted. Explicit null owner fields are gone and both owner indexes are
+  unique and sparse. Read-only post-release inspection confirmed the two
+  payment-provider index options are unchanged:
+  `stripePaymentIntentId_1` remains non-unique/non-sparse and
+  `stripeCheckoutSessionId_1` remains unique/sparse.
+- VERIFIED (PRODUCTION/DEPLOY): Render deployment
+  `dep-da773l0u01pc73bpjghg` and Cloudflare Pages production deployment
+  `894e371e-7fc4-4cad-8863-24c17547a515` serve exact commit `e0143c88...`.
+  Render tracks `reflexityram-create/reflexity-ram` branch `main`, automatic
+  deploys are enabled, root is `backend`, build is `npm ci`, start is
+  `node src/server.js`, and health is `/api/health`. GitHub protects `main` with
+  strict required `verify` and `Deployment configuration gate` checks plus
+  admin enforcement; force pushes and branch deletion are disabled.
+- VERIFIED (PROVIDER CONFIG/NON-PAYMENT): Proven-unused Render variables
+  `SEED_SECRET`, `ADMIN_PASSWORD`, `ADMIN_EMAIL`, `JWT_REFRESH_SECRET`, and
+  `SESSION_SECRET` were removed and a fresh deployment proved the reduced
+  environment. Both Stripe variable names remain present and their values were
+  neither revealed nor changed. Cloudflare Pages builds with
+  `npm ci && npm run build` from `frontend` to `dist`; Full (strict), minimum
+  TLS 1.2, Always Use HTTPS, DMARC, and bounded CAA records are live.
+- VERIFIED (LIVE HTTP): The apex and backend health return HTTP 200; `www`
+  preserves `/shop?sort=price&page=2` through the HTTPS redirect. A trusted
+  Reflexity Origin receives its exact credentialed CORS grant, while an
+  untrusted Origin now receives HTTP 403 with the fixed body
+  `Request origin not allowed` and no reflected origin. Malformed catalog
+  filters return 400, unauthenticated admin reads return 401, public product
+  output omits management/provider fields, and `/api/wholesale` returns exactly
+  zero lots as requested. HSTS, enforced CSP without inline scripts,
+  `no-referrer`, `nosniff`, frame denial, and camera/microphone/geolocation
+  denial are present on the live storefront.
+- VERIFIED (BROWSER/EXACT PROFILE): Canonical alias `reflexity` resolved Profile
+  6 and Google account `reflexityram@gmail.com` with `AUTOMATION_VERIFIED`; the
+  exact extension instance rendered the signed-in admin principal. Products
+  exposes both **Manage all** and **Add wholesale listing** controls. The
+  wholesale admin shows zero drafts, live lots, units, and archives plus
+  **Add wholesale listing**; the customer page places posted inventory before
+  direct sourcing and shows no seeded lot. Desktop/admin and 390 x 844 customer
+  checks had no horizontal overflow, alert, console warning, or console error.
+- VERIFIED (STRIPE NO-TOUCH BOUNDARY): No Stripe provider resource, credential,
+  product, price, webhook, source route, checkout file, payment flow, or payment
+  database index was changed during this release. Startup filtering exists only
+  to prevent unrelated index enforcement from rewriting those legacy indexes.
+- PENDING (DNSSEC): Cloudflare currently reports DNSSEC `pending` with algorithm
+  13/SHA-256. DNSKEY records are published, but a public resolver still returns
+  zero parent DS records. Do not describe DNSSEC as active until Cloudflare
+  reports `active` and the parent DS resolves.
+
 ## 2026-08-25 — Production wholesale inventory administration
 
 - VERIFIED (ARCHITECTURE/STATIC/TEST): Wholesale uses its own `WholesaleLot`
