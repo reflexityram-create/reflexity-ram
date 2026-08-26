@@ -77,6 +77,8 @@ test('the technical workspace sees every status and uses revisioned soft transit
   assert.match(admin, /import \{ createPortal \} from 'react-dom'/);
   assert.match(admin, /const appRoot = document\.getElementById\('root'\)[\s\S]*?appRoot\.setAttribute\('inert', ''\)[\s\S]*?appRoot\.setAttribute\('aria-hidden', 'true'\)/);
   assert.match(admin, /if \(rootWasInert\) appRoot\.setAttribute\('inert', ''\)[\s\S]*?else appRoot\.removeAttribute\('inert'\)[\s\S]*?previousRootAriaHidden === null\) appRoot\.removeAttribute\('aria-hidden'\)/);
+  assert.match(admin, /window\.requestAnimationFrame\(\(\) => \{[\s\S]*?\[data-wholesale-editor-trigger\][\s\S]*?target\.focus\(\)/);
+  assert.equal((admin.match(/data-wholesale-editor-trigger/g) || []).length, 3, 'selector plus both admin Add buttons');
   assert.match(admin, /return createPortal\([\s\S]*?className="wholesale-admin fixed inset-0 z-50 flex justify-end"[\s\S]*?role="dialog"[\s\S]*?document\.body,/);
   assert.match(admin, /aria-live="assertive"[\s\S]*?role="alert">\{editorError\}/);
   assert.match(admin, /aria-live="polite"[\s\S]*?role="status">\{editorStatus\}/);

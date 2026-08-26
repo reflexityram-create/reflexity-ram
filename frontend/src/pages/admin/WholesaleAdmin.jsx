@@ -233,7 +233,21 @@ function LotEditor({ initialLot, onClose, onPersisted, onSaved, onStale }) {
         if (previousRootAriaHidden === null) appRoot.removeAttribute('aria-hidden');
         else appRoot.setAttribute('aria-hidden', previousRootAriaHidden);
       }
-      if (previouslyFocused instanceof HTMLElement && previouslyFocused.isConnected) previouslyFocused.focus();
+      // React Router commits the query-string removal after this cleanup starts.
+      // Restore on the next frame so navigation cannot drop focus onto <body>;
+      // external Add entry points fall back to the page's primary trigger.
+      window.requestAnimationFrame(() => {
+        const fallback = document.querySelector('[data-wholesale-editor-trigger]');
+        const previousIsUseful = previouslyFocused instanceof HTMLElement
+          && previouslyFocused.isConnected
+          && previouslyFocused !== document.body
+          && previouslyFocused !== document.documentElement
+          && previouslyFocused !== appRoot;
+        const target = previousIsUseful
+          ? previouslyFocused
+          : fallback;
+        if (target instanceof HTMLElement) target.focus();
+      });
       const abandoned = [...sessionUploadsRef.current];
       sessionUploadsRef.current.clear();
       for (const publicId of abandoned) void adminApi.deleteWholesaleImage(publicId).catch(() => undefined);
@@ -637,7 +651,7 @@ export default function WholesaleAdmin() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Link className="btn-secondary flex items-center gap-2" target="_blank" to="/wholesale"><Eye size={14} /> View wholesale page</Link>
-            <button className="btn-primary flex items-center gap-2" onClick={openNew} type="button"><Plus size={14} /> Add wholesale listing</button>
+            <button className="btn-primary flex items-center gap-2" data-wholesale-editor-trigger onClick={openNew} type="button"><Plus size={14} /> Add wholesale listing</button>
           </div>
         </header>
 
@@ -706,7 +720,7 @@ export default function WholesaleAdmin() {
                       <Boxes className="wa-faint mx-auto" size={28} />
                       <strong className="wa-strong mt-3 block text-[14px]">{lots.length ? 'No listings match this view' : 'No wholesale listings yet'}</strong>
                       <span className="wa-faint mt-1 block text-[11px]">{lots.length ? 'Change the search or status filter.' : 'Add special stock when it is ready. Nothing has been pre-filled.'}</span>
-                      {!lots.length && <button className="btn-primary mx-auto mt-4 flex items-center gap-2" onClick={openNew} type="button"><Plus size={13} /> Add first listing</button>}
+                      {!lots.length && <button className="btn-primary mx-auto mt-4 flex items-center gap-2" data-wholesale-editor-trigger onClick={openNew} type="button"><Plus size={13} /> Add first listing</button>}
                     </td>
                   </tr>
                 ) : visibleLots.map((lot) => (
