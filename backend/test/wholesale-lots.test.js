@@ -414,7 +414,7 @@ test('Mongo indexes and startup enforce one wholesale image owner before traffic
     readFile(new URL('../src/server.js', `file://${__filename}`), 'utf8'),
     readFile(new URL('../src/config/cloudinary.js', `file://${__filename}`), 'utf8'),
   ]);
-  assert.match(server, /const startupModels = \[[\s\S]*?WholesaleLot,[\s\S]*?WholesaleMediaAsset,[\s\S]*?\];[\s\S]*?await Promise\.all\(startupModels\.map\(\(model\) => model\.init\(\)\)\);[\s\S]*?await ensureCartOwnershipIndexes\(\);[\s\S]*?await Promise\.all\(startupModels\.map\(\(model\) => model\.ensureIndexes\(\)\)\);[\s\S]*?app\.listen/);
+  assert.match(server, /const startupModels = \[[\s\S]*?WholesaleLot,[\s\S]*?WholesaleMediaAsset,[\s\S]*?\];[\s\S]*?await Promise\.all\(startupModels\.map\(\(model\) => model\.init\(\)\)\);[\s\S]*?await ensureCartOwnershipIndexes\(\);[\s\S]*?model\.ensureIndexes\(\{[\s\S]*?toCreate: startupIndexDeclarations\(model\)[\s\S]*?app\.listen/);
   assert.match(cloudinary, /public_id: `wholesale-\$\{crypto\.randomUUID\(\)\}`/);
   assert.match(cloudinary, /overwrite: false/);
 });

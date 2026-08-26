@@ -27,7 +27,10 @@ test('all application model indexes are awaited before listening', () => {
   assert.match(serverSource, /connect\(process\.env\.MONGODB_URI, \{ autoIndex: false \}\)/);
   assert.match(serverSource, /await Promise\.all\(startupModels\.map\(\(model\) => model\.init\(\)\)\)/);
   assert.match(serverSource, /await ensureCartOwnershipIndexes\(\)/);
-  assert.match(serverSource, /await Promise\.all\(startupModels\.map\(\(model\) => model\.ensureIndexes\(\)\)\)/);
+  assert.match(serverSource, /const paymentProviderOrderIndexFields = new Set\(\[/);
+  assert.match(serverSource, /'stripePaymentIntentId',[\s\S]*?'stripeCheckoutSessionId'/);
+  assert.match(serverSource, /model\.schema\.indexes\(\)\.filter\(\(\[keys\]\) =>/);
+  assert.match(serverSource, /model\.ensureIndexes\(\{[\s\S]*?toCreate: startupIndexDeclarations\(model\)/);
   assert.match(serverSource, /startupModels\.length/);
 });
 
