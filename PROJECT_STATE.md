@@ -2,16 +2,27 @@
 
 ## 2026-08-26 — Comprehensive non-payment hardening and recovered deployment
 
-- VERIFIED (SOURCE/TEST/REVIEW): Pull requests `#6` through `#9` hardened the
+- VERIFIED (SOURCE/TEST/REVIEW): Pull requests `#6` through `#11` hardened the
   storefront, authenticated administration, guest order proof, carts, wholesale
   inventory, rate limiting, request bounds, browser security policy, startup
-  indexes, and explicit CORS denial. The final release head is
-  `e0143c88b52ac150966f94b04997314f25c3522d`. The full gate passes 51 frontend
-  tests and 73 backend tests; the two explicitly disposable Atlas integrations
-  remain opt-in and skipped by default. The production frontend build, secret
-  scan, `git diff --check`, and root/frontend/backend dependency audits pass with
-  zero vulnerabilities. Independent release, cart-migration, and startup-index
-  reviews found no blocker.
+  indexes, explicit CORS denial, and separation of platform liveness probes from
+  customer abuse controls. The current release head is
+  `73e2aa870dbeba34a563c97e48d935213a470bd4`. The full gate passes 51 frontend
+  tests and 74 runnable backend tests; the two explicitly disposable Atlas
+  integrations remain opt-in and skipped by default. The production frontend
+  build, secret scan, `git diff --check`, and root/frontend/backend dependency
+  audits pass with zero vulnerabilities. Independent release, cart-migration,
+  startup-index, and health-check reviews found no blocker.
+- VERIFIED (MAILBOX/RENDER ROOT CAUSE): The exact canonical Chrome alias
+  `reflexity` resolved Profile 6 and `reflexityram@gmail.com`. Its unread Render
+  alert at 2026-08-26 01:15 America/Toronto reported
+  `HTTP health check failed with status code 429`; this was newer than and
+  distinct from the two earlier
+  failed-deployment messages. Static ordering showed `/health` and
+  `/api/health` behind the shared Mongo-backed `200 requests / 15 minutes`
+  customer limiter, so repeated platform probes could exhaust that IP bucket.
+  Both health routes now remain behind Helmet and exact-origin CORS but terminate
+  before the global limiter. Ordinary API routes remain behind the limiter.
 - VERIFIED (RENDER/ROOT CAUSE): Failed deployment
   `dep-da76jm3l550s73ahl970` reached MongoDB startup but found legacy non-unique
   sparse `carts.user_1` and `carts.sessionId_1` indexes where current ownership
@@ -35,8 +46,8 @@
   `stripePaymentIntentId_1` remains non-unique/non-sparse and
   `stripeCheckoutSessionId_1` remains unique/sparse.
 - VERIFIED (PRODUCTION/DEPLOY): Render deployment
-  `dep-da773l0u01pc73bpjghg` and Cloudflare Pages production deployment
-  `894e371e-7fc4-4cad-8863-24c17547a515` serve exact commit `e0143c88...`.
+  `dep-da77kl0u01pc73bpvmog` and Cloudflare Pages production deployment
+  `f9341666-205b-458f-933b-5ae524de1e8c` serve exact commit `73e2aa87...`.
   Render tracks `reflexityram-create/reflexity-ram` branch `main`, automatic
   deploys are enabled, root is `backend`, build is `npm ci`, start is
   `node src/server.js`, and health is `/api/health`. GitHub protects `main` with
@@ -49,16 +60,18 @@
   neither revealed nor changed. Cloudflare Pages builds with
   `npm ci && npm run build` from `frontend` to `dist`; Full (strict), minimum
   TLS 1.2, Always Use HTTPS, DMARC, and bounded CAA records are live.
-- VERIFIED (LIVE HTTP): The apex and backend health return HTTP 200; `www`
-  preserves `/shop?sort=price&page=2` through the HTTPS redirect. A trusted
-  Reflexity Origin receives its exact credentialed CORS grant, while an
-  untrusted Origin now receives HTTP 403 with the fixed body
-  `Request origin not allowed` and no reflected origin. Malformed catalog
-  filters return 400, unauthenticated admin reads return 401, public product
-  output omits management/provider fields, and `/api/wholesale` returns exactly
-  zero lots as requested. HSTS, enforced CSP without inline scripts,
-  `no-referrer`, `nosniff`, frame denial, and camera/microphone/geolocation
-  denial are present on the live storefront.
+- VERIFIED (LIVE HTTP): `GET /health`, `GET /api/health`,
+  `GET /api/health?probe=render`, and `HEAD /api/health` return HTTP 200 with no
+  rate-limit headers; an ordinary `/api/products` response still advertises the
+  200-request customer policy. A trusted Reflexity Origin receives its exact
+  credentialed CORS grant on health, while an untrusted Origin receives HTTP 403
+  with the fixed body `Request origin not allowed`. The apex, `/shop`,
+  `/wholesale`, feed, and sitemap return HTTP 200. Malformed catalog filters
+  return 400, unauthenticated admin reads return 401, public product output omits
+  management/provider fields, and `/api/wholesale` returns exactly zero lots as
+  requested. HSTS, enforced CSP without inline scripts, `no-referrer`,
+  `nosniff`, frame denial, and camera/microphone/geolocation denial are present
+  on the live storefront.
 - VERIFIED (BROWSER/EXACT PROFILE): Canonical alias `reflexity` resolved Profile
   6 and Google account `reflexityram@gmail.com` with `AUTOMATION_VERIFIED`; the
   exact extension instance rendered the signed-in admin principal. Products
@@ -67,6 +80,13 @@
   **Add wholesale listing**; the customer page places posted inventory before
   direct sourcing and shows no seeded lot. Desktop/admin and 390 x 844 customer
   checks had no horizontal overflow, alert, console warning, or console error.
+- VERIFIED (MAILBOX/POST-DEPLOY): After refreshing that same inbox, the newest
+  notification was the 01:31 Cloudflare Pages success for pull request `#11`;
+  the 01:15 Render 429 remained the newest Render alert and no later Render
+  failure was present. Render's provider API independently reports the exact
+  replacement deployment `live`; the inspected post-deploy logs show the
+  service started and contain no 429 or 5xx. Their only error was the deliberate
+  untrusted Origin probe, which returned the expected 403.
 - VERIFIED (STRIPE NO-TOUCH BOUNDARY): No Stripe provider resource, credential,
   product, price, webhook, source route, checkout file, payment flow, or payment
   database index was changed during this release. Startup filtering exists only
