@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { authApi } from './api';
+import { clearPersistedAuthSnapshot } from './authSession';
 
 const useAuthStore = create(
   persist(
@@ -17,7 +18,9 @@ const useAuthStore = create(
       initialize: async () => {
         const token = localStorage.getItem('rfx_token');
         if (!token) {
-          set({ isInitialized: true });
+          // Persist middleware can hydrate a user before this runs. Never retain
+          // that stale principal when the corresponding bearer is gone.
+          get().clearAuth();
           return;
         }
         try {
@@ -28,8 +31,7 @@ const useAuthStore = create(
           if (status === 401 || status === 403) {
             // Token is definitively invalid or expired — clear the session
             console.warn('[Auth] Token rejected by server, clearing session');
-            localStorage.removeItem('rfx_token');
-            set({ user: null, token: null, isInitialized: true });
+            get().clearAuth();
           } else {
             // Network error, timeout, or backend cold-start — keep persisted state
             console.warn('[Auth] /me request failed (network/server error), keeping persisted session. Status:', status);
@@ -75,12 +77,19 @@ const useAuthStore = create(
         set({ user, token, isLoading: false });
       },
 
+      // This is intentionally synchronous: token expiry must remove both the
+      // request credential and the persisted user before another admin route
+      // can render from hydrated state.
+      clearAuth: () => {
+        clearPersistedAuthSnapshot();
+        set({ user: null, token: null, isLoading: false, isInitialized: true });
+      },
+
       logout: async () => {
         try {
           await authApi.logout();
         } catch {}
-        localStorage.removeItem('rfx_token');
-        set({ user: null, token: null });
+        get().clearAuth();
       },
 
       updateProfile: async (data) => {

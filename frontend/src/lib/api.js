@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { clearPersistedAuthSnapshot } from './authSession';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'https://reflexity-ram.onrender.com/api';
 
@@ -34,7 +35,7 @@ api.interceptors.response.use(
     if (response?.status === 401) {
       if (response.data?.code === 'TOKEN_EXPIRED' || response.data?.error === 'Invalid token') {
         console.warn('[Auth] Token invalid or expired, clearing session');
-        localStorage.removeItem('rfx_token');
+        clearPersistedAuthSnapshot();
         window.dispatchEvent(new CustomEvent('auth:expired'));
       }
     }

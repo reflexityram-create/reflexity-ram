@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import useAuthStore from '@/lib/authStore';
 import useCartStore from '@/lib/cartStore';
+import { parseCallbackUser } from '@/lib/callbackUser';
 
 const ERROR_MESSAGES = {
   google_denied:         'Google sign-in was cancelled.',
@@ -43,7 +44,8 @@ export default function AuthCallback() {
     }
 
     try {
-      const user = JSON.parse(decodeURIComponent(userRaw));
+      const user = parseCallbackUser(userRaw);
+      if (!user) throw new Error('Invalid callback user');
       setGoogleAuth(token, user);
       fetchCart();
       toast.success(`Welcome, ${user.firstName}!`);

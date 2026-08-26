@@ -6,6 +6,7 @@ import { Toaster, toast } from "sonner";
 import ScrollToTop from "@/components/ScrollToTop";
 import { useApplyTheme, useTheme } from "@/lib/theme";
 import useAuthStore from "@/lib/authStore";
+import { AUTH_TOKEN_KEY } from "@/lib/authSession";
 
 // Public pages
 import Home from "@/pages/Home";
@@ -53,7 +54,7 @@ import AdminSecurity from "@/pages/admin/Security";
 export default function App() {
   useApplyTheme();
   const theme = useTheme((s) => s.theme);
-  const { initialize } = useAuthStore();
+  const { initialize, clearAuth } = useAuthStore();
 
   // Initialize auth state on app load
   useEffect(() => {
@@ -63,12 +64,28 @@ export default function App() {
   // Listen for token expiry events
   useEffect(() => {
     const handler = () => {
-      // Auth store already clears token; optionally show a toast
+      // The API interceptor removes persisted storage synchronously. Clear the
+      // in-memory Zustand state too, so protected routes cannot render stale
+      // administrator data between the rejected request and a reload.
+      clearAuth();
       toast.info("Your session has expired. Please sign in again.");
     };
     window.addEventListener("auth:expired", handler);
     return () => window.removeEventListener("auth:expired", handler);
-  }, []);
+  }, [clearAuth]);
+
+  // localStorage expiry/logout events are delivered to the other open tabs.
+  // Clear their hydrated administrator immediately instead of leaving a stale
+  // protected screen visible until its next API request fails.
+  useEffect(() => {
+    const syncLoggedOutTab = (event) => {
+      if (event.key !== AUTH_TOKEN_KEY || localStorage.getItem(AUTH_TOKEN_KEY)) return;
+      const current = useAuthStore.getState();
+      if (current.user || current.token) clearAuth();
+    };
+    window.addEventListener("storage", syncLoggedOutTab);
+    return () => window.removeEventListener("storage", syncLoggedOutTab);
+  }, [clearAuth]);
 
   return (
     <div className="App">

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   Archive,
@@ -112,7 +113,7 @@ function Field({ label, hint, wide = false, children }) {
   );
 }
 
-function WholesaleImageField({ disabled, image, onBusyChange, onRemove, onUpload }) {
+function WholesaleImageField({ disabled, image, onBusyChange, onError, onRemove, onStatus, onUpload }) {
   const inputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
 
@@ -126,10 +127,10 @@ function WholesaleImageField({ disabled, image, onBusyChange, onRemove, onUpload
       const { data } = await adminApi.uploadWholesaleImage(formData);
       const uploaded = data.image || data.images?.[0];
       if (!uploaded?.url || !uploaded?.publicId) throw new Error('Upload response did not include a complete image');
-      await onUpload(uploaded);
-      toast.success('Wholesale image uploaded');
+      const accepted = await onUpload(uploaded);
+      if (accepted !== false) onStatus('Wholesale image uploaded');
     } catch (error) {
-      toast.error(apiMessage(error, 'Image upload failed'));
+      onError(apiMessage(error, 'Image upload failed'));
     } finally {
       setUploading(false);
       onBusyChange(false);
@@ -170,6 +171,8 @@ function LotEditor({ initialLot, onClose, onPersisted, onSaved, onStale }) {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [editorError, setEditorError] = useState('');
+  const [editorStatus, setEditorStatus] = useState('');
   const dialogRef = useRef(null);
   const sessionUploadsRef = useRef(new Set());
   const attachedPublicIdRef = useRef(initialLot?.image?.publicId || null);
@@ -184,7 +187,16 @@ function LotEditor({ initialLot, onClose, onPersisted, onSaved, onStale }) {
     aliveRef.current = true;
     const previouslyFocused = document.activeElement;
     const previousOverflow = document.body.style.overflow;
+    // The editor is portalled to body so the complete signed-in shell (including
+    // AppLayout's sidebar) can be made inert without also disabling the dialog.
+    const appRoot = document.getElementById('root');
+    const rootWasInert = appRoot?.hasAttribute('inert');
+    const previousRootAriaHidden = appRoot?.getAttribute('aria-hidden');
     document.body.style.overflow = 'hidden';
+    if (appRoot) {
+      appRoot.setAttribute('inert', '');
+      appRoot.setAttribute('aria-hidden', 'true');
+    }
 
     const focusEditor = window.requestAnimationFrame(() => {
       dialogRef.current?.querySelector('[autofocus]')?.focus();
@@ -215,6 +227,12 @@ function LotEditor({ initialLot, onClose, onPersisted, onSaved, onStale }) {
       window.cancelAnimationFrame(focusEditor);
       window.removeEventListener('keydown', containFocus);
       document.body.style.overflow = previousOverflow;
+      if (appRoot) {
+        if (rootWasInert) appRoot.setAttribute('inert', '');
+        else appRoot.removeAttribute('inert');
+        if (previousRootAriaHidden === null) appRoot.removeAttribute('aria-hidden');
+        else appRoot.setAttribute('aria-hidden', previousRootAriaHidden);
+      }
       if (previouslyFocused instanceof HTMLElement && previouslyFocused.isConnected) previouslyFocused.focus();
       const abandoned = [...sessionUploadsRef.current];
       sessionUploadsRef.current.clear();
@@ -224,6 +242,20 @@ function LotEditor({ initialLot, onClose, onPersisted, onSaved, onStale }) {
 
   const setField = (field, value) => setForm((current) => ({ ...current, [field]: value }));
 
+  function announceError(message) {
+    const value = String(message || 'The wholesale action could not be completed.');
+    setEditorStatus('');
+    setEditorError(value);
+    toast.error(value);
+  }
+
+  function announceStatus(message) {
+    const value = String(message || 'Wholesale listing updated.');
+    setEditorError('');
+    setEditorStatus(value);
+    toast.success(value);
+  }
+
   async function deleteAsset(publicId, notify = false) {
     if (!publicId) return true;
     try {
@@ -231,7 +263,7 @@ function LotEditor({ initialLot, onClose, onPersisted, onSaved, onStale }) {
       return true;
     } catch (error) {
       if ([404, 409].includes(error?.response?.status)) return true;
-      if (notify) toast.error(apiMessage(error, 'The unused image could not be removed.'));
+      if (notify) announceError(apiMessage(error, 'The unused image could not be removed.'));
       return false;
     }
   }
@@ -249,7 +281,7 @@ function LotEditor({ initialLot, onClose, onPersisted, onSaved, onStale }) {
   async function acceptUpload(uploaded) {
     if (!aliveRef.current) {
       await deleteAsset(uploaded.publicId);
-      return;
+      return false;
     }
     const previous = form.image?.publicId;
     sessionUploadsRef.current.add(uploaded.publicId);
@@ -259,6 +291,7 @@ function LotEditor({ initialLot, onClose, onPersisted, onSaved, onStale }) {
       const removed = await deleteAsset(previous, true);
       if (!removed) sessionUploadsRef.current.add(previous);
     }
+    return true;
   }
 
   async function removeImage() {
@@ -276,7 +309,7 @@ function LotEditor({ initialLot, onClose, onPersisted, onSaved, onStale }) {
     setClosing(true);
     busyRef.current = true;
     const cleaned = await cleanSessionUploads();
-    if (!cleaned) toast.error('One unused image could not be cleaned up immediately. Cleanup will retry as the editor closes.');
+    if (!cleaned) announceError('One unused image could not be cleaned up immediately. Cleanup will retry as the editor closes.');
     onClose();
   }
   requestCloseRef.current = requestClose;
@@ -304,10 +337,10 @@ function LotEditor({ initialLot, onClose, onPersisted, onSaved, onStale }) {
     setSaving(true);
     try {
       const lot = await persistFields();
-      toast.success(lot.status === 'published' ? 'Live listing updated' : 'Draft saved');
+      announceStatus(lot.status === 'published' ? 'Live listing updated' : 'Draft saved');
       await onSaved(lot);
     } catch (error) {
-      toast.error(error?.response ? apiMessage(error, 'Could not save this listing') : error.message);
+      announceError(error?.response ? apiMessage(error, 'Could not save this listing') : error.message);
       if (error?.response?.status === 409) await onStale();
     } finally {
       setSaving(false);
@@ -321,16 +354,16 @@ function LotEditor({ initialLot, onClose, onPersisted, onSaved, onStale }) {
       const draft = await persistFields();
       savedDraft = draft;
       if (draft.status === 'published') {
-        toast.success('Live listing updated');
+        announceStatus('Live listing updated');
         await onSaved(draft);
         return;
       }
       const { data } = await adminApi.publishWholesaleLot(draft.id, draft.version);
-      toast.success('Wholesale listing published');
+      announceStatus('Wholesale listing published');
       await onSaved(data.lot);
     } catch (error) {
       const message = error?.response ? apiMessage(error, 'Could not publish this listing') : error.message;
-      toast.error(savedDraft?.status === 'draft' ? `Saved as a private draft. ${message}` : message);
+      announceError(savedDraft?.status === 'draft' ? `Saved as a private draft. ${message}` : message);
       if (savedDraft) await onPersisted(savedDraft);
       if (error?.response?.status === 409) await onStale();
     } finally {
@@ -338,10 +371,12 @@ function LotEditor({ initialLot, onClose, onPersisted, onSaved, onStale }) {
     }
   }
 
-  return (
-    <div aria-labelledby="wholesale-editor-title" aria-modal="true" className="fixed inset-0 z-50 flex justify-end" ref={dialogRef} role="dialog">
+  return createPortal(
+    <div aria-labelledby="wholesale-editor-title" aria-modal="true" className="wholesale-admin fixed inset-0 z-50 flex justify-end" ref={dialogRef} role="dialog">
       <button aria-label="Close wholesale editor" className="absolute inset-0 bg-black/75 backdrop-blur-sm" disabled={busy} onClick={requestClose} tabIndex={-1} type="button" />
       <section className="wa-editor relative z-10 h-full w-full max-w-3xl overflow-y-auto border-l shadow-2xl">
+        <p aria-atomic="true" aria-live="assertive" className="sr-only" role="alert">{editorError}</p>
+        <p aria-atomic="true" aria-live="polite" className="sr-only" role="status">{editorStatus}</p>
         <div className="wa-editor-bar sticky top-0 z-10 flex items-start justify-between border-b px-5 py-4 backdrop-blur sm:px-7">
           <div>
             <p className="wa-accent-text text-[10px] font-bold uppercase tracking-[0.14em]">{isEdit ? form.lotCode || 'Wholesale lot' : 'New wholesale lot'}</p>
@@ -368,7 +403,15 @@ function LotEditor({ initialLot, onClose, onPersisted, onSaved, onStale }) {
                 <input className="input font-mono" maxLength="96" onChange={(event) => setField('mpn', event.target.value)} placeholder="M393A4K40DB3-CWE" value={form.mpn} />
               </Field>
               <Field label="Listing image" wide>
-                <WholesaleImageField disabled={saving || closing} image={form.image} onBusyChange={setUploading} onRemove={removeImage} onUpload={acceptUpload} />
+                <WholesaleImageField
+                  disabled={saving || closing}
+                  image={form.image}
+                  onBusyChange={setUploading}
+                  onError={announceError}
+                  onRemove={removeImage}
+                  onStatus={announceStatus}
+                  onUpload={acceptUpload}
+                />
               </Field>
             </div>
           </section>
@@ -439,7 +482,8 @@ function LotEditor({ initialLot, onClose, onPersisted, onSaved, onStale }) {
           </div>
         </form>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -584,7 +628,7 @@ export default function WholesaleAdmin() {
 
   return (
     <AppLayout requireAdmin>
-      <div aria-hidden={editorLot ? 'true' : undefined} className="wholesale-admin min-h-full p-5 sm:p-8" inert={editorLot ? true : undefined}>
+      <div className="wholesale-admin min-h-full p-5 sm:p-8">
         <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="wa-accent-text mb-2 text-[10px] font-bold uppercase tracking-[0.15em]">Products / Wholesale</p>
@@ -710,7 +754,7 @@ export default function WholesaleAdmin() {
         </section>
       </div>
 
-      {editorLot && <div className="wholesale-admin"><LotEditor initialLot={editorLot} key={editorLot.id || 'new'} onClose={closeEditor} onPersisted={persisted} onSaved={saved} onStale={stale} /></div>}
+      {editorLot && <LotEditor initialLot={editorLot} key={editorLot.id || 'new'} onClose={closeEditor} onPersisted={persisted} onSaved={saved} onStale={stale} />}
     </AppLayout>
   );
 }
