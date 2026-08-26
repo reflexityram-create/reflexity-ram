@@ -24,7 +24,10 @@ test('the HTTP seed route cannot be enabled in production', () => {
 
 test('all application model indexes are awaited before listening', () => {
   assert.match(serverSource, /const startupModels = \[/);
+  assert.match(serverSource, /connect\(process\.env\.MONGODB_URI, \{ autoIndex: false \}\)/);
   assert.match(serverSource, /await Promise\.all\(startupModels\.map\(\(model\) => model\.init\(\)\)\)/);
+  assert.match(serverSource, /await ensureCartOwnershipIndexes\(\)/);
+  assert.match(serverSource, /await Promise\.all\(startupModels\.map\(\(model\) => model\.ensureIndexes\(\)\)\)/);
   assert.match(serverSource, /startupModels\.length/);
 });
 
