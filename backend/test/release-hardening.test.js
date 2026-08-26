@@ -15,6 +15,10 @@ test('production CORS is restricted to the verified Reflexity origins', () => {
   assert.match(serverSource, /https:\/\/reflexity-ram-3rn\.pages\.dev/);
   assert.doesNotMatch(serverSource, /reflexity-ram2\.pages\.dev|reflexity-ram\.pages\.dev|reflexityram\.pages\.dev/);
   assert.match(serverSource, /filter\(\(origin\) => ownedProductionOrigins\.includes\(origin\)\)/);
+  assert.match(serverSource, /new Error\('Request origin not allowed'\)/);
+  assert.match(serverSource, /error\.status = 403/);
+  assert.match(serverSource, /error\.publicMessage = 'Request origin not allowed'/);
+  assert.doesNotMatch(serverSource, /CORS: origin '\$\{origin\}' not allowed/);
 });
 
 test('the HTTP seed route cannot be enabled in production', () => {

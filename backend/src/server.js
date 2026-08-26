@@ -84,7 +84,10 @@ app.use(
       if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        callback(new Error(`CORS: origin '${origin}' not allowed`));
+        const error = new Error('Request origin not allowed');
+        error.status = 403;
+        error.publicMessage = 'Request origin not allowed';
+        callback(error);
       }
     },
     credentials: true,
@@ -183,7 +186,8 @@ app.use((err, req, res, next) => {
   console.error(err.stack);
   const status = err.status || 500;
   res.status(status).json({
-    error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message,
+    error: err.publicMessage
+      || (process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message),
   });
 });
 
