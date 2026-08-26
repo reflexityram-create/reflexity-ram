@@ -200,6 +200,17 @@ const startupModels = [
   WholesaleLot,
   WholesaleMediaAsset,
 ];
+const paymentProviderOrderIndexFields = new Set([
+  'stripePaymentIntentId',
+  'stripeCheckoutSessionId',
+]);
+const startupIndexDeclarations = (model) => (
+  model === Order
+    ? model.schema.indexes().filter(([keys]) => (
+      Object.keys(keys).every((field) => !paymentProviderOrderIndexFields.has(field))
+    ))
+    : model.schema.indexes()
+);
 
 mongoose
   // Disable implicit index builds so the legacy cart indexes can be upgraded
@@ -209,10 +220,14 @@ mongoose
     console.log('✅ MongoDB connected');
     // init() creates fresh collections while autoIndex is disabled. The cart
     // migration then converts legacy owner indexes without dropping them, and
-    // ensureIndexes() installs every declared index before traffic is accepted.
+    // ensureIndexes() installs every non-payment index before traffic is
+    // accepted. Payment-provider indexes are intentionally managed separately
+    // and must not be rewritten as a side effect of an unrelated release.
     await Promise.all(startupModels.map((model) => model.init()));
     await ensureCartOwnershipIndexes();
-    await Promise.all(startupModels.map((model) => model.ensureIndexes()));
+    await Promise.all(startupModels.map((model) => model.ensureIndexes({
+      toCreate: startupIndexDeclarations(model),
+    })));
     console.log(`✅ MongoDB indexes ready (${startupModels.length} models)`);
     try {
       await fixMerchantProductData();
