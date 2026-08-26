@@ -96,6 +96,21 @@ app.use(
   })
 );
 
+// ─── Health Check ──────────────────────────────────────────────────────────────
+// Keep liveness probes ahead of request rate limiting. Treating repeated
+// platform probes as customer traffic can exhaust the global bucket and make a
+// healthy instance report HTTP 429.
+const healthHandler = (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    env: process.env.NODE_ENV || 'development',
+    stripe: STRIPE_ENABLED ? 'enabled' : 'disabled (no valid key)',
+  });
+};
+app.get('/health', healthHandler);
+app.get('/api/health', healthHandler);
+
 // ─── Rate Limiting ─────────────────────────────────────────────────────────────
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -129,20 +144,6 @@ if (STRIPE_ENABLED) {
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());
-
-// ─── Health Check ──────────────────────────────────────────────────────────────
-// Registered at BOTH /health and /api/health to satisfy Railway, Render, and
-// any other platform that may probe either path.
-const healthHandler = (req, res) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    env: process.env.NODE_ENV || 'development',
-    stripe: STRIPE_ENABLED ? 'enabled' : 'disabled (no valid key)',
-  });
-};
-app.get('/health', healthHandler);
-app.get('/api/health', healthHandler);
 
 // ─── Routes ────────────────────────────────────────────────────────────────────
 app.use('/api/auth', authLimiter, authRoutes);

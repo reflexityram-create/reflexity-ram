@@ -46,6 +46,20 @@ test('shared abuse controls and request parsers have bounded production behavior
   assert.match(serverSource, /express\.urlencoded\(\{ extended: true, limit: '1mb' \}\)/);
 });
 
+test('platform liveness probes bypass customer rate limiting', () => {
+  const corsMiddleware = serverSource.indexOf('cors({');
+  const rootHealth = serverSource.indexOf("app.get('/health', healthHandler)");
+  const apiHealth = serverSource.indexOf("app.get('/api/health', healthHandler)");
+  const globalLimiter = serverSource.indexOf('app.use(globalLimiter)');
+  const productRoutes = serverSource.indexOf("app.use('/api/products', productRoutes)");
+  assert.ok(corsMiddleware >= 0 && rootHealth >= 0 && apiHealth >= 0 && globalLimiter >= 0 && productRoutes >= 0);
+  assert.ok(corsMiddleware < rootHealth, 'CORS must still reject untrusted Origins before health responses');
+  assert.ok(rootHealth < globalLimiter);
+  assert.ok(apiHealth < globalLimiter);
+  assert.ok(globalLimiter < productRoutes, 'customer API routes must remain rate limited');
+  assert.match(serverSource, /liveness probes[\s\S]*?customer traffic[\s\S]*?HTTP 429/i);
+});
+
 test('OAuth fragments carry no duplicated profile data and cancellation uses an exact claim', () => {
   assert.match(authSource, /\/auth\/callback#token=\$\{token\}/);
   assert.doesNotMatch(authSource, /userData|&user=/);
