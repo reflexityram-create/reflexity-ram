@@ -36,9 +36,8 @@ const cartSchema = new mongoose.Schema({
 
 // TTL index to auto-delete expired guest carts
 cartSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-// Exactly one cart may exist for each owner. Existing deployments must merge
-// duplicate rows before these unique indexes can build (see the migration
-// helper); failing closed is safer than allowing future duplicate carts.
+// Exactly one cart may exist for each owner. Startup upgrades the legacy
+// non-unique indexes in place before asking Mongoose to ensure this schema.
 cartSchema.index({ user: 1 }, { unique: true, sparse: true });
 cartSchema.index({ sessionId: 1 }, { unique: true, sparse: true });
 

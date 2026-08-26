@@ -20,6 +20,7 @@ const sitemapRoutes = require('./routes/sitemap');
 const feedRoutes = require('./routes/feed');
 const reviewRoutes = require('./routes/reviews');
 const { fixMerchantProductData } = require('./migrations/fixMerchantProductData');
+const { ensureCartOwnershipIndexes } = require('./migrations/ensureCartOwnershipIndexes');
 const { syncActiveProductPrices } = require('./migrations/syncStoreCurrency');
 const WholesaleLot = require('./models/WholesaleLot');
 const WholesaleMediaAsset = require('./models/WholesaleMediaAsset');
@@ -201,13 +202,17 @@ const startupModels = [
 ];
 
 mongoose
-  .connect(process.env.MONGODB_URI)
+  // Disable implicit index builds so the legacy cart indexes can be upgraded
+  // before Mongoose attempts to enforce their new uniqueness options.
+  .connect(process.env.MONGODB_URI, { autoIndex: false })
   .then(async () => {
     console.log('✅ MongoDB connected');
-    // Do not accept traffic until every application model has installed its
-    // declared indexes. This makes uniqueness and TTL guarantees effective
-    // before the first request, including on a fresh database.
+    // init() creates fresh collections while autoIndex is disabled. The cart
+    // migration then converts legacy owner indexes without dropping them, and
+    // ensureIndexes() installs every declared index before traffic is accepted.
     await Promise.all(startupModels.map((model) => model.init()));
+    await ensureCartOwnershipIndexes();
+    await Promise.all(startupModels.map((model) => model.ensureIndexes()));
     console.log(`✅ MongoDB indexes ready (${startupModels.length} models)`);
     try {
       await fixMerchantProductData();
