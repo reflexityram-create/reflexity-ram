@@ -40,6 +40,9 @@
     --fg-faint: #6b6d73;
     --fg-dim: #85878d;
     --fg-on-primary: #17181a;
+    --policy-heading: #ffffff;
+    --policy-link: #93b4ff;
+    --policy-strong: #e5e7eb;
 
     /* Inputs */
     --input-bg: rgba(255, 255, 255, 0.04);
@@ -139,6 +142,9 @@ html.light {
     --fg-faint: #a6a8ad;
     --fg-dim: #55585e;
     --fg-on-primary: #17181a;
+    --policy-heading: #171717;
+    --policy-link: #1557a6;
+    --policy-strong: #252525;
 
     --input-bg: #fafaf7;
     --input-bg-focus: #ffffff;
@@ -819,14 +825,14 @@ html.light .admin-label {
 
 /* ─── Editable policy page content ─────────────────────────────────────────── */
 .policy-content > * + * { margin-top: 0.85rem; }
-.policy-content h2 { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.01em; color: #fff; margin-top: 1.75rem; margin-bottom: 0.5rem; }
-.policy-content h3 { font-size: 1.05rem; font-weight: 600; color: #fff; margin-top: 1.25rem; }
+.policy-content h2 { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.01em; color: var(--policy-heading); margin-top: 1.75rem; margin-bottom: 0.5rem; }
+.policy-content h3 { font-size: 1.05rem; font-weight: 600; color: var(--policy-heading); margin-top: 1.25rem; }
 .policy-content p { line-height: 1.7; }
 .policy-content ul { list-style: disc; padding-left: 1.25rem; }
 .policy-content ol { list-style: decimal; padding-left: 1.25rem; }
 .policy-content li { margin-top: 0.35rem; }
 .policy-content li::marker { color: #6b7280; }
-.policy-content a { color: #93b4ff; text-decoration: underline; }
-.policy-content strong { color: #e5e7eb; font-weight: 600; }
+.policy-content a { color: var(--policy-link); text-decoration: underline; }
+.policy-content strong { color: var(--policy-strong); font-weight: 600; }
 .policy-editor h2 { margin-top: 1rem; }
 .policy-editor:empty::before { content: "Start typing…"; color: #4b5563; }

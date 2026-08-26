@@ -24,9 +24,20 @@ export default function OrderSuccess() {
 
   useEffect(() => {
     if (!orderNumber) return;
-    // Guest orders require the matching email (?email=...) — CheckoutReturn
-    // passes it through after verifying the Stripe session server-side.
-    const guestEmail = new URLSearchParams(window.location.search).get('email') || undefined;
+    // Guest proof arrives in a client-only fragment and then lives only for
+    // this browser session. Legacy query links are cleaned before the API call.
+    const storageKey = `rfx_order_email:${orderNumber}`;
+    const hashEmail = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('email');
+    const queryEmail = new URLSearchParams(window.location.search).get('email');
+    let storedEmail;
+    try { storedEmail = window.sessionStorage.getItem(storageKey); } catch { /* storage unavailable */ }
+    const guestEmail = hashEmail || queryEmail || storedEmail || undefined;
+    if (guestEmail) {
+      try { window.sessionStorage.setItem(storageKey, guestEmail); } catch { /* storage unavailable */ }
+    }
+    if (window.location.search || window.location.hash) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
     ordersApi.getByNumber(orderNumber, guestEmail)
       .then(({ data }) => setOrder(data.order))
       .catch(() => setError('Order not found'))

@@ -1,6 +1,6 @@
 import "@/App.css";
 import { lazy, Suspense, useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Toaster, toast } from "sonner";
 
 import ScrollToTop from "@/components/ScrollToTop";
@@ -78,19 +78,27 @@ export default function App() {
   // Clear their hydrated administrator immediately instead of leaving a stale
   // protected screen visible until its next API request fails.
   useEffect(() => {
-    const syncLoggedOutTab = (event) => {
-      if (event.key !== AUTH_TOKEN_KEY || localStorage.getItem(AUTH_TOKEN_KEY)) return;
+    const syncAuthTab = (event) => {
+      if (event.key !== AUTH_TOKEN_KEY) return;
       const current = useAuthStore.getState();
-      if (current.user || current.token) clearAuth();
+      const nextToken = event.newValue;
+      if (!nextToken) {
+        if (current.user || current.token) clearAuth();
+        return;
+      }
+      // A login in another tab replaces the bearer. Revalidate /me so the
+      // visible principal and role always belong to the current token.
+      if (current.token !== nextToken) void current.initialize();
     };
-    window.addEventListener("storage", syncLoggedOutTab);
-    return () => window.removeEventListener("storage", syncLoggedOutTab);
+    window.addEventListener("storage", syncAuthTab);
+    return () => window.removeEventListener("storage", syncAuthTab);
   }, [clearAuth]);
 
   return (
     <div className="App">
       <BrowserRouter>
         <ScrollToTop />
+        <AnalyticsTracker />
         <Routes>
           {/* Store */}
           <Route path="/" element={<Home />} />
@@ -166,5 +174,21 @@ export default function App() {
       </BrowserRouter>
     </div>
   );
+}
+
+function AnalyticsTracker() {
+  const location = useLocation();
+  useEffect(() => {
+    if (typeof window.gtag !== "function") return;
+    // Never include search or hash: OAuth and order flows may carry sensitive
+    // one-time values there before the router replaces the URL.
+    const safePath = location.pathname;
+    window.gtag("event", "page_view", {
+      page_title: document.title,
+      page_location: `${window.location.origin}${safePath}`,
+      page_path: location.pathname,
+    });
+  }, [location.pathname]);
+  return null;
 }
 // Triggering redeploy at Thu May 21 19:32:15 UTC 2026

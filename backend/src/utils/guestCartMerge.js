@@ -1,5 +1,6 @@
 const Cart = require('../models/Cart');
 const Product = require('../models/Product');
+const { validGuestSessionId } = require('./guestSession');
 
 const MAX_CART_ITEM_QTY = 99;
 
@@ -96,6 +97,7 @@ const mergeCartItems = (existingItems = [], guestItems = [], products = []) => {
 };
 
 const mergeGuestCartForUser = async (userId, sessionId) => {
+  sessionId = validGuestSessionId(sessionId);
   if (!sessionId) return;
 
   const guestCart = await Cart.findOne({ sessionId });

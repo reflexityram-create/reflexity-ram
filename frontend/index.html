@@ -5,27 +5,13 @@
         <meta name="viewport" content="width=device-width, initial-scale=1" />
 
         <!-- Apply saved theme (default: light) before first paint to avoid a flash -->
-        <script>
-            (function () {
-                try {
-                    var t = "light";
-                    var s = localStorage.getItem("reflexity-theme");
-                    if (s) { var p = JSON.parse(s); if (p && p.state && p.state.theme) t = p.state.theme; }
-                    document.documentElement.classList.add(t);
-                } catch (e) { document.documentElement.classList.add("light"); }
-            })();
-        </script>
+        <script src="/theme-bootstrap.js"></script>
 
         <meta name="theme-color" content="#f4f4f6" />
 
         <!-- Google Analytics (GA4) -->
         <script async src="https://www.googletagmanager.com/gtag/js?id=G-LHK5KZSYG6"></script>
-        <script>
-            window.dataLayer = window.dataLayer || [];
-            function gtag() { dataLayer.push(arguments); }
-            gtag("js", new Date());
-            gtag("config", "G-LHK5KZSYG6");
-        </script>
+        <script src="/analytics-bootstrap.js"></script>
         <meta name="description" content="Shop tested DDR4 and DDR5 memory for desktops, laptops, and servers. Clear compatibility details, warranty coverage, and shipping from Toronto." />
 
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -52,7 +38,7 @@
         />
 
         <title>Tested DDR4 & DDR5 RAM in Canada — Reflexity RAM</title>
-        <script>window.addEventListener("error",function(e){if(e.error instanceof DOMException&&e.error.name==="DataCloneError"&&e.message&&e.message.includes("PerformanceServerTiming")){e.stopImmediatePropagation();e.preventDefault()}},true);</script>
+        <script src="/error-bootstrap.js"></script>
 
     </head>
     <body>

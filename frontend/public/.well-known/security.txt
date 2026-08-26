@@ -1,0 +1,5 @@
+Contact: mailto:reflexityram@gmail.com
+Canonical: https://reflexityram.com/.well-known/security.txt
+Policy: https://reflexityram.com/privacy
+Preferred-Languages: en
+Expires: 2027-08-26T00:00:00Z

@@ -45,6 +45,9 @@ function createAuthenticate({ jwtImpl = jwt, UserModel = User } = {}) {
     if (!user || !user.isActive) {
       return res.status(401).json({ error: 'User not found or deactivated' });
     }
+    if (Number(decoded.av ?? 0) !== Number(user.authVersion || 0)) {
+      return res.status(401).json({ error: 'Session revoked', code: 'SESSION_REVOKED' });
+    }
 
     req.user = user;
     next();
@@ -65,22 +68,31 @@ const authenticate = createAuthenticate();
 /**
  * Optional authentication — attaches user if token present, but doesn't block
  */
-const optionalAuth = async (req, res, next) => {
-  try {
+function createOptionalAuth({ jwtImpl = jwt, UserModel = User } = {}) {
+  return async (req, res, next) => {
+    const header = authorizationHeader(req);
     const { token } = accessTokenFromRequest(req);
-
-    if (token) {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const user = await User.findById(decoded.id).select('-password');
-      if (user && user.isActive) {
-        req.user = user;
+    try {
+      if (!token) {
+        if (header.present) return res.status(401).json({ error: 'Invalid token' });
+        return next();
       }
+      const decoded = jwtImpl.verify(token, process.env.JWT_SECRET);
+      const user = await UserModel.findById(decoded.id).select('-password');
+      if (!user || !user.isActive || Number(decoded.av ?? 0) !== Number(user.authVersion || 0)) {
+        if (header.present) return res.status(401).json({ error: 'Invalid token' });
+        return next();
+      }
+      req.user = user;
+      return next();
+    } catch (err) {
+      if (header.present) return res.status(401).json({ error: 'Invalid token' });
+      return next();
     }
-  } catch (err) {
-    // Silently ignore auth errors for optional auth
-  }
-  next();
-};
+  };
+}
+
+const optionalAuth = createOptionalAuth();
 
 /**
  * Require admin role
@@ -98,8 +110,8 @@ const requireAdmin = (req, res, next) => {
 /**
  * Generate access token
  */
-const generateAccessToken = (userId) => {
-  return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
+const generateAccessToken = (userId, authVersion = 0) => {
+  return jwt.sign({ id: userId, av: Number(authVersion) || 0 }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   });
 };
@@ -132,6 +144,7 @@ module.exports = {
   authorizationHeader,
   bearerToken,
   createAuthenticate,
+  createOptionalAuth,
   optionalAuth,
   requireAdmin,
   requireExplicitBearer,

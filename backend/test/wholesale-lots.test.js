@@ -17,7 +17,7 @@ const {
   finishWholesaleMediaDeletion,
   reserveWholesaleMediaDeletion,
 } = require('../src/utils/wholesaleMedia');
-const { createAuthenticate, requireExplicitBearer } = require('../src/middleware/auth');
+const { createAuthenticate, createOptionalAuth, requireExplicitBearer } = require('../src/middleware/auth');
 const { createAdminWholesaleRouter } = require('../src/routes/adminWholesale');
 const { createWholesaleRouter, PUBLIC_CANDIDATE_LIMIT } = require('../src/routes/wholesale');
 const { createUploadRouter } = require('../src/routes/upload');
@@ -320,6 +320,42 @@ test('an Authorization header never falls back to a valid cookie and lowercase b
   assert.equal(malformed.status, 401);
 });
 
+test('legacy JWTs are accepted only while the user remains on auth version zero', async () => {
+  const authenticate = createAuthenticate({
+    jwtImpl: { verify: () => ({ id: objectId }) },
+    UserModel: { findById: () => ({ select: async () => ({ _id: objectId, isActive: true, authVersion: 1 }) }) },
+  });
+  const rejected = await middlewareResult(authenticate, {
+    headers: { authorization: 'Bearer legacy-token' },
+  });
+  assert.equal(rejected.status, 401);
+  assert.equal(rejected.body.code, 'SESSION_REVOKED');
+
+  const optional = await middlewareResult(createOptionalAuth({
+    jwtImpl: { verify: () => ({ id: objectId }) },
+    UserModel: { findById: () => ({ select: async () => ({ _id: objectId, isActive: true, authVersion: 1 }) }) },
+  }), {
+    headers: { authorization: 'Bearer legacy-token' },
+  });
+  assert.equal(optional.status, 401);
+
+  const legacyCompatible = await middlewareResult(createAuthenticate({
+    jwtImpl: { verify: () => ({ id: objectId }) },
+    UserModel: { findById: () => ({ select: async () => ({ _id: objectId, isActive: true, authVersion: 0 }) }) },
+  }), { headers: { authorization: 'Bearer legacy-token' } });
+  assert.equal(legacyCompatible.next, true);
+});
+
+test('optional auth rejects explicit malformed or invalid credentials but preserves anonymous cookies', async () => {
+  const optional = createOptionalAuth({ jwtImpl: { verify: () => { throw new Error('invalid'); } } });
+  const malformed = await middlewareResult(optional, { headers: { authorization: 'Basic not-a-bearer' } });
+  assert.equal(malformed.status, 401);
+  const invalid = await middlewareResult(optional, { headers: { authorization: 'Bearer invalid' } });
+  assert.equal(invalid.status, 401);
+  const anonymous = await middlewareResult(optional, { cookies: { accessToken: 'invalid-cookie' } });
+  assert.equal(anonymous.next, true);
+});
+
 test('publication requires a complete quote-only wholesale lot and public output is projected', () => {
   assert.equal(publicationErrors(completeLot).length, 0);
   assert.equal(isPublicWholesaleLot(completeLot), true);
@@ -378,7 +414,7 @@ test('Mongo indexes and startup enforce one wholesale image owner before traffic
     readFile(new URL('../src/server.js', `file://${__filename}`), 'utf8'),
     readFile(new URL('../src/config/cloudinary.js', `file://${__filename}`), 'utf8'),
   ]);
-  assert.match(server, /await Promise\.all\(\[WholesaleLot\.init\(\), WholesaleMediaAsset\.init\(\)\]\);[\s\S]*?app\.listen/);
+  assert.match(server, /const startupModels = \[[\s\S]*?WholesaleLot,[\s\S]*?WholesaleMediaAsset,[\s\S]*?\];[\s\S]*?await Promise\.all\(startupModels\.map\(\(model\) => model\.init\(\)\)\);[\s\S]*?app\.listen/);
   assert.match(cloudinary, /public_id: `wholesale-\$\{crypto\.randomUUID\(\)\}`/);
   assert.match(cloudinary, /overwrite: false/);
 });

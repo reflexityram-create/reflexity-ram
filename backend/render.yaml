@@ -3,6 +3,7 @@ services:
     name: reflexity-ram-api
     env: node
     plan: free
+    rootDir: backend
     buildCommand: npm ci
     startCommand: node src/server.js
     healthCheckPath: /api/health

@@ -29,12 +29,18 @@ const cartSchema = new mongoose.Schema({
   },
 }, {
   timestamps: true,
+  // Reject stale read-modify-save writes instead of silently overwriting a
+  // concurrent tab's cart mutation. Routes retry the bounded conflict.
+  optimisticConcurrency: true,
 });
 
 // TTL index to auto-delete expired guest carts
 cartSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-cartSchema.index({ user: 1 }, { sparse: true });
-cartSchema.index({ sessionId: 1 }, { sparse: true });
+// Exactly one cart may exist for each owner. Existing deployments must merge
+// duplicate rows before these unique indexes can build (see the migration
+// helper); failing closed is safer than allowing future duplicate carts.
+cartSchema.index({ user: 1 }, { unique: true, sparse: true });
+cartSchema.index({ sessionId: 1 }, { unique: true, sparse: true });
 
 // Virtual for subtotal
 cartSchema.virtual('subtotal').get(function () {

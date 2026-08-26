@@ -76,6 +76,11 @@ const useAuthStore = create(
         localStorage.setItem('rfx_token', token);
         set({ user, token, isLoading: false });
       },
+      setAuthToken: (token) => {
+        localStorage.setItem('rfx_token', token);
+        set({ user: null, token, isLoading: false, isInitialized: true });
+      },
+      setAuthenticatedUser: (user) => set({ user, isLoading: false, isInitialized: true }),
 
       // This is intentionally synchronous: token expiry must remove both the
       // request credential and the persisted user before another admin route
@@ -104,7 +109,11 @@ const useAuthStore = create(
 
       changePassword: async (data) => {
         try {
-          await authApi.changePassword(data);
+          const response = await authApi.changePassword(data);
+          const token = response.data?.token;
+          if (!token) throw new Error('Password change did not return a replacement session');
+          localStorage.setItem('rfx_token', token);
+          set({ token });
           return { success: true };
         } catch (err) {
           return { success: false, message: err.response?.data?.error || 'Failed to change password' };

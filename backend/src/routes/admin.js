@@ -9,6 +9,7 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 const { sendShippingNotificationEmail } = require('../utils/email');
 const { ensureStripePrice, syncStripeProductDetails } = require('../utils/stripeSync');
 const { cancelOrderAndRestoreStock } = require('../utils/stock');
+const { ORDER_STATUSES, canTransitionOrder } = require('../utils/orderTransitions');
 
 const router = express.Router();
 
@@ -378,7 +379,7 @@ router.patch(
   [
     param('id').custom((v) => isValidObjectId(v)).withMessage('Invalid order ID'),
     body('status')
-      .isIn(['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'])
+      .isIn(ORDER_STATUSES.filter((status) => status !== 'refunded'))
       .withMessage('Invalid status'),
     body('trackingNumber').optional().trim().isLength({ max: 100 }),
     body('note').optional().trim().isLength({ max: 500 }),
@@ -387,6 +388,11 @@ router.patch(
   async (req, res) => {
     try {
       const { status, trackingNumber, note } = req.body;
+      const current = await Order.findById(req.params.id).select('status paymentStatus');
+      if (!current) return res.status(404).json({ error: 'Order not found' });
+      if (!canTransitionOrder(current.status, status, current.paymentStatus)) {
+        return res.status(409).json({ error: `Cannot change order from ${current.status} to ${status}` });
+      }
       const updates = {
         status,
         $push: {
@@ -405,16 +411,23 @@ router.patch(
 
       let order;
       if (status === 'cancelled') {
-        const cancelledId = await cancelOrderAndRestoreStock(req.params.id, updates);
-        if (!cancelledId) return res.status(404).json({ error: 'Order not found' });
+        const cancelledId = await cancelOrderAndRestoreStock(req.params.id, updates, {
+          status: current.status,
+          paymentStatus: current.paymentStatus,
+        });
+        if (!cancelledId) return res.status(409).json({ error: 'Order changed while this update was being applied' });
         order = await Order.findById(cancelledId)
           .populate('user', 'firstName lastName email');
       } else {
-        order = await Order.findByIdAndUpdate(req.params.id, updates, { returnDocument: 'after' })
+        order = await Order.findOneAndUpdate({
+          _id: req.params.id,
+          status: current.status,
+          paymentStatus: current.paymentStatus,
+        }, updates, { returnDocument: 'after' })
           .populate('user', 'firstName lastName email');
       }
 
-      if (!order) return res.status(404).json({ error: 'Order not found' });
+      if (!order) return res.status(409).json({ error: 'Order changed while this update was being applied' });
 
       // Send shipping notification
       if (status === 'shipped') {
@@ -484,7 +497,12 @@ router.get(
 
       const skip = (page - 1) * limit;
       const [users, total] = await Promise.all([
-        User.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+        User.find(filter)
+          .select('_id email firstName lastName phone role isActive isEmailVerified createdAt')
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
         User.countDocuments(filter),
       ]);
 
@@ -527,7 +545,11 @@ router.patch(
         return res.status(400).json({ error: 'No valid fields to update' });
       }
 
-      const user = await User.findByIdAndUpdate(req.params.id, updates, { returnDocument: 'after' });
+      const user = await User.findByIdAndUpdate(
+        req.params.id,
+        { $set: updates, $inc: { authVersion: 1 } },
+        { returnDocument: 'after', runValidators: true },
+      );
       if (!user) return res.status(404).json({ error: 'User not found' });
       res.json({ user });
     } catch (err) {

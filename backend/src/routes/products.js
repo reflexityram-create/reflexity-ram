@@ -1,8 +1,11 @@
 const express = require('express');
-const { query, param } = require('express-validator');
 const Product = require('../models/Product');
-const { validate } = require('../middleware/validate');
 const { normalizeProductPagination, buildProductSort } = require('../utils/pagination');
+const {
+  PUBLIC_PRODUCT_PROJECTION,
+  ProductQueryError,
+  parseProductQuery,
+} = require('../utils/publicProducts');
 
 const router = express.Router();
 
@@ -18,49 +21,17 @@ router.use(preventStaleProductCache);
 // ─── GET /api/products ─────────────────────────────────────────────────────────
 router.get('/', async (req, res) => {
   try {
-    const {
-      page = 1,
-      limit = 24,
-      generation,
-      formFactor,
-      capacity,
-      condition,
-      minPrice,
-      maxPrice,
-      stock,
-      search,
-      sort = 'createdAt',
-      order = 'desc',
-      featured,
-    } = req.query;
-
-    const filter = { isActive: true };
-
-    if (generation) filter.generation = { $in: generation.split(',') };
-    if (formFactor) filter.formFactor = { $in: formFactor.split(',') };
-    if (capacity) filter.capacity = { $in: capacity.split(',').map(Number) };
-    if (condition) filter.condition = { $in: condition.split(',') };
-    if (stock) filter.stock = { $in: stock.split(',') };
-    if (featured === 'true') filter.isFeatured = true;
-
-    if (minPrice || maxPrice) {
-      filter.price = {};
-      if (minPrice) filter.price.$gte = Number(minPrice);
-      if (maxPrice) filter.price.$lte = Number(maxPrice);
-    }
-
-    if (search) {
-      filter.$text = { $search: search };
-    }
-
-    const validSortFields = ['price', 'createdAt', 'name', 'speed', 'capacity'];
-    const sortField = validSortFields.includes(sort) ? sort : 'createdAt';
-    const sortObj = buildProductSort(sortField, order);
-
-    const pagination = normalizeProductPagination(page, limit);
+    const { filter, sort, order } = parseProductQuery(req.query);
+    const sortObj = buildProductSort(sort, order);
+    const pagination = normalizeProductPagination(req.query.page, req.query.limit);
 
     const [products, total] = await Promise.all([
-      Product.find(filter).sort(sortObj).skip(pagination.skip).limit(pagination.limit).lean(),
+      Product.find(filter)
+        .select(PUBLIC_PRODUCT_PROJECTION)
+        .sort(sortObj)
+        .skip(pagination.skip)
+        .limit(pagination.limit)
+        .lean(),
       Product.countDocuments(filter),
     ]);
 
@@ -74,6 +45,7 @@ router.get('/', async (req, res) => {
       },
     });
   } catch (err) {
+    if (err instanceof ProductQueryError) return res.status(err.status).json({ error: err.message });
     console.error('Products list error:', err);
     res.status(500).json({ error: 'Failed to fetch products' });
   }
@@ -83,6 +55,7 @@ router.get('/', async (req, res) => {
 router.get('/featured', async (req, res) => {
   try {
     const products = await Product.find({ isActive: true, isFeatured: true })
+      .select(PUBLIC_PRODUCT_PROJECTION)
       .sort({ createdAt: -1 })
       .limit(8)
       .lean();
@@ -124,7 +97,7 @@ router.get('/:slug', async (req, res) => {
     const product = await Product.findOne({
       slug: req.params.slug,
       isActive: true,
-    }).lean();
+    }).select(PUBLIC_PRODUCT_PROJECTION).lean();
 
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
@@ -136,6 +109,7 @@ router.get('/:slug', async (req, res) => {
       _id: { $ne: product._id },
       isActive: true,
     })
+      .select(PUBLIC_PRODUCT_PROJECTION)
       .limit(4)
       .lean();
 

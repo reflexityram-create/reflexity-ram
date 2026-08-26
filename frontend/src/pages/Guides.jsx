@@ -3,6 +3,7 @@ import { ArrowRight, BookOpen, CheckCircle2 } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { useSEO } from "@/lib/seo";
+import { serializeJsonLd } from "@/lib/safeJsonLd";
 
 const GUIDES = [
   {
@@ -66,7 +67,7 @@ function GuideSchema({ guide }) {
     publisher: { "@type": "Organization", name: "Reflexity RAM" },
     mainEntityOfPage: `https://reflexityram.com/guides/${guide.slug}`,
   };
-  return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }} />;
+  return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(data) }} />;
 }
 
 export default function Guides() {

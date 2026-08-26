@@ -5,7 +5,7 @@ import Footer from "@/components/Footer";
 import { useSEO } from "@/lib/seo";
 
 export default function NotFound() {
-  useSEO({ title: "Page not found" });
+  useSEO({ title: "Page not found", noindex: true });
   return (
     <>
       <Header />

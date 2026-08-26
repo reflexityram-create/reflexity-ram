@@ -23,6 +23,14 @@ const { fixMerchantProductData } = require('./migrations/fixMerchantProductData'
 const { syncActiveProductPrices } = require('./migrations/syncStoreCurrency');
 const WholesaleLot = require('./models/WholesaleLot');
 const WholesaleMediaAsset = require('./models/WholesaleMediaAsset');
+const Product = require('./models/Product');
+const User = require('./models/User');
+const Cart = require('./models/Cart');
+const Order = require('./models/Order');
+const Review = require('./models/Review');
+const PageContent = require('./models/PageContent');
+const RateLimitEntry = require('./models/RateLimitEntry');
+const { MongoRateLimitStore } = require('./utils/mongoRateLimitStore');
 
 // Stripe routes are only loaded when a real key is configured.
 // This prevents a crash if STRIPE_SECRET_KEY is missing or empty.
@@ -48,21 +56,24 @@ app.use(helmet());
 
 // CORS: merge configured origins with the known production frontends.
 // This prevents a single missing environment entry from breaking secondary deploys.
-const defaultAllowedOrigins = [
+// Keep this list intentionally closed. ALLOWED_ORIGINS is treated as a
+// deployment assertion, not an escape hatch for arbitrary credentialed web
+// origins. A stale or accidentally mistyped hostname must never receive a
+// browser credential grant.
+const ownedProductionOrigins = [
   'https://reflexityram.com',
   'https://www.reflexityram.com',
-  'https://reflexity-ram2.pages.dev',
-  'https://reflexity-ram.pages.dev',
-  'https://reflexityram.pages.dev',
-  ...(process.env.NODE_ENV === 'production'
-    ? []
-    : ['http://localhost:5173', 'http://localhost:3000']),
+  'https://reflexity-ram-3rn.pages.dev',
 ];
 const configuredAllowedOrigins = (process.env.ALLOWED_ORIGINS || '')
   .split(',')
   .map((o) => o.trim())
-  .filter(Boolean);
-const allowedOrigins = [...new Set([...defaultAllowedOrigins, ...configuredAllowedOrigins])];
+  .filter((origin) => ownedProductionOrigins.includes(origin));
+const allowedOrigins = [...new Set([
+  ...ownedProductionOrigins,
+  ...(process.env.NODE_ENV === 'production' ? [] : ['http://localhost:5173', 'http://localhost:3000']),
+  ...configuredAllowedOrigins,
+])];
 
 app.use(
   cors({
@@ -76,7 +87,7 @@ app.use(
       }
     },
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-session-id'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-session-id', 'x-order-email'],
     exposedHeaders: ['x-session-id'],
   })
 );
@@ -87,6 +98,10 @@ const globalLimiter = rateLimit({
   max: 200,
   standardHeaders: true,
   legacyHeaders: false,
+  store: new MongoRateLimitStore({ prefix: 'global' }),
+  // MemoryStore is intentionally fail-closed. A store error must reject the
+  // request instead of silently disabling abuse protection.
+  passOnStoreError: false,
   message: { error: 'Too many requests, please try again later.' },
 });
 
@@ -95,6 +110,8 @@ const authLimiter = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
+  store: new MongoRateLimitStore({ prefix: 'auth' }),
+  passOnStoreError: false,
   message: { error: 'Too many authentication attempts, please try again later.' },
 });
 
@@ -105,8 +122,8 @@ app.use(globalLimiter);
 if (STRIPE_ENABLED) {
   app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
 }
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());
 
 // ─── Health Check ──────────────────────────────────────────────────────────────
@@ -136,8 +153,10 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/pages', pageRoutes);
 app.use('/', sitemapRoutes);
 app.use('/', feedRoutes);
-// One-time seed endpoint — only active when SEED_SECRET env var is set
-if (process.env.SEED_SECRET) {
+// The HTTP seed route is development-only. Production data seeding remains an
+// explicit operator script (`npm run seed`) and cannot be re-enabled merely by
+// adding a secret to the normal web process environment.
+if (process.env.NODE_ENV !== 'production' && process.env.SEED_SECRET) {
   app.use('/api/seed', seedRoutes);
 }
 
@@ -169,15 +188,27 @@ app.use((err, req, res, next) => {
 
 // ─── Database & Server Start ───────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
+const startupModels = [
+  User,
+  Product,
+  Cart,
+  Order,
+  Review,
+  PageContent,
+  RateLimitEntry,
+  WholesaleLot,
+  WholesaleMediaAsset,
+];
 
 mongoose
   .connect(process.env.MONGODB_URI)
   .then(async () => {
     console.log('✅ MongoDB connected');
-    // Do not accept the first wholesale admin write until Mongo has installed
-    // the media registry and one-image/one-lot ownership indexes.
-    await Promise.all([WholesaleLot.init(), WholesaleMediaAsset.init()]);
-    console.log('✅ Wholesale media ownership indexes ready');
+    // Do not accept traffic until every application model has installed its
+    // declared indexes. This makes uniqueness and TTL guarantees effective
+    // before the first request, including on a fresh database.
+    await Promise.all(startupModels.map((model) => model.init()));
+    console.log(`✅ MongoDB indexes ready (${startupModels.length} models)`);
     try {
       await fixMerchantProductData();
     } catch (err) {
