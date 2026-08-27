@@ -1,5 +1,49 @@
 # Project State
 
+## 2026-08-27 — Wholesale redesign, CAD unit price, and catalog-filter repair live
+
+- VERIFIED (GITHUB/CI/DEPLOY): Backend-first pull request `#13` merged as
+  `1b7c7d8a5731a233d09b3ad3d096c37d16889d8b`; all required checks passed and
+  exact Render deployment `dep-da8b0l2jnfac73dijs40` reached `live`. Storefront
+  pull request `#14` then merged as
+  `9e7dc5a72f0bbfca0f46e5be86dfddd4a3cf45b1`; GitHub verification, deployment
+  configuration, and Cloudflare Pages checks passed. Exact production Pages
+  deployment `a7b5db44-4fd0-465d-8bcc-c34d6768471b` is active for that commit.
+- VERIFIED (PRODUCTION DATA/API): Exact published lot
+  `6a909f48078d6576e90d2117`, MPN `M393A4K40CB2-CTD7Q`, was conditionally
+  matched at version 1 and updated once to `unitPriceCad: 265`, producing version
+  2. The live public wholesale API reads back that exact ID, MPN, published
+  status, 152 available units, and price 265. Retail products, checkout, orders,
+  Stripe code, Stripe configuration, and payment-provider resources were not
+  changed.
+- VERIFIED (PRODUCTION RUNTIME/VISUAL): `/wholesale` now renders the posted lot
+  with the regular `ProductCard` glass-card structure, 5:4 image, catalog pills,
+  stock badge, `$265.00 CAD`, and a details link. The dedicated public route
+  `/wholesale/6a909f48078d6576e90d2117` renders the same image, price, quantity,
+  quote action, trust cards, specifications, and complete lot notes. Fresh
+  1440x1200 and 390x844 headless-Chrome captures verified desktop and mobile
+  rendering after allowing the Cloudinary image to complete.
+- VERIFIED (PRODUCTION RUNTIME/FILTERS): Regular RAM filters now preserve
+  consecutive query updates instead of rebuilding each change from a stale URL.
+  A controlled live Chromium probe clicked ECC, 64GB, and LRDIMM back-to-back
+  from `line=Server`; all three inputs remained checked, the final URL retained
+  `line=Server&ecc=true&cap=64&form=LRDIMM`, visible chips showed Server,
+  LRDIMM, 64GB, and ECC only, and exactly two matching cards rendered. Direct
+  live checks also returned three results for ECC + 16GB + RDIMM and zero plus
+  the intended empty state for ECC + 64GB + RDIMM.
+- VERIFIED (TEST/BUILD/SECURITY): The release gate passes 56 frontend tests and
+  75 runnable backend tests; the two disposable-Atlas integrations remain
+  intentionally skipped. The Vite production build, secret scan,
+  `git diff --check`, and root/frontend/backend dependency audits all pass with
+  zero vulnerabilities. Focused tests cover combined filtering, ECC boolean
+  semantics, consecutive selections, repeated-filter removal, wholesale CAD
+  validation/projection, and the card-to-detail route.
+- VERIFIED (ANALYTICS/STATIC/PRODUCTION): GA4 bootstrap now loads only when the
+  exact hostname is `reflexityram.com`, preventing localhost and provider preview
+  traffic from adding new production-property events. The canonical live host
+  retains GA4; production and preview builds use the same source-controlled
+  guard.
+
 ## 2026-08-26 — Comprehensive non-payment hardening and recovered deployment
 
 - VERIFIED (SOURCE/TEST/REVIEW): Pull requests `#6` through `#11` hardened the
