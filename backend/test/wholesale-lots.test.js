@@ -45,6 +45,7 @@ const completeLot = Object.freeze({
   condition: 'Used',
   testStatus: 'Individually tested',
   warranty: '30-day warranty',
+  unitPriceCad: 265,
   quantityAvailable: 12,
   minimumOrderQuantity: 4,
   orderIncrement: 4,
@@ -240,6 +241,7 @@ function completeInput(overrides = {}) {
     condition: completeLot.condition,
     testStatus: completeLot.testStatus,
     warranty: completeLot.warranty,
+    unitPriceCad: completeLot.unitPriceCad,
     quantityAvailable: completeLot.quantityAvailable,
     minimumOrderQuantity: completeLot.minimumOrderQuantity,
     orderIncrement: completeLot.orderIncrement,
@@ -363,15 +365,23 @@ test('publication requires a complete quote-only wholesale lot and public output
   assert.deepEqual(Object.keys(projected).sort(), [
     'brand', 'capacityLabel', 'condition', 'formFactor', 'generation', 'id', 'imageAlt', 'imageUrl',
     'lotCode', 'minimumOrderQuantity', 'mpn', 'notes', 'orderIncrement', 'publishedAt', 'quantityAvailable',
-    'quoteOnly', 'rank', 'shipFrom', 'speedLabel', 'status', 'testStatus', 'title', 'visibility', 'warranty',
+    'quoteOnly', 'rank', 'shipFrom', 'speedLabel', 'status', 'testStatus', 'title', 'unitPriceCad', 'visibility', 'warranty',
   ].sort());
   assert.equal(projected.imageUrl, image.url);
   assert.equal(projected.status, 'published');
   assert.equal(projected.visibility, 'public');
+  assert.equal(projected.unitPriceCad, 265);
   assert.equal('createdBy' in projected, false);
   assert.equal(isPublicWholesaleLot({ ...completeLot, quantityAvailable: 2 }), false);
   assert.equal(isPublicWholesaleLot({ ...completeLot, generation: 'DDR6' }), false);
   assert.equal(isPublicWholesaleLot({ ...completeLot, quantityAvailable: 1_000_001 }), false);
+});
+
+test('wholesale unit price accepts normal CAD amounts and rejects invalid precision', () => {
+  assert.equal(cleanWholesaleLotInput({ unitPriceCad: 265 }).data.unitPriceCad, 265);
+  assert.equal(cleanWholesaleLotInput({ unitPriceCad: 265.99 }).data.unitPriceCad, 265.99);
+  assert.match(cleanWholesaleLotInput({ unitPriceCad: 265.999 }).errors[0], /two decimal places/i);
+  assert.match(cleanWholesaleLotInput({ unitPriceCad: 0 }).errors[0], /positive CAD amount/i);
 });
 
 test('the model rejects an incomplete document marked published even outside the route transition', async () => {

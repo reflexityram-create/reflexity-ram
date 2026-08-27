@@ -24,6 +24,15 @@ const wholesaleLotSchema = new mongoose.Schema({
   },
   testStatus: { type: String, trim: true, maxlength: 120, default: '' },
   warranty: { type: String, trim: true, maxlength: 160, default: '' },
+  unitPriceCad: {
+    type: Number,
+    min: 0.01,
+    max: 1_000_000,
+    validate: {
+      validator: (value) => value == null || Math.round(value * 100) === value * 100,
+      message: 'Wholesale unit price must use at most two decimal places.',
+    },
+  },
   quantityAvailable: { type: Number, min: 0, max: 1_000_000, default: 0, validate: Number.isInteger },
   minimumOrderQuantity: { type: Number, min: 1, max: 1_000_000, default: 1, validate: Number.isInteger },
   orderIncrement: { type: Number, min: 1, max: 1_000_000, default: 1, validate: Number.isInteger },

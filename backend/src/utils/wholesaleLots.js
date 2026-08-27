@@ -15,6 +15,7 @@ const LOT_FIELDS = Object.freeze([
   'condition',
   'testStatus',
   'warranty',
+  'unitPriceCad',
   'quantityAvailable',
   'minimumOrderQuantity',
   'orderIncrement',
@@ -117,6 +118,16 @@ function cleanWholesaleLotInput(input = {}) {
       else data.image = image;
       continue;
     }
+    if (field === 'unitPriceCad') {
+      const number = Number(input[field]);
+      if (!Number.isFinite(number) || number <= 0 || number > 1_000_000
+        || Math.round(number * 100) !== number * 100) {
+        errors.push('unitPriceCad must be a positive CAD amount with at most two decimal places.');
+      } else {
+        data.unitPriceCad = number;
+      }
+      continue;
+    }
     if (['quantityAvailable', 'minimumOrderQuantity', 'orderIncrement'].includes(field)) {
       const number = Number(input[field]);
       if (!Number.isInteger(number) || number < (field === 'quantityAvailable' ? 0 : 1) || number > 1_000_000) {
@@ -184,12 +195,12 @@ function isPublicWholesaleLot(lot) {
 function publicWholesaleLot(lot) {
   if (!isPublicWholesaleLot(lot)) return null;
   const { _id, lotCode, title, brand, mpn, generation, formFactor, capacityLabel, speedLabel,
-    rank, condition, testStatus, warranty, quantityAvailable, minimumOrderQuantity,
+    rank, condition, testStatus, warranty, unitPriceCad, quantityAvailable, minimumOrderQuantity,
     orderIncrement, shipFrom, notes, image, publishedAt } = lot;
   return {
     id: String(_id), lotCode, status: 'published', visibility: 'public', quoteOnly: true,
     title, brand, mpn, generation, formFactor, capacityLabel,
-    speedLabel, rank, condition, testStatus, warranty, quantityAvailable,
+    speedLabel, rank, condition, testStatus, warranty, unitPriceCad, quantityAvailable,
     minimumOrderQuantity, orderIncrement, shipFrom, notes, imageUrl: image.url,
     imageAlt: image.alt || '', publishedAt,
   };
