@@ -3,8 +3,8 @@ import { Link } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowRight,
-  Boxes,
   CheckCircle2,
+  Cpu,
   Loader2,
   Mail,
   PackageOpen,
@@ -19,46 +19,64 @@ import { wholesaleApi } from "@/lib/api";
 import useAuthStore from "@/lib/authStore";
 import { useSEO } from "@/lib/seo";
 import { buildWholesaleEmailUrl, publishedWholesaleLots } from "@/lib/wholesaleLots";
+import { formatStorePrice, STORE_CURRENCY_CODE } from "@/lib/currency";
 import "@/pages/wholesale-concepts.css";
 
 const WHOLESALE_GMAIL_URL = buildWholesaleEmailUrl();
 
-function WholesaleLotCard({ badgeLabel, lot }) {
-  const minimum = Math.max(1, Number(lot.minimumOrderQuantity) || 1);
+function WholesaleLotCard({ badgeLabel, index = 0, lot }) {
+  const isEcc = /\bECC\b/i.test(`${lot.title} ${lot.notes || ""}`);
   return (
-    <article className="ws-lot">
-      <div className="ws-lot-media">
+    <Link
+      aria-label={`View wholesale lot ${lot.title}`}
+      className="glass card-hover rounded-xl overflow-hidden flex flex-col fade-up"
+      data-testid={`wholesale-card-${lot.id}`}
+      style={{ animationDelay: `${(index % 8) * 0.04}s` }}
+      to={`/wholesale/${encodeURIComponent(lot.id)}`}
+    >
+      <div className="relative aspect-[5/4] bg-gradient-to-b from-white/[0.03] to-transparent overflow-hidden">
         {lot.imageUrl ? (
-          <img alt={lot.imageAlt || lot.title} src={lot.imageUrl} />
+          <img
+            alt={lot.imageAlt || lot.title}
+            className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform"
+            decoding="async"
+            fetchPriority={index < 3 ? "high" : "auto"}
+            loading={index < 6 ? "eager" : "lazy"}
+            src={lot.imageUrl}
+          />
         ) : (
-          <Boxes aria-hidden="true" size={38} />
+          <div className="w-full h-full flex items-center justify-center"><Cpu aria-hidden="true" className="text-neutral-700" size={36} /></div>
         )}
-        {(lot.badgeLabel || badgeLabel) && <i>{lot.badgeLabel || badgeLabel}</i>}
-        <span>{lot.condition}</span>
+        <div className="absolute top-3 left-3 flex gap-1.5">
+          <span className="pill text-[10px] py-1 px-2">{lot.generation}</span>
+          <span className="pill text-[10px] py-1 px-2">{lot.formFactor}</span>
+          {(lot.badgeLabel || badgeLabel) && <span className="pill pill-amber text-[10px] py-1 px-2">{lot.badgeLabel || badgeLabel}</span>}
+        </div>
+        <div className="absolute top-3 right-3">
+          <span className="pill pill-accent text-[10px] py-1 px-2"><span className="dot dot-green" />{lot.quantityAvailable} available</span>
+        </div>
+        <div className="absolute bottom-3 left-3">
+          <span className="pill text-[10px] py-1 px-2 bg-black/50 backdrop-blur-sm">🇨🇦 🇺🇸 CA &amp; US</span>
+        </div>
       </div>
-      <div className="ws-lot-body">
-        <div className="ws-lot-kicker"><span>{lot.formFactor}</span><span>{lot.testStatus}</span></div>
-        <h3>{lot.title}</h3>
-        <p className="ws-lot-mpn">{lot.mpn}</p>
-        <dl>
-          <div><dt>Specification</dt><dd>{[lot.capacityLabel, lot.generation, lot.speedLabel, lot.rank].filter(Boolean).join(" · ")}</dd></div>
-          <div><dt>Available</dt><dd>{lot.quantityAvailable} units</dd></div>
-          <div><dt>Minimum</dt><dd>{minimum} units</dd></div>
-          <div><dt>Warranty</dt><dd>{lot.warranty}</dd></div>
-          <div><dt>Ships from</dt><dd>{lot.shipFrom}</dd></div>
-        </dl>
-        {lot.notes && <p className="ws-lot-note">{lot.notes}</p>}
-        <a
-          aria-label={`Request wholesale lot ${lot.title}`}
-          className="ws-lot-quote"
-          href={buildWholesaleEmailUrl([{ lot, quantity: minimum }])}
-          rel="noopener noreferrer"
-          target="_blank"
-        >
-          Request this lot <ArrowRight aria-hidden="true" size={16} />
-        </a>
+      <div className="p-5 flex flex-col flex-1">
+        <div className="mono text-[10px] text-neutral-500 tracking-widest mb-2">{lot.mpn}</div>
+        <h3 className="text-[15px] font-semibold tracking-tight text-white leading-snug mb-2">{lot.title}</h3>
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          <span className="pill text-[10px] py-0.5">{lot.capacityLabel}</span>
+          <span className="pill text-[10px] py-0.5">{lot.speedLabel}</span>
+          {lot.rank && <span className="pill text-[10px] py-0.5">{lot.rank}</span>}
+          {isEcc && <span className="pill pill-accent text-[10px] py-0.5">ECC</span>}
+        </div>
+        <div className="mt-auto flex items-end gap-3">
+          <div className="text-2xl font-bold tracking-tight">
+            {lot.unitPriceCad ? formatStorePrice(lot.unitPriceCad) : "Request quote"}
+            {lot.unitPriceCad && <span className="text-[10px] font-medium text-neutral-500"> {STORE_CURRENCY_CODE}</span>}
+          </div>
+          <div className="ml-auto mb-1 mono text-[10px] text-emerald-300 inline-flex items-center gap-1">View details <ArrowRight aria-hidden="true" size={13} /></div>
+        </div>
       </div>
-    </article>
+    </Link>
   );
 }
 
@@ -107,8 +125,8 @@ function WholesaleInventory({
           </div>
         </div>
       ) : lots.length ? (
-        <div className="ws-lots">
-          {lots.map((lot) => <WholesaleLotCard badgeLabel={badgeLabel} key={lot.id} lot={lot} />)}
+        <div className="grid sm:grid-cols-2 gap-4 mt-6" data-testid="wholesale-grid">
+          {lots.map((lot, index) => <WholesaleLotCard badgeLabel={badgeLabel} index={index} key={lot.id} lot={lot} />)}
         </div>
       ) : (
         <div className="ws-empty">

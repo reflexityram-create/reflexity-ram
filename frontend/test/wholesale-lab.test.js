@@ -102,8 +102,36 @@ test("the combined wholesale page makes inventory primary and exact sourcing sec
   assert.doesNotMatch(page, /DON&apos;T SEE WHAT YOU NEED\?|Send the requirement\./);
   assert.match(css, /grid-template-columns: minmax\(0,1\.65fr\) minmax\(350px,\.72fr\)/);
   assert.match(css, /\.ws-coming \{[^}]*position: sticky/s);
-  assert.match(css, /@media \(max-width: 720px\)[\s\S]*?\.ws-lots \{ grid-template-columns: 1fr; \}/);
+  assert.match(page, /grid sm:grid-cols-2 gap-4/);
   assert.doesNotMatch(css, /#b4eb62|--wl-green|current public catalog/i);
+});
+
+test("wholesale cards open a dedicated detail route like regular shop products", async () => {
+  const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+  const page = await readFile(new URL("../src/pages/Wholesale.jsx", import.meta.url), "utf8");
+  const detail = await readFile(new URL("../src/pages/WholesaleLot.jsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("../src/pages/wholesale-concepts.css", import.meta.url), "utf8");
+
+  assert.match(app, /path="\/wholesale\/:lotId" element=\{<WholesaleLot \/>\}/);
+  assert.match(page, /to=\{`\/wholesale\/\$\{encodeURIComponent\(lot\.id\)\}`\}/);
+  assert.match(page, /View details/);
+  assert.match(page, /formatStorePrice\(lot\.unitPriceCad\)/);
+  assert.match(page, /STORE_CURRENCY_CODE/);
+  assert.doesNotMatch(page, /<p className="ws-lot-note">/);
+  assert.match(page, /className="glass card-hover rounded-xl overflow-hidden flex flex-col fade-up"/);
+  assert.match(page, /className="relative aspect-\[5\/4\] bg-gradient-to-b from-white\/\[0\.03\] to-transparent overflow-hidden"/);
+  assert.match(page, /className="p-5 flex flex-col flex-1"/);
+  assert.match(detail, /export function WholesaleLotDetail/);
+  assert.match(detail, /WholesaleLotDetail lot=\{state\.lot\}/);
+  assert.match(detail, /className="grid lg:grid-cols-\[1\.1fr_1fr\] gap-10 lg:gap-14"/);
+  assert.match(detail, /className="block w-full glass rounded-2xl overflow-hidden aspect-\[5\/4\] mb-3"/);
+  assert.match(detail, /className="text-3xl md:text-4xl font-bold tracking-tight leading-tight mb-3"/);
+  assert.match(detail, /className="glass rounded-2xl p-6 md:p-8"/);
+  assert.match(detail, />Specifications</);
+  assert.match(detail, /Request this lot/);
+  assert.match(detail, /formatStorePrice\(lot\.unitPriceCad\)/);
+  assert.match(detail, /lots\.find\(\(lot\) => lot\.id === lotId\)/);
+  assert.doesNotMatch(detail, /wholesale-concepts\.css|ws-detail-/);
 });
 
 test("the official wholesale shell reads only the fail-closed public API", async () => {
@@ -126,7 +154,7 @@ test("the official wholesale shell reads only the fail-closed public API", async
   assert.match(local, /LOCAL CUSTOMER PREVIEW/);
   assert.match(local, /LOCAL DEMO DATA UNAVAILABLE/);
   assert.match(local, /badgeLabel="LOCAL DEMO"/);
-  assert.match(page, /aria-label=\{`Request wholesale lot \$\{lot\.title\}`\}/);
+  assert.match(page, /aria-label=\{`View wholesale lot \$\{lot\.title\}`\}/);
   assert.match(page, /user\?\.role === "admin"/);
   assert.match(page, /to="\/admin\/wholesale\?new=1"/);
   assert.match(css, /\.ws-coming \{[^}]*border-radius: 14px/s);

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { Search, X, SlidersHorizontal, Inbox, ArrowLeft } from "lucide-react";
 import Header from "@/components/Header";
@@ -9,9 +9,14 @@ import { productsApi } from "@/lib/api";
 import {
   fetchAllCatalogProducts,
   getCatalogCategoryLabel,
-  matchesCatalogLines,
 } from "@/lib/catalog";
 import { useSEO } from "@/lib/seo";
+import {
+  productMatchesShopFilters,
+  readShopFilters,
+  setShopFilterParam,
+  toggleShopFilterParam,
+} from "@/lib/shopFilters";
 
 // Instant-render fallback while /products/filters loads (and safety net if
 // it fails). The API response — derived from live products — replaces these.
@@ -32,6 +37,8 @@ const SORTS = [
 
 export default function Shop() {
   const [params, setParams] = useSearchParams();
+  const pendingParams = useRef(params);
+  pendingParams.current = params;
   const [showFilters, setShowFilters] = useState(false);
   const [filterOptions, setFilterOptions] = useState(DEFAULT_FILTERS);
 
@@ -57,14 +64,17 @@ export default function Shop() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const q = params.get("q") || "";
-  const gen = params.getAll("gen");
-  const form = params.getAll("form");
-  const line = params.getAll("line");
-  const cap = params.getAll("cap").map(Number);
-  const cond = params.getAll("cond");
-  const eccOnly = params.get("ecc") === "true";
-  const sort = params.get("sort") || "featured";
+  const filters = readShopFilters(params);
+  const {
+    query: q,
+    generations: gen,
+    formFactors: form,
+    lines: line,
+    capacities: cap,
+    conditions: cond,
+    eccOnly,
+    sort,
+  } = filters;
 
   const categoryLabel = getCatalogCategoryLabel(gen, form, line, eccOnly);
 
@@ -105,44 +115,25 @@ export default function Shop() {
   }, []);
 
   const update = (key, value) => {
-    const next = new URLSearchParams(params);
-    if (value === null || value === undefined || value === "") next.delete(key);
-    else next.set(key, value);
+    const next = setShopFilterParam(pendingParams.current, key, value);
+    pendingParams.current = next;
     setParams(next, { replace: true });
   };
 
   const toggleArr = (key, value) => {
-    const next = new URLSearchParams(params);
-    const existing = next.getAll(key);
-    if (existing.includes(String(value))) {
-      next.delete(key);
-      existing.filter((v) => v !== String(value)).forEach((v) => next.append(key, v));
-    } else {
-      next.append(key, String(value));
-    }
+    const next = toggleShopFilterParam(pendingParams.current, key, value);
+    pendingParams.current = next;
     setParams(next, { replace: true });
   };
 
-  const clearAll = () => setParams(new URLSearchParams(), { replace: true });
+  const clearAll = () => {
+    const next = new URLSearchParams();
+    pendingParams.current = next;
+    setParams(next, { replace: true });
+  };
 
   const filtered = useMemo(() => {
-    let out = products.filter((p) => {
-      if (gen.length && !gen.includes(p.generation)) return false;
-      if (form.length && !form.includes(p.formFactor)) return false;
-      if (!matchesCatalogLines(p, line)) return false;
-      if (cap.length && !cap.includes(p.capacity)) return false;
-      if (cond.length && !cond.includes(p.condition)) return false;
-      if (eccOnly && !p.ecc) return false;
-      if (q) {
-        const hay = [
-          p.sku, p.name, p.line, p.generation, p.formFactor,
-          p.speedLabel, p.cas, p.timings, p.capacityLabel,
-          p.ecc ? "ECC" : "", ...(p.tags || []),
-        ].join(" ").toLowerCase();
-        if (!hay.includes(q.toLowerCase())) return false;
-      }
-      return true;
-    });
+    let out = products.filter((product) => productMatchesShopFilters(product, filters));
 
     switch (sort) {
       case "price-asc":  out = [...out].sort((a, b) => a.price - b.price); break;
@@ -152,10 +143,18 @@ export default function Shop() {
       default: break;
     }
     return out;
-  }, [products, q, gen, form, line, cap, cond, eccOnly, sort]);
+  }, [products, params]);
 
   const activeCount =
     gen.length + form.length + line.length + cap.length + cond.length + (eccOnly ? 1 : 0) + (q ? 1 : 0);
+  const activeLabels = [
+    ...line,
+    ...gen,
+    ...form,
+    ...cap.map((value) => `${value}GB`),
+    ...cond,
+    ...(eccOnly ? ["ECC only"] : []),
+  ];
 
   const FilterBody = () => (
     <div className="flex flex-col gap-6">
@@ -257,10 +256,13 @@ export default function Shop() {
           </div>
 
           {activeCount > 0 && (
-            <div className="flex items-center gap-3 mb-5">
+            <div className="flex flex-wrap items-center gap-2 mb-5" data-testid="shop-active-filters">
+              {activeLabels.map((label, index) => (
+                <span className="pill pill-accent text-[10px]" key={`${label}-${index}`}>{label}</span>
+              ))}
               <button
                 onClick={clearAll}
-                className="mono text-[11px] text-neutral-400 hover:text-white inline-flex items-center gap-1"
+                className="mono text-[11px] text-neutral-400 hover:text-white inline-flex items-center gap-1 ml-1"
                 data-testid="shop-clear-filters"
               >
                 <X size={12} /> Clear filters ({activeCount})

@@ -40,6 +40,7 @@ const EMPTY_LOT = Object.freeze({
   condition: 'Server Pull — Tested',
   testStatus: 'Tested and verified',
   warranty: '90 Days',
+  unitPriceCad: '',
   quantityAvailable: 0,
   minimumOrderQuantity: 1,
   orderIncrement: 1,
@@ -67,6 +68,7 @@ function normalizeLot(lot = {}) {
     quantityAvailable: Number(lot.quantityAvailable ?? 0),
     minimumOrderQuantity: Number(lot.minimumOrderQuantity ?? 1),
     orderIncrement: Number(lot.orderIncrement ?? 1),
+    unitPriceCad: lot.unitPriceCad ?? '',
   };
 }
 
@@ -76,6 +78,7 @@ function lotPayload(form) {
   payload.quantityAvailable = Math.max(0, Math.floor(Number(form.quantityAvailable) || 0));
   payload.minimumOrderQuantity = Math.max(1, Math.floor(Number(form.minimumOrderQuantity) || 1));
   payload.orderIncrement = Math.max(1, Math.floor(Number(form.orderIncrement) || 1));
+  if (form.unitPriceCad !== '') payload.unitPriceCad = Number(Number(form.unitPriceCad).toFixed(2));
   payload.image = form.image?.url ? {
     url: form.image.url,
     publicId: form.image.publicId || '',
@@ -459,6 +462,9 @@ function LotEditor({ initialLot, onClose, onPersisted, onSaved, onStale }) {
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <Field label="Available units">
                 <input className="input" min="0" onChange={(event) => setField('quantityAvailable', event.target.value)} type="number" value={form.quantityAvailable} />
+              </Field>
+              <Field label="Unit price (CAD)">
+                <input className="input" min="0.01" onChange={(event) => setField('unitPriceCad', event.target.value)} placeholder="265.00" step="0.01" type="number" value={form.unitPriceCad} />
               </Field>
               <Field label="Minimum order">
                 <input className="input" min="1" onChange={(event) => setField('minimumOrderQuantity', event.target.value)} type="number" value={form.minimumOrderQuantity} />

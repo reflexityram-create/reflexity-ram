@@ -11,6 +11,7 @@ import { AUTH_TOKEN_KEY } from "@/lib/authSession";
 // Public pages
 import Home from "@/pages/Home";
 import Wholesale from "@/pages/Wholesale";
+import WholesaleLot from "@/pages/WholesaleLot";
 import Liquidators from "@/pages/Liquidators";
 import Guides from "@/pages/Guides";
 import Shop from "@/pages/Shop";
@@ -106,6 +107,7 @@ export default function App() {
             path="/wholesale"
             element={<Wholesale />}
           />
+          <Route path="/wholesale/:lotId" element={<WholesaleLot />} />
           {WholesaleLab && (
             <Route
               path="/wholesale-lab"
