@@ -8,7 +8,8 @@
   pull request `#14` then merged as
   `9e7dc5a72f0bbfca0f46e5be86dfddd4a3cf45b1`; GitHub verification, deployment
   configuration, and Cloudflare Pages checks passed. Exact production Pages
-  deployment `a7b5db44-4fd0-465d-8bcc-c34d6768471b` is active for that commit.
+  deployment `a7b5db44-4fd0-465d-8bcc-c34d6768471b` became active for that code
+  commit and served the acceptance checks below.
 - VERIFIED (PRODUCTION DATA/API): Exact published lot
   `6a909f48078d6576e90d2117`, MPN `M393A4K40CB2-CTD7Q`, was conditionally
   matched at version 1 and updated once to `unitPriceCad: 265`, producing version
