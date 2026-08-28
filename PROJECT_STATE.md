@@ -25,6 +25,15 @@
   root/frontend/backend dependency audits passed with zero vulnerabilities.
   Stripe, retail checkout, carts, orders, backend payment code, and payment
   provider resources were untouched.
+- VERIFIED (USER DECISION/OPERATIONS): The owner accepted the current
+  email-first workflow as the operating model. Reflexity receives the buyer's
+  exact lot/quantity request, reviews it, and may manually forward only the
+  relevant information to the cofounder/team member helping handle the quote.
+  The previously considered customer phone/email form, automatic associate
+  forwarding, public associate contact card, CRM lead record, and Stripe path
+  are not requested and were not implemented. The internal stored MOQ/increment
+  fields remain publication/data-integrity controls, not a customer-facing
+  fixed-MOQ promise or request-quantity rounding rule.
 
 ## 2026-08-27 — Wholesale redesign, CAD unit price, and catalog-filter repair live
 
