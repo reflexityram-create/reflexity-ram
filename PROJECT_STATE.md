@@ -1,5 +1,31 @@
 # Project State
 
+## 2026-08-28 — Flexible wholesale quantity requests live
+
+- VERIFIED (GITHUB/CI/DEPLOY): Pull request `#17` passed the required verify
+  and deployment-configuration jobs and merged to `main` as
+  `44bbd2d27486f5f991d472abcd9ebf46d0233bee`. Cloudflare Pages production
+  deployment `3db44a8c-3f3a-4349-97e6-55d70b43c345` is active for that exact
+  commit, and the canonical apex serves its `index-JlhhrUVF.js` bundle.
+- VERIFIED (PRODUCTION/RUNTIME): Exact public lot
+  `6a909f48078d6576e90d2117` / `M393A4K40CB2-CTD7Q` still reads back as
+  published with 152 available units and `$265.00 CAD`. Its live detail page no
+  longer presents or enforces a customer-facing MOQ/order step. It accepts any
+  whole-unit request from 1 through listed availability, labels the action with
+  the chosen quantity, and asks Reflexity to confirm what quantity it can
+  accommodate.
+- VERIFIED (BROWSER/EMAIL CONTRACT): A controlled live request for 37 units
+  rendered `Request 37 units`; the generated Gmail draft URL contained the
+  exact lot ID, MPN, `Requested quantity: 37`, and `Please confirm what quantity
+  you can accommodate.` The action opens a reviewable draft and does not create
+  an order, reserve inventory, invoke checkout, or contact Stripe.
+- VERIFIED (TEST/BUILD/SECURITY): The release gate passed 58 frontend tests and
+  75 runnable backend tests with two disposable-Atlas integrations intentionally
+  skipped. The production build, secret scan, `git diff --check`, and
+  root/frontend/backend dependency audits passed with zero vulnerabilities.
+  Stripe, retail checkout, carts, orders, backend payment code, and payment
+  provider resources were untouched.
+
 ## 2026-08-27 — Wholesale redesign, CAD unit price, and catalog-filter repair live
 
 - VERIFIED (GITHUB/CI/DEPLOY): Backend-first pull request `#13` merged as
