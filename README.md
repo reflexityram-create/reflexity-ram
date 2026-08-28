@@ -59,10 +59,20 @@ An authenticated administrator can reach the same listing editor in two ways:
 
 New listings start as private drafts. Publishing requires a complete tested
 memory specification, an isolated wholesale image, positive available stock,
-and a valid minimum order. Archive is reversible and never hard-deletes the
-record. No wholesale records are seeded automatically. See
+and valid internal quantity controls. Those stored controls protect listing
+integrity; the customer page does not advertise or enforce a fixed MOQ because
+workable wholesale quantities can fluctuate. Archive is reversible and never
+hard-deletes the record. No wholesale records are seeded automatically. See
 [docs/wholesale-inventory.md](./docs/wholesale-inventory.md) for the data model,
 admin workflow, and deployment boundary.
+
+Buyer requests remain email-first. The lot detail page lets a buyer request any
+whole-unit quantity up to listed availability and opens a reviewable Gmail draft
+addressed to Reflexity with the exact lot, MPN, and requested quantity. Reflexity
+confirms what can be accommodated, then the owner may manually forward only the
+relevant request information to the cofounder/team member handling the quote.
+There is no automated associate handoff, customer intake database, inventory
+reservation, payment, or checkout in this workflow.
 
 ## Verification
 

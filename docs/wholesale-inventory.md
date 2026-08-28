@@ -1,6 +1,6 @@
 # Reflexity Wholesale Inventory
 
-Updated: 2026-08-25
+Updated: 2026-08-28
 
 ## Product boundary
 
@@ -12,6 +12,29 @@ The buyer-facing route is `/wholesale`. It lists only complete records that are
 simultaneously `published`, `public`, not archived, and `quoteOnly: true`. When
 there is no live stock, the page shows an honest empty state beside the existing
 exact-SKU sourcing form.
+
+## Buyer request and team handoff
+
+The live lot detail page displays an optional CAD unit price when one is listed,
+but remains a request-for-quote surface. A buyer may request any whole-unit
+quantity from 1 through the currently listed available stock. The page does not
+display or enforce a fixed customer MOQ or order increment; it says Reflexity
+will confirm what quantity can be accommodated because workable quantities can
+fluctuate.
+
+The action opens a reviewable Gmail compose URL addressed to
+`reflexityram@gmail.com`. Its subject identifies the MPN, and its body includes
+the lot ID, MPN, exact requested quantity, and an explicit request for Reflexity
+to confirm what it can accommodate. Opening the draft does not send an email,
+reserve inventory, create an order, or call checkout or Stripe.
+
+Current operating decision: buyer communication remains email-first and manual.
+The owner reviews each request received by Reflexity and may forward only the
+relevant information to the cofounder/team member helping handle that quote.
+There is no public associate phone number, automatic forwarding, lead form, CRM
+record, or separate consent workflow in the current product. Do not add those
+surfaces unless the operating decision changes and the exact data destination
+and customer disclosure are defined.
 
 ## Admin workflow
 
@@ -40,6 +63,10 @@ incomplete draft, but publishing requires:
 - at least one available unit;
 - a positive minimum order and order increment; and
 - available quantity greater than or equal to the minimum order.
+
+`minimumOrderQuantity` and `orderIncrement` remain internal publication/data
+integrity controls. They are not presented as a fixed customer promise and do
+not round the quantity placed in the buyer's quote-request email.
 
 Unpublish returns a live lot to a private draft. Archive is a reversible soft
 transition; restore returns the record to a draft. Every edit and transition
@@ -117,3 +144,15 @@ browser-store key, or development-only Stock Studio route.
 The older browser-local Stock Studio remains a development-only visual fixture.
 It is excluded from production builds and is never an authoritative source for
 the real `/wholesale` route.
+
+## Post-release acceptance
+
+For a customer-facing quantity change, verify the exact production lot rather
+than only the deployment receipt:
+
+1. The displayed CAD price and available stock still match the public API.
+2. The picker accepts 1 and the listed maximum, and does not show a customer MOQ.
+3. An intermediate quantity changes both the visible request button and the
+   `Requested quantity` line in the Gmail draft URL.
+4. The draft asks Reflexity to confirm what quantity it can accommodate.
+5. No cart, checkout, order, inventory reservation, or Stripe path is invoked.
