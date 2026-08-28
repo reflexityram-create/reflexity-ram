@@ -24,7 +24,7 @@ import "@/pages/wholesale-concepts.css";
 
 const WHOLESALE_GMAIL_URL = buildWholesaleEmailUrl();
 
-function WholesaleLotCard({ badgeLabel, index = 0, lot }) {
+function WholesaleLotCard({ badgeLabel, detailBasePath = "/wholesale", index = 0, lot }) {
   const isEcc = /\bECC\b/i.test(`${lot.title} ${lot.notes || ""}`);
   return (
     <Link
@@ -32,7 +32,7 @@ function WholesaleLotCard({ badgeLabel, index = 0, lot }) {
       className="glass card-hover rounded-xl overflow-hidden flex flex-col fade-up"
       data-testid={`wholesale-card-${lot.id}`}
       style={{ animationDelay: `${(index % 8) * 0.04}s` }}
-      to={`/wholesale/${encodeURIComponent(lot.id)}`}
+      to={`${detailBasePath}/${encodeURIComponent(lot.id)}`}
     >
       <div className="relative aspect-[5/4] bg-gradient-to-b from-white/[0.03] to-transparent overflow-hidden">
         {lot.imageUrl ? (
@@ -88,6 +88,7 @@ function WholesaleInventory({
   errorEyebrow,
   errorTitle,
   badgeLabel,
+  detailBasePath,
   adminControls,
   stockLoading,
 }) {
@@ -126,7 +127,7 @@ function WholesaleInventory({
         </div>
       ) : lots.length ? (
         <div className="grid sm:grid-cols-2 gap-4 mt-6" data-testid="wholesale-grid">
-          {lots.map((lot, index) => <WholesaleLotCard badgeLabel={badgeLabel} index={index} key={lot.id} lot={lot} />)}
+          {lots.map((lot, index) => <WholesaleLotCard badgeLabel={badgeLabel} detailBasePath={detailBasePath} index={index} key={lot.id} lot={lot} />)}
         </div>
       ) : (
         <div className="ws-empty">
@@ -146,6 +147,7 @@ export function WholesaleMarket({
   postedLots = [],
   stockError = null,
   badgeLabel = null,
+  detailBasePath = "/wholesale",
   inventoryEyebrow = "AVAILABLE NOW",
   inventoryNote = null,
   errorEyebrow = "STOCK DATA UNAVAILABLE",
@@ -192,6 +194,7 @@ export function WholesaleMarket({
                 stockError={stockError}
                 stockLoading={stockLoading}
                 badgeLabel={badgeLabel}
+                detailBasePath={detailBasePath}
                 adminControls={adminControls}
               />
 

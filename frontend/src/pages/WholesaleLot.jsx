@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowRight, ChevronLeft, Cpu, Loader2, Mail, Package, Shield, Truck } from "lucide-react";
+import { ArrowRight, ChevronLeft, Cpu, Loader2, Mail, Minus, Package, Plus, Shield, Truck } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { wholesaleApi } from "@/lib/api";
 import { useSEO } from "@/lib/seo";
-import { buildWholesaleEmailUrl, publishedWholesaleLots } from "@/lib/wholesaleLots";
+import { buildWholesaleEmailUrl, normalizeWholesaleQuantity, publishedWholesaleLots } from "@/lib/wholesaleLots";
 import { formatStorePrice, STORE_CURRENCY_CODE } from "@/lib/currency";
 
-function LotUnavailable({ loading }) {
+export function LotUnavailable({ loading }) {
   return (
     <div className="glass rounded-2xl p-8 min-h-[260px] flex items-center gap-5" role="status">
       {loading ? <Loader2 aria-hidden="true" className="animate-spin text-neutral-500" size={30} /> : <Package aria-hidden="true" className="text-neutral-500" size={30} />}
@@ -21,8 +21,9 @@ function LotUnavailable({ loading }) {
   );
 }
 
-export function WholesaleLotDetail({ lot }) {
-  const minimum = Math.max(1, Number(lot.minimumOrderQuantity) || 1);
+export function WholesaleLotDetail({ backTo = "/wholesale", lot }) {
+  const maximum = normalizeWholesaleQuantity(lot, lot.quantityAvailable);
+  const [quantity, setQuantity] = useState(1);
   const isEcc = /\bECC\b/i.test(`${lot.title} ${lot.notes || ""}`);
   const specifications = [
     ["Brand", lot.brand],
@@ -44,9 +45,15 @@ export function WholesaleLotDetail({ lot }) {
     description: lot.notes || `${lot.title}. ${lot.quantityAvailable} units available from Toronto.`,
   });
 
+  const chooseQuantity = (value) => {
+    setQuantity(normalizeWholesaleQuantity(lot, value));
+  };
+
+  const quoteUrl = buildWholesaleEmailUrl([{ lot, quantity }]);
+
   return (
     <>
-      <Link className="inline-flex items-center gap-1.5 text-[12px] text-neutral-400 hover:text-white mb-6" to="/wholesale">
+      <Link className="inline-flex items-center gap-1.5 text-[12px] text-neutral-400 hover:text-white mb-6" to={backTo}>
         <ChevronLeft aria-hidden="true" size={14} /> Back to wholesale
       </Link>
 
@@ -85,12 +92,56 @@ export function WholesaleLotDetail({ lot }) {
           </div>
           <div className="flex items-center gap-3 mb-6">
             <span className="pill pill-accent"><span className="dot dot-green" />{lot.quantityAvailable} available</span>
-            <span className="mono text-[11px] text-neutral-500">MOQ: {minimum} · Step: {Math.max(1, Number(lot.orderIncrement) || 1)}</span>
           </div>
 
-          <a className="btn-primary w-full sm:w-auto mb-5" href={buildWholesaleEmailUrl([{ lot, quantity: minimum }])} rel="noopener noreferrer" target="_blank">
-            <Mail aria-hidden="true" size={15} /> Request this lot <ArrowRight aria-hidden="true" size={15} />
-          </a>
+          <div className="glass-soft rounded-xl p-4 mb-5" data-testid="wholesale-quantity-picker">
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <div>
+                <label className="text-[13px] font-semibold" htmlFor="wholesale-quantity">Request how many you need</label>
+                <p className="text-[11px] text-neutral-500 mt-0.5">Choose 1–{maximum}. We&apos;ll confirm what quantity we can accommodate.</p>
+              </div>
+              <span className="mono text-[10px] text-neutral-500 whitespace-nowrap">{lot.quantityAvailable} IN STOCK</span>
+            </div>
+
+            <div className="flex items-stretch gap-2 mb-3">
+              <button
+                aria-label="Decrease quantity by 1"
+                className="glass h-11 w-11 rounded-lg inline-flex items-center justify-center disabled:opacity-35 disabled:cursor-not-allowed"
+                disabled={quantity <= 1}
+                onClick={() => chooseQuantity(quantity - 1)}
+                type="button"
+              >
+                <Minus aria-hidden="true" size={15} />
+              </button>
+              <input
+                className="glass h-11 min-w-0 w-24 rounded-lg px-3 text-center text-[15px] font-semibold focus:outline-none focus:ring-2 focus:ring-yellow-400/60"
+                id="wholesale-quantity"
+                inputMode="numeric"
+                max={maximum}
+                min="1"
+                onChange={(event) => chooseQuantity(event.target.value)}
+                step="1"
+                type="number"
+                value={quantity}
+              />
+              <button
+                aria-label="Increase quantity by 1"
+                className="glass h-11 w-11 rounded-lg inline-flex items-center justify-center disabled:opacity-35 disabled:cursor-not-allowed"
+                disabled={quantity >= maximum}
+                onClick={() => chooseQuantity(quantity + 1)}
+                type="button"
+              >
+                <Plus aria-hidden="true" size={15} />
+              </button>
+              <button className="glass h-11 rounded-lg px-3 mono text-[10px] font-semibold" disabled={quantity >= maximum} onClick={() => chooseQuantity(maximum)} type="button">
+                MAX
+              </button>
+            </div>
+
+            <a className="btn-primary w-full justify-center" data-testid="wholesale-email-request" href={quoteUrl} rel="noopener noreferrer" target="_blank">
+              <Mail aria-hidden="true" size={15} /> Request {quantity} {quantity === 1 ? "unit" : "units"} <ArrowRight aria-hidden="true" size={15} />
+            </a>
+          </div>
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mb-4 text-[12px] text-neutral-600 dark:text-neutral-400">
             {[lot.testStatus, `${lot.warranty} warranty`, `Ships from ${lot.shipFrom}`].map((item) => (
