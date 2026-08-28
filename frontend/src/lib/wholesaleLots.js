@@ -16,14 +16,10 @@ export function publishedWholesaleLots(lots = []) {
 
 export function normalizeWholesaleQuantity(lot, value) {
   const available = Math.max(0, Math.floor(Number(lot?.quantityAvailable) || 0));
-  const minimum = Math.max(1, Math.floor(Number(lot?.minimumOrderQuantity) || 1));
-  const increment = Math.max(1, Math.floor(Number(lot?.orderIncrement) || 1));
-  if (available < minimum) return 0;
+  if (available < 1) return 0;
 
-  const requested = Math.max(minimum, Math.floor(Number(value) || minimum));
-  const stepped = minimum + Math.ceil((requested - minimum) / increment) * increment;
-  const maximumValid = minimum + Math.floor((available - minimum) / increment) * increment;
-  return Math.min(maximumValid, stepped);
+  const requested = Math.max(1, Math.floor(Number(value) || 1));
+  return Math.min(available, requested);
 }
 
 export function buildWholesaleEmailUrl(lines = []) {
@@ -52,6 +48,7 @@ export function buildWholesaleEmailUrl(lines = []) {
       `   Lot ID: ${lot.id}`,
       `   MPN: ${lot.mpn || "Not listed"}`,
       `   Requested quantity: ${quantity}`,
+      "   Please confirm what quantity you can accommodate.",
     ])
     : [
       "SKU / part number:",

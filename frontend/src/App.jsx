@@ -30,6 +30,9 @@ import Categories from "@/pages/Categories";
 const WholesaleLab = import.meta.env.DEV
   ? lazy(() => import("@/pages/WholesaleLab"))
   : null;
+const WholesaleLabLot = import.meta.env.DEV
+  ? lazy(() => import("@/pages/WholesaleLabLot"))
+  : null;
 const WholesaleAdminLab = import.meta.env.DEV
   ? lazy(() => import("@/pages/WholesaleAdminLab"))
   : null;
@@ -112,6 +115,12 @@ export default function App() {
             <Route
               path="/wholesale-lab"
               element={<Suspense fallback={null}><WholesaleLab /></Suspense>}
+            />
+          )}
+          {WholesaleLabLot && (
+            <Route
+              path="/wholesale-lab/:lotId"
+              element={<Suspense fallback={null}><WholesaleLabLot /></Suspense>}
             />
           )}
           {WholesaleAdminLab && (

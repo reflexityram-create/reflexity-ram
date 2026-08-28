@@ -7,6 +7,7 @@ export default function WholesaleLab() {
   return (
     <WholesaleMarket
       badgeLabel="LOCAL DEMO"
+      detailBasePath="/wholesale-lab"
       errorEyebrow="LOCAL DEMO DATA UNAVAILABLE"
       errorTitle="The stock preview is safely empty."
       inventoryEyebrow="LOCAL CUSTOMER PREVIEW"

@@ -41,15 +41,15 @@ test("a below-MOQ lot cannot render with a generic quote fallback", () => {
   };
 
   assert.deepEqual(publishedWholesaleLots([belowMinimum]), []);
-  assert.equal(normalizeWholesaleQuantity(belowMinimum, 10), 0);
+  assert.equal(normalizeWholesaleQuantity(belowMinimum, 8), 8);
 });
 
-test("quote quantities honor MOQ, increments, and exact available stock", () => {
-  assert.equal(normalizeWholesaleQuantity(publishedLot, 0), 10);
-  assert.equal(normalizeWholesaleQuantity(publishedLot, 11), 14);
+test("request quantities allow any whole unit while respecting available stock", () => {
+  assert.equal(normalizeWholesaleQuantity(publishedLot, 0), 1);
+  assert.equal(normalizeWholesaleQuantity(publishedLot, 11), 11);
   assert.equal(normalizeWholesaleQuantity(publishedLot, 99), 38);
-  assert.equal(normalizeWholesaleQuantity({ ...publishedLot, quantityAvailable: 19 }, 99), 18);
-  assert.equal(normalizeWholesaleQuantity({ ...publishedLot, quantityAvailable: 8 }, 8), 0);
+  assert.equal(normalizeWholesaleQuantity({ ...publishedLot, quantityAvailable: 19 }, 99), 19);
+  assert.equal(normalizeWholesaleQuantity({ ...publishedLot, quantityAvailable: 8 }, 8), 8);
 });
 
 test("the general contact action opens a pre-addressed wholesale email draft", () => {
@@ -67,7 +67,8 @@ test("a posted lot produces a review-only email with its exact identity and boun
   assert.equal(url.searchParams.get("su"), "Wholesale lot request — M393A4K40DB3-CWE");
   assert.match(url.searchParams.get("body"), /Lot ID: lot-samsung-ddr4-001/);
   assert.match(url.searchParams.get("body"), /MPN: M393A4K40DB3-CWE/);
-  assert.match(url.searchParams.get("body"), /Requested quantity: 14/);
+  assert.match(url.searchParams.get("body"), /Requested quantity: 11/);
+  assert.match(url.searchParams.get("body"), /confirm what quantity you can accommodate/);
 });
 
 test("the live route uses the API while the demo adapter remains on a development-only alias", async () => {
@@ -76,11 +77,14 @@ test("the live route uses the API while the demo adapter remains on a developmen
 
   assert.match(app, /const WholesaleLab = import\.meta\.env\.DEV/);
   assert.match(app, /lazy\(\(\) => import\("@\/pages\/WholesaleLab"\)\)/);
+  assert.match(app, /lazy\(\(\) => import\("@\/pages\/WholesaleLabLot"\)\)/);
   assert.match(app, /path="\/wholesale"[\s\S]*?element=\{<Wholesale \/>\}/);
   assert.match(app, /path="\/wholesale-lab"/);
+  assert.match(app, /path="\/wholesale-lab\/:lotId"/);
   assert.match(local, /import \{ WholesaleMarket \} from "@\/pages\/Wholesale"/);
   assert.match(local, /publishedWholesaleDemoLots\(lots\)/);
   assert.match(local, /badgeLabel="LOCAL DEMO"/);
+  assert.match(local, /detailBasePath="\/wholesale-lab"/);
   assert.match(local, /postedLots=\{error \? \[\] : publishedWholesaleDemoLots\(lots\)\}/);
   assert.match(local, /stockError=\{error\}/);
   assert.doesNotMatch(local, /useStock|productsApi|\/api\/products|stockQuantity|cartApi|checkoutApi/);
@@ -113,7 +117,8 @@ test("wholesale cards open a dedicated detail route like regular shop products",
   const css = await readFile(new URL("../src/pages/wholesale-concepts.css", import.meta.url), "utf8");
 
   assert.match(app, /path="\/wholesale\/:lotId" element=\{<WholesaleLot \/>\}/);
-  assert.match(page, /to=\{`\/wholesale\/\$\{encodeURIComponent\(lot\.id\)\}`\}/);
+  assert.match(page, /detailBasePath = "\/wholesale"/);
+  assert.match(page, /to=\{`\$\{detailBasePath\}\/\$\{encodeURIComponent\(lot\.id\)\}`\}/);
   assert.match(page, /View details/);
   assert.match(page, /formatStorePrice\(lot\.unitPriceCad\)/);
   assert.match(page, /STORE_CURRENCY_CODE/);
@@ -128,10 +133,35 @@ test("wholesale cards open a dedicated detail route like regular shop products",
   assert.match(detail, /className="text-3xl md:text-4xl font-bold tracking-tight leading-tight mb-3"/);
   assert.match(detail, /className="glass rounded-2xl p-6 md:p-8"/);
   assert.match(detail, />Specifications</);
-  assert.match(detail, /Request this lot/);
+  assert.match(detail, /Request \{quantity\}/);
   assert.match(detail, /formatStorePrice\(lot\.unitPriceCad\)/);
   assert.match(detail, /lots\.find\(\(lot\) => lot\.id === lotId\)/);
   assert.doesNotMatch(detail, /wholesale-concepts\.css|ws-detail-/);
+});
+
+test("the wholesale detail quantity picker caps selection and carries it into the email", async () => {
+  const detail = await readFile(new URL("../src/pages/WholesaleLot.jsx", import.meta.url), "utf8");
+
+  assert.match(detail, /normalizeWholesaleQuantity\(lot, lot\.quantityAvailable\)/);
+  assert.match(detail, /const \[quantity, setQuantity\] = useState\(1\)/);
+  assert.match(detail, /buildWholesaleEmailUrl\(\[\{ lot, quantity \}\]\)/);
+  assert.match(detail, /htmlFor="wholesale-quantity"[^>]*>Request how many you need/);
+  assert.match(detail, /max=\{maximum\}/);
+  assert.match(detail, /min="1"/);
+  assert.match(detail, /disabled=\{quantity >= maximum\}/);
+  assert.match(detail, /Request \{quantity\} \{quantity === 1 \? "unit" : "units"\}/);
+  assert.doesNotMatch(detail, /buildWholesaleEmailUrl\(\[\{ lot, quantity: minimum \}\]\)/);
+  assert.doesNotMatch(detail, /MOQ:/);
+  assert.match(detail, /We&apos;ll confirm what quantity we can accommodate/);
+});
+
+test("the local demo detail reuses the production quantity experience without the live API", async () => {
+  const detail = await readFile(new URL("../src/pages/WholesaleLabLot.jsx", import.meta.url), "utf8");
+
+  assert.match(detail, /publishedWholesaleDemoLots\(lots\)\.find/);
+  assert.match(detail, /<WholesaleLotDetail backTo="\/wholesale-lab" lot=\{lot\} \/>/);
+  assert.match(detail, /data-testid="wholesale-lab-detail-page"/);
+  assert.doesNotMatch(detail, /wholesaleApi|\/api\/wholesale/);
 });
 
 test("the official wholesale shell reads only the fail-closed public API", async () => {
