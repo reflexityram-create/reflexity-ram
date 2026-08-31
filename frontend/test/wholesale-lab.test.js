@@ -152,7 +152,11 @@ test("the wholesale detail quantity picker caps selection and carries it into th
   assert.match(detail, /Request \{quantity\} \{quantity === 1 \? "unit" : "units"\}/);
   assert.doesNotMatch(detail, /buildWholesaleEmailUrl\(\[\{ lot, quantity: minimum \}\]\)/);
   assert.doesNotMatch(detail, /MOQ:/);
-  assert.match(detail, /We&apos;ll confirm what quantity we can accommodate/);
+  assert.match(detail, /Each wholesale order is custom/);
+  assert.match(detail, /Choose your total and inquire/);
+  assert.match(detail, /Custom per order/);
+  assert.match(detail, /Inquire with your total quantity for details/);
+  assert.doesNotMatch(detail, /lot\.warranty|warranty|defect|replacement|30 Days/i);
 });
 
 test("the local demo detail reuses the production quantity experience without the live API", async () => {
