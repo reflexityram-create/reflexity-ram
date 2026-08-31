@@ -36,7 +36,6 @@ export function WholesaleLotDetail({ backTo = "/wholesale", lot }) {
     ["ECC", isEcc ? "Yes" : "Not specified"],
     ["Condition", lot.condition],
     ["Testing", lot.testStatus],
-    ["Warranty", lot.warranty],
     ["Ships from", lot.shipFrom],
   ].filter(([, value]) => value);
 
@@ -98,7 +97,7 @@ export function WholesaleLotDetail({ backTo = "/wholesale", lot }) {
             <div className="flex items-start justify-between gap-4 mb-3">
               <div>
                 <label className="text-[13px] font-semibold" htmlFor="wholesale-quantity">Request how many you need</label>
-                <p className="text-[11px] text-neutral-500 mt-0.5">Choose 1–{maximum}. We&apos;ll confirm what quantity we can accommodate.</p>
+                <p className="text-[11px] text-neutral-500 mt-0.5">Each wholesale order is custom. Choose your total and inquire—we&apos;ll let you know what we can accommodate.</p>
               </div>
               <span className="mono text-[10px] text-neutral-500 whitespace-nowrap">{lot.quantityAvailable} IN STOCK</span>
             </div>
@@ -144,7 +143,7 @@ export function WholesaleLotDetail({ backTo = "/wholesale", lot }) {
           </div>
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mb-4 text-[12px] text-neutral-600 dark:text-neutral-400">
-            {[lot.testStatus, `${lot.warranty} warranty`, `Ships from ${lot.shipFrom}`].map((item) => (
+            {[lot.testStatus, "Custom terms for each order", `Ships from ${lot.shipFrom}`].map((item) => (
               <span className="inline-flex items-center gap-1.5" key={item}><span className="text-emerald-600 dark:text-emerald-400">✓</span>{item}</span>
             ))}
           </div>
@@ -156,7 +155,7 @@ export function WholesaleLotDetail({ backTo = "/wholesale", lot }) {
             </div>
             <div className="glass-soft rounded-xl p-4 flex items-start gap-3">
               <Shield aria-hidden="true" className="text-neutral-300 mt-0.5 shrink-0" size={18} />
-              <div><div className="text-[13px] font-medium">{lot.warranty}</div><div className="text-[12px] text-neutral-500">Defect-replacement coverage</div></div>
+              <div><div className="text-[13px] font-medium">Custom per order</div><div className="text-[12px] text-neutral-500">Inquire with your total quantity for details</div></div>
             </div>
           </div>
         </div>
