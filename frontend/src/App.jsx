@@ -7,25 +7,26 @@ import ScrollToTop from "@/components/ScrollToTop";
 import { useApplyTheme, useTheme } from "@/lib/theme";
 import useAuthStore from "@/lib/authStore";
 import { AUTH_TOKEN_KEY } from "@/lib/authSession";
+import { shouldTrackLocation } from "@/lib/analytics";
 
 // Public pages
 import Home from "@/pages/Home";
-import Wholesale from "@/pages/Wholesale";
-import WholesaleLot from "@/pages/WholesaleLot";
-import Liquidators from "@/pages/Liquidators";
-import Guides from "@/pages/Guides";
-import Shop from "@/pages/Shop";
-import Product from "@/pages/Product";
-import Cart from "@/pages/Cart";
-import Checkout from "@/pages/Checkout";
-import OrderSuccess from "@/pages/OrderSuccess";
-import CheckoutReturn from "@/pages/CheckoutReturn";
-import Account from "@/pages/Account";
-import ResetPassword from "@/pages/ResetPassword";
-import VerifyEmail from "@/pages/VerifyEmail";
-import NotFound from "@/pages/NotFound";
-import AuthCallback from "@/pages/AuthCallback";
-import Categories from "@/pages/Categories";
+const Wholesale = lazy(() => import("@/pages/Wholesale"));
+const WholesaleLot = lazy(() => import("@/pages/WholesaleLot"));
+const Liquidators = lazy(() => import("@/pages/Liquidators"));
+const Guides = lazy(() => import("@/pages/Guides"));
+const Shop = lazy(() => import("@/pages/Shop"));
+const Product = lazy(() => import("@/pages/Product"));
+const Cart = lazy(() => import("@/pages/Cart"));
+const Checkout = lazy(() => import("@/pages/Checkout"));
+const OrderSuccess = lazy(() => import("@/pages/OrderSuccess"));
+const CheckoutReturn = lazy(() => import("@/pages/CheckoutReturn"));
+const Account = lazy(() => import("@/pages/Account"));
+const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
+const VerifyEmail = lazy(() => import("@/pages/VerifyEmail"));
+const NotFound = lazy(() => import("@/pages/NotFound"));
+const AuthCallback = lazy(() => import("@/pages/AuthCallback"));
+const Categories = lazy(() => import("@/pages/Categories"));
 
 const WholesaleLab = import.meta.env.DEV
   ? lazy(() => import("@/pages/WholesaleLab"))
@@ -38,22 +39,22 @@ const WholesaleAdminLab = import.meta.env.DEV
   : null;
 
 // Policy pages
-import Shipping from "@/pages/policies/Shipping";
-import Returns from "@/pages/policies/Returns";
-import Warranty from "@/pages/policies/Warranty";
-import Privacy from "@/pages/policies/Privacy";
-import Terms from "@/pages/policies/Terms";
-import Support from "@/pages/policies/Support";
-import FAQ from "@/pages/policies/FAQ";
-import International from "@/pages/policies/International";
-import BusinessInfo from "@/pages/policies/BusinessInfo";
+const Shipping = lazy(() => import("@/pages/policies/Shipping"));
+const Returns = lazy(() => import("@/pages/policies/Returns"));
+const Warranty = lazy(() => import("@/pages/policies/Warranty"));
+const Privacy = lazy(() => import("@/pages/policies/Privacy"));
+const Terms = lazy(() => import("@/pages/policies/Terms"));
+const Support = lazy(() => import("@/pages/policies/Support"));
+const FAQ = lazy(() => import("@/pages/policies/FAQ"));
+const International = lazy(() => import("@/pages/policies/International"));
+const BusinessInfo = lazy(() => import("@/pages/policies/BusinessInfo"));
 
 // Admin pages
-import AdminProducts from "@/pages/admin/Products";
-import AdminWholesale from "@/pages/admin/WholesaleAdmin";
-import AdminOrders from "@/pages/admin/Orders";
-import AdminUsers from "@/pages/admin/Users";
-import AdminSecurity from "@/pages/admin/Security";
+const AdminProducts = lazy(() => import("@/pages/admin/Products"));
+const AdminWholesale = lazy(() => import("@/pages/admin/WholesaleAdmin"));
+const AdminOrders = lazy(() => import("@/pages/admin/Orders"));
+const AdminUsers = lazy(() => import("@/pages/admin/Users"));
+const AdminSecurity = lazy(() => import("@/pages/admin/Security"));
 
 export default function App() {
   useApplyTheme();
@@ -103,7 +104,7 @@ export default function App() {
       <BrowserRouter>
         <ScrollToTop />
         <AnalyticsTracker />
-        <Routes>
+        <Suspense fallback={null}><Routes>
           {/* Store */}
           <Route path="/" element={<Home />} />
           <Route
@@ -164,7 +165,7 @@ export default function App() {
           <Route path="/categories" element={<Categories />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="*" element={<NotFound />} />
-        </Routes>
+        </Routes></Suspense>
 
         <Toaster
           position="bottom-left"
@@ -190,7 +191,7 @@ export default function App() {
 function AnalyticsTracker() {
   const location = useLocation();
   useEffect(() => {
-    if (typeof window.gtag !== "function") return;
+    if (!shouldTrackLocation(window.location) || typeof window.gtag !== "function") return;
     // Never include search or hash: OAuth and order flows may carry sensitive
     // one-time values there before the router replaces the URL.
     const safePath = location.pathname;

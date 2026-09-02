@@ -9,6 +9,7 @@ import { stripeApi } from '@/lib/api';
 import { useSEO } from '@/lib/seo';
 import { imageUrl } from '@/lib/imageUrl';
 import { formatStorePrice, STORE_CURRENCY_NAME } from '@/lib/currency';
+import { ecommerceItem, trackEvent } from '@/lib/analytics';
 
 // Checkout is handled by Stripe's hosted Checkout page:
 // - Address collection restricted to Canada + United States, with the
@@ -30,6 +31,11 @@ export default function Checkout() {
     setRedirecting(true);
     try {
       const { data } = await stripeApi.createCheckoutSession();
+      trackEvent('checkout_redirect', {
+        currency: 'CAD',
+        value: Number(subtotal || 0),
+        items: items.map((item) => ecommerceItem(item, item.qty)),
+      });
       window.location.href = data.url; // hand off to Stripe's hosted checkout
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to start checkout');
@@ -60,7 +66,7 @@ export default function Checkout() {
               {items.map((item) => (
                 <div key={item.slug} className="glass rounded-xl p-4 flex items-center gap-4">
                   <div className="w-14 h-14 rounded-lg overflow-hidden bg-white/5 shrink-0">
-                    {item.image && <img src={imageUrl(item.image)} alt="" className="w-full h-full object-cover" />}
+                    {item.image && <img src={imageUrl(item.image, { width: 160 })} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-[14px] line-clamp-1">{item.name}</div>

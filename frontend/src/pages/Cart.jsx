@@ -6,8 +6,9 @@ import Footer from '@/components/Footer';
 import EmptyState from '@/components/EmptyState';
 import useCartStore from '@/lib/cartStore';
 import { imageUrl } from '@/lib/imageUrl';
-import { formatStorePrice, STORE_CURRENCY_NAME } from '@/lib/currency';
+import { formatStorePrice, STORE_CURRENCY_CODE, STORE_CURRENCY_NAME } from '@/lib/currency';
 import { useSEO } from '@/lib/seo';
+import { ecommerceItem, trackEvent } from '@/lib/analytics';
 
 export default function Cart() {
   useSEO({ title: 'Cart', description: 'Review your Reflexity RAM order before checkout.' });
@@ -49,7 +50,7 @@ export default function Cart() {
               {items.map((item) => (
                 <div key={item.slug} className="glass rounded-xl p-5 flex gap-4" data-testid={`cart-item-${item.slug}`}>
                   <div className="w-20 h-20 rounded-lg overflow-hidden bg-white/5 shrink-0">
-                    {item.image && <img src={imageUrl(item.image)} alt={item.name} className="w-full h-full object-cover" />}
+                    {item.image && <img src={imageUrl(item.image, { width: 160 })} alt={item.name} className="w-full h-full object-cover" loading="lazy" decoding="async" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <Link to={`/shop/${item.slug}`} className="text-[14px] font-semibold hover:text-white/80 line-clamp-2">
@@ -116,6 +117,11 @@ export default function Cart() {
               </div>
               <Link
                 to="/checkout"
+                onClick={() => trackEvent('begin_checkout', {
+                  currency: STORE_CURRENCY_CODE,
+                  value: Number(subtotal || 0),
+                  items: items.map((item) => ecommerceItem(item, item.qty)),
+                })}
                 className="btn-primary w-full flex items-center justify-center gap-2"
                 data-testid="cart-checkout-btn"
               >

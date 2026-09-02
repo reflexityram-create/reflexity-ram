@@ -139,7 +139,7 @@ html.light {
     --fg: #17181a;
     --fg-strong: #17181a;
     --fg-muted: #55585e;
-    --fg-faint: #a6a8ad;
+    --fg-faint: #55585e;
     --fg-dim: #55585e;
     --fg-on-primary: #17181a;
     --policy-heading: #171717;
@@ -359,7 +359,7 @@ html.light .callout-brand .callout-body {
 .pill-accent {
     border-color: rgba(80, 180, 110, 0.3);
     background: rgba(80, 180, 120, 0.07);
-    color: #2f9a4d;
+    color: #1f6b36;
 }
 html.dark .pill-accent {
     color: #9fe5ae;
@@ -501,6 +501,9 @@ html.dark .pill-blue {
 .section-label .num {
     color: var(--brand-yellow-deep);
     font-weight: 500;
+}
+html.light .section-label .num {
+    color: #6f5800;
 }
 /* Yellow dash before an eyebrow label, as on reflexity.io */
 .section-label::before {

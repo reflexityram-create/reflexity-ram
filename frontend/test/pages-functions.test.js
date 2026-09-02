@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { proxyCatalogXml } from "../functions-shared/proxyCatalogXml.js";
 import { renderProductPage } from "../functions-shared/productMetadata.js";
+import { renderStaticPage } from "../functions-shared/staticMetadata.js";
 import { STOREFRONT_SECURITY_HEADERS } from "../functions-shared/securityHeaders.js";
 import { onRequest as feedHandler } from "../functions/feed.xml.js";
 import { onRequest as productHandler } from "../functions/shop/[slug].js";
@@ -94,13 +95,13 @@ test("catalog XML proxy rejects writes and fails closed on upstream errors", asy
   assert.equal(upstreamResponse.headers.get("cache-control"), "no-store");
 });
 
-test("Pages route manifest invokes Functions only for live XML and product pages", async () => {
+test("Pages route manifest invokes Functions for public crawlable routes", async () => {
   const routes = JSON.parse(
     await readFile(new URL("../public/_routes.json", import.meta.url), "utf8"),
   );
   assert.deepEqual(routes, {
     version: 1,
-    include: ["/feed.xml", "/sitemap.xml", "/shop/*"],
+    include: ["/", "/shop", "/shop/*", "/categories", "/guides", "/guides/*", "/wholesale", "/liquidators", "/support", "/business-info", "/shipping", "/international", "/returns", "/warranty", "/faq", "/privacy", "/terms", "/feed.xml", "/sitemap.xml"],
     exclude: [],
   });
 });
@@ -125,7 +126,7 @@ test("static and edge storefront responses enforce the same CSP", async () => {
   assert.match(staticHeaders, new RegExp(`Content-Security-Policy: ${policy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
   assert.match(staticHeaders, /Strict-Transport-Security: max-age=63072000; includeSubDomains/);
   assert.match(staticHeaders, /Referrer-Policy: no-referrer/);
-  for (const script of ["theme", "analytics", "error"]) {
+  for (const script of ["theme", "analytics", "font", "error"]) {
     assert.match(staticHeaders, new RegExp(`/${script}-bootstrap\\.js[\\s\\S]*?max-age=0, must-revalidate`));
   }
 });
@@ -168,7 +169,32 @@ test("product edge metadata uses the exact live API contract and escapes values"
   assert.match(html, new RegExp(`property="og:url" content="https://reflexityram\\.com/shop/${slug}"`));
   assert.match(html, new RegExp(`rel="canonical" href="https://reflexityram\\.com/shop/${slug}"`));
   assert.match(html, /name="twitter:image" content="https:\/\/images\.example\.test\/product\.jpg"/);
+  assert.match(html, /data-edge-content="product"/);
+  assert.match(html, /<h1>Tested &quot;64GB&quot;<\/h1>/);
+  assert.match(html, /type="application\/ld\+json" data-edge-product/);
+  assert.match(html, /"priceCurrency":"CAD"/);
+  assert.doesNotMatch(html, /<div id="root"><\/div>/);
   assert.doesNotMatch(html, /<title>Home title<\/title>/);
+});
+
+test("static edge pages provide unique metadata and meaningful initial HTML", async () => {
+  const pageContext = (path, method = "GET") => ({
+    request: new Request(`https://reflexityram.com${path}`, { method }),
+    next: async () => new Response(PRODUCT_SHELL, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", ETag: '"shell-v1"' } }),
+  });
+  const response = await renderStaticPage(pageContext("/guides/how-to-identify-ram"));
+  const html = await response.text();
+  assert.equal(response.headers.get("x-reflexity-seo"), "static-edge");
+  assert.equal(response.headers.get("etag"), null);
+  assert.match(html, /<title>How to Identify RAM: Labels &amp; Part Numbers — Reflexity RAM<\/title>/);
+  assert.match(html, /rel="canonical" href="https:\/\/reflexityram\.com\/guides\/how-to-identify-ram"/);
+  assert.match(html, /data-edge-content="static"/);
+  assert.match(html, /<h1>How to identify RAM from its label and part number<\/h1>/);
+  assert.match(html, /href="\/shop"/);
+  assert.doesNotMatch(html, /<div id="root"><\/div>/);
+
+  const head = await renderStaticPage(pageContext("/shop", "HEAD"));
+  assert.equal(await head.text(), "");
 });
 
 test("product edge returns a crawl-safe 404 only when the API confirms it", async () => {

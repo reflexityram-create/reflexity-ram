@@ -11,7 +11,7 @@ reflexityram.com
   Root directory: frontend
   Build command: npm ci && npm run build
   Output directory: dist
-  Pages Functions: /feed.xml, /sitemap.xml, and /shop/:slug metadata
+  Pages Functions: live XML plus crawlable public-route and /shop/:slug HTML
 
 https://reflexity-ram.onrender.com
   Render service root: backend
@@ -177,7 +177,14 @@ The file-routed functions are:
 frontend/functions/feed.xml.js
 frontend/functions/sitemap.xml.js
 frontend/functions/shop/[slug].js
+frontend/functions/[[path]].js
 ```
+
+`public/_routes.json` limits the catch-all function to indexable sitemap
+routes. Administrator, account, authentication, cart, checkout, and order
+routes must remain outside that manifest. After deployment, require
+`X-Reflexity-SEO: static-edge` on a static public route and
+`X-Reflexity-SEO: product-edge` plus Product JSON-LD on a live product route.
 
 The XML functions fetch the backend's live XML and return
 `X-Reflexity-Source: live-catalog-api`. The product function uses the exact

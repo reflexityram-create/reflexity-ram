@@ -5,7 +5,8 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const { optionalAuth } = require('../middleware/auth');
 const { sendOrderConfirmationEmail } = require('../utils/email');
-const { toStripeShippingOptions, ALLOWED_SHIPPING_COUNTRIES } = require('../config/shipping');
+const { toStripeShippingOptions, ALLOWED_SHIPPING_COUNTRIES, CURRENCY } = require('../config/shipping');
+const { analyticsOrder } = require('../utils/analyticsOrder');
 const { decrementStockForOrder, shouldDecrementStockForFulfillment } = require('../utils/stock');
 const { ensureStripePrice } = require('../utils/stripeSync');
 const { isDisposableEmail } = require('../utils/disposableEmail');
@@ -285,6 +286,7 @@ router.get('/session-status', async (req, res) => {
       status: 'complete',
       orderNumber: order.orderNumber,
       email: order.guestEmail || undefined,
+      ...analyticsOrder(order, CURRENCY),
     });
   } catch (err) {
     console.error('Session status error:', err);

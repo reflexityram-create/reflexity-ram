@@ -14,7 +14,7 @@ test('retail and wholesale are separate, theme-safe workspaces under Products', 
     read('../src/pages/admin/WholesaleAdmin.jsx'),
   ]);
 
-  assert.match(app, /import AdminWholesale from "@\/pages\/admin\/WholesaleAdmin"/);
+  assert.match(app, /const AdminWholesale = lazy\(\(\) => import\("@\/pages\/admin\/WholesaleAdmin"\)\)/);
   assert.match(app, /path="\/admin\/wholesale" element=\{<AdminWholesale \/>\}/);
   assert.match(layout, /label: 'Retail products'[\s\S]*?group: 'Products'/);
   assert.match(layout, /label: 'Wholesale lots'[\s\S]*?group: 'Products'/);

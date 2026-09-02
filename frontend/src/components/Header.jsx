@@ -172,6 +172,7 @@ export default function Header() {
             {/* Cart */}
             <Link
               to="/cart"
+              aria-label={itemCount > 0 ? `Cart, ${itemCount} ${itemCount === 1 ? "item" : "items"}` : "Cart"}
               className="relative inline-flex items-center justify-center w-9 h-9 rounded-lg hover:bg-white/[0.05] transition-colors duration-150"
               data-testid="header-cart-link"
             >

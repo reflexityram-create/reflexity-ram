@@ -8,9 +8,10 @@ import { serializeJsonLd } from "@/lib/safeJsonLd";
 const GUIDES = [
   {
     slug: "ddr4-vs-ddr5",
-    title: "DDR4 vs DDR5 RAM: Which Memory Should You Buy?",
+    title: "DDR4 or DDR5? Compatibility, Speed, and Upgrade Guide",
     description: "Compare DDR4 and DDR5 speed, compatibility, price, and upgrade value before buying desktop or laptop RAM in Canada.",
     keywords: "DDR4 vs DDR5, DDR5 RAM Canada, DDR4 upgrade",
+    cta: { label: "Browse RAM by generation", to: "/categories" },
     sections: [
       ["The short answer", "DDR4 and DDR5 are not interchangeable. Your motherboard and processor determine which generation you can install. If your system supports DDR5, it offers higher bandwidth and newer platforms. If it uses DDR4, a tested DDR4 upgrade is usually the best value."],
       ["Compatibility comes first", "DDR4 modules have a different key notch and electrical design from DDR5 modules, so they cannot be installed in the wrong slot. Check the motherboard model, CPU generation, and official memory support list before ordering. Laptop buyers should also confirm whether memory is upgradeable or soldered."],
@@ -20,9 +21,10 @@ const GUIDES = [
   },
   {
     slug: "ecc-rdimm-udimm-explained",
-    title: "ECC, RDIMM, LRDIMM, and UDIMM Explained",
+    title: "RDIMM vs UDIMM: ECC, LRDIMM, and Server RAM Explained",
     description: "Learn the difference between ECC, registered RDIMM, load-reduced LRDIMM, and unbuffered UDIMM server memory.",
     keywords: "ECC RAM, RDIMM vs UDIMM, LRDIMM server memory",
+    cta: { label: "Shop tested server RAM", to: "/shop" },
     sections: [
       ["ECC memory", "ECC adds error detection and correction for many single-bit memory errors. It is common in servers, workstations, and systems where reliability matters. ECC support depends on the motherboard and CPU; an ECC module is not automatically compatible with every desktop platform."],
       ["UDIMM", "Unbuffered DIMMs are common in desktops and many entry-level systems. They communicate directly with the memory controller and are the usual choice for consumer motherboards. Do not substitute a registered DIMM for a UDIMM unless the platform documentation explicitly supports it."],
@@ -32,9 +34,10 @@ const GUIDES = [
   },
   {
     slug: "how-to-identify-ram",
-    title: "How to Identify RAM From a Part Number",
+    title: "How to Identify RAM: Read a RAM Label and Part Number",
     description: "Use the label and model number to identify RAM capacity, DDR generation, speed, form factor, ECC type, and rank.",
     keywords: "identify RAM part number, Samsung RAM model number, server RAM label",
+    cta: { label: "Search the RAM catalog", to: "/shop" },
     sections: [
       ["Start with the exact model", "Search the complete label number, including letters and suffixes. A model such as M471A2K43DB1-CTD can identify a specific Samsung module more reliably than a generic search for 16GB DDR4."],
       ["Read the key specifications", "Look for capacity, DDR generation, transfer rate, and the PC4 or PC5 speed code. SO-DIMM usually indicates laptop memory, while DIMM or UDIMM usually indicates desktop memory. RDIMM, LRDIMM, ECC, and REG point toward server memory."],
@@ -47,6 +50,7 @@ const GUIDES = [
     title: "How Much RAM Do I Need? A Practical Capacity Guide",
     description: "Choose the right RAM capacity for office work, gaming, content creation, virtual machines, and server workloads.",
     keywords: "how much RAM do I need, 16GB vs 32GB RAM, server memory capacity",
+    cta: { label: "Browse RAM by use case", to: "/categories" },
     sections: [
       ["Everyday laptops and desktops", "16GB is a practical baseline for office work, web browsing, school, and general multitasking. Choose 32GB if you regularly use large spreadsheets, development tools, many browser tabs, or photo and video applications."],
       ["Gaming and creative work", "Capacity needs depend on the game and the rest of the system, but 32GB gives modern gaming PCs useful headroom. Video editing, 3D work, and large creative projects may benefit from 64GB or more, especially when several applications are open."],
@@ -99,7 +103,10 @@ export default function Guides() {
               ))}
             </div>
             <div className="mt-12 border-t pt-8" style={{ borderColor: "var(--border)" }}>
-              <Link to="/categories" className="btn-primary"><CheckCircle2 size={15} /> Browse tested RAM</Link>
+              <div className="flex flex-wrap gap-3">
+                <Link to={guide.cta.to} className="btn-primary"><CheckCircle2 size={15} /> {guide.cta.label}</Link>
+                <Link to="/support" className="btn-secondary">Ask us to confirm compatibility</Link>
+              </div>
             </div>
           </article>
           <GuideSchema guide={guide} />

@@ -28,6 +28,7 @@ import { useSEO } from "@/lib/seo";
 import { productsApi } from "@/lib/api";
 import { reviewsApi } from "@/lib/api";
 import { serializeJsonLd } from "@/lib/safeJsonLd";
+import { ecommerceItem, trackEvent } from "@/lib/analytics";
 import {
   formatStorePrice,
   formatStorePriceWithCode,
@@ -108,6 +109,15 @@ export default function Product() {
       if (active) setReviewData(data);
     }).catch(() => {});
     return () => { active = false; controller.abort(); };
+  }, [p?.slug]);
+
+  useEffect(() => {
+    if (!p?.slug) return;
+    trackEvent("view_item", {
+      currency: STORE_CURRENCY_CODE,
+      value: Number(p.price || 0),
+      items: [ecommerceItem(p)],
+    });
   }, [p?.slug]);
 
   const recentlyViewed = useMemo(() => {
@@ -216,6 +226,11 @@ export default function Product() {
       description: `${qty} × ${p.name}`,
       icon: <Check size={16} className="text-emerald-400" />,
     });
+    trackEvent("add_to_cart", {
+      currency: STORE_CURRENCY_CODE,
+      value: Number(p.price || 0) * qty,
+      items: [ecommerceItem(p, qty)],
+    });
   };
 
   const buyNow = async () => {
@@ -224,6 +239,16 @@ export default function Product() {
       toast.error(result.message || "Failed to add to cart");
       return;
     }
+    trackEvent("add_to_cart", {
+      currency: STORE_CURRENCY_CODE,
+      value: Number(p.price || 0) * qty,
+      items: [ecommerceItem(p, qty)],
+    });
+    trackEvent("begin_checkout", {
+      currency: STORE_CURRENCY_CODE,
+      value: Number(p.price || 0) * qty,
+      items: [ecommerceItem(p, qty)],
+    });
     navigate("/checkout");
   };
 
@@ -270,7 +295,7 @@ export default function Product() {
               >
                 {imageUrls[imgIdx] ? (
                   <img
-                    src={imageUrls[imgIdx]}
+                    src={imageUrl(imageUrls[imgIdx], { width: 1200 })}
                     alt={p.name}
                     className="w-full h-full object-cover"
                   />
@@ -292,7 +317,7 @@ export default function Product() {
                       }`}
                       data-testid={`product-thumbnail-${i}`}
                     >
-                      <img src={src} alt="" className="w-full h-full object-cover" />
+                      <img src={imageUrl(src, { width: 240 })} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                     </button>
                   ))}
                 </div>

@@ -5,6 +5,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import useCartStore from '@/lib/cartStore';
 import { stripeApi } from '@/lib/api';
+import { trackPurchaseOnce } from '@/lib/analytics';
 
 // Landing page after Stripe Checkout (success_url → /order/success?session_id=...).
 // Polls /stripe/session-status, which both verifies payment server-side and
@@ -37,6 +38,7 @@ export default function CheckoutReturn() {
         if (cancelled) return;
 
         if (data.status === 'complete' && data.orderNumber) {
+          trackPurchaseOnce(data);
           clearCartLocal();
           const emailParam = data.email ? `?email=${encodeURIComponent(data.email)}` : '';
           navigate(`/order/${data.orderNumber}${emailParam}`, { replace: true });

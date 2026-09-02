@@ -14,7 +14,8 @@ test('policy copy and analytics cannot use sensitive light-theme or URL defaults
   assert.match(css, /--policy-link: #93b4ff/);
   assert.match(css, /--policy-link: #1557a6/);
   assert.match(css, /\.policy-content a[^\n]*color: var\(--policy-link\)/);
-  assert.match(html, /<script src="\/analytics-bootstrap\.js"><\/script>/);
+  assert.match(html, /<script defer src="\/analytics-bootstrap\.js"><\/script>/);
+  assert.match(html, /<script defer src="\/font-bootstrap\.js"><\/script>/);
   assert.doesNotMatch(html, /googletagmanager\.com\/gtag\/js/);
   assert.match(analytics, /window\.location\.hostname === "reflexityram\.com"/);
   assert.match(analytics, /document\.head\.appendChild\(analyticsScript\)/);

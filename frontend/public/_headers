@@ -16,5 +16,8 @@
 /analytics-bootstrap.js
   Cache-Control: public, max-age=0, must-revalidate
 
+/font-bootstrap.js
+  Cache-Control: public, max-age=0, must-revalidate
+
 /error-bootstrap.js
   Cache-Control: public, max-age=0, must-revalidate
