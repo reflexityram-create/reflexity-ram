@@ -34,6 +34,7 @@ test('product and order detail requests are cancelled and identity-guarded', asy
   assert.match(product, /new AbortController\(\)/);
   assert.match(product, /if \(!active\) return/);
   assert.match(product, /controller\.abort\(\)/);
+  assert.match(product, /querySelectorAll\("script\[data-edge-product\]"\)[\s\S]*?node\.remove\(\)/);
   assert.match(orders, /getOrder\(orderId, \{ signal: controller\.signal \}\)/);
   assert.match(orders, /if \(!active\) return/);
   assert.match(api, /getOrder: \(id, config = \{\}\)/);

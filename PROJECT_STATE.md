@@ -1,5 +1,48 @@
 # Project State
 
+## 2026-09-02 — Traffic measurement, crawlability, and mobile performance live
+
+- VERIFIED (GA4/SEARCH CONSOLE): Property `546945877` measured 205 users, 268
+  sessions, and 772 views over the audited 28-day window, with zero key-event
+  traffic; 49 sessions were organic (41 Google and 8 Bing). Search Console
+  reported 315 impressions, 8 clicks, 2.5% CTR, average position 44.5, 16
+  indexed URLs, and 9 excluded URLs. The top three guide pages produced 316
+  impressions and zero clicks. The August 10 automation burst materially
+  inflated the raw GA totals. Full evidence and methodology are in
+  `docs/traffic-growth-2026-09-02.md`.
+- VERIFIED (STATIC/TEST/BUILD): The storefront now emits GA4 product, cart,
+  checkout, verified purchase, lead, and contact events while suppressing
+  admin, authentication, account, lab, non-production-host, and tagged QA or
+  release traffic before GA loads. Purchase value and items come from the
+  backend's verified paid-order response and are session-deduplicated.
+- VERIFIED (STATIC/EDGE/RUNTIME): Every public sitemap route now returns
+  crawlable initial body content, unique metadata, a canonical URL, and internal
+  links. Live product routes also return a Product body and Product JSON-LD from
+  the bounded catalog edge function. Raw production responses carry
+  `X-Reflexity-SEO: static-edge` or `product-edge` as applicable.
+- VERIFIED (STATIC/BUILD/RUNTIME): All non-home routes are lazy chunks,
+  non-critical bootstraps and fonts are deferred, catalog images use responsive
+  Cloudinary delivery, and audited contrast, heading order, and cart accessible
+  naming are corrected. Homepage entry JavaScript fell from 518.38 kB / 152.11
+  kB gzip to 320.16 kB / 102.37 kB gzip.
+- VERIFIED (TEST/CI/DEPLOY): Pull request `#24` passed all three protected
+  checks and merged as `721f3b892691fd24c1c2902f0387bba6d84429a1`.
+  Frontend passed 63/63 tests; backend passed 76/76 runnable tests with two
+  explicitly disposable-Atlas tests skipped; build, Wrangler Functions
+  compilation, secret scan, and zero-vulnerability dependency audits passed.
+  Cloudflare Pages deployment `32100b00-5b1b-4dc1-823c-1d2056e93357` succeeded,
+  and Render read back the same commit as Live with a 37.2-second successful
+  auto-deploy. Health reports `status=ok`, `env=production`, Stripe enabled.
+- VERIFIED (PRODUCTION/LIGHTHOUSE): Mobile Lighthouse on the canonical apex is
+  Performance 98, Accessibility 100, Best Practices 100, and SEO 100, with FCP
+  1.7 s, LCP 1.7 s, TBT 120 ms, CLS 0, and 530 KiB transferred. The audited
+  pre-fix production run was 61/89/100/100 with LCP 5.1 s and TBT 570 ms.
+- VERIFIED (GA4/SEARCH CONSOLE STATE CHANGE): GA4 key events now include
+  `purchase` and code-based `generate_lead`, both counted once per event and
+  with no default monetary value for leads. Search Console validation started
+  on 2026-09-02 for both four-URL groups: `Discovered - currently not indexed`
+  and `Crawled - currently not indexed`.
+
 ## 2026-09-02 — Cloudflare domain notice and Pages integration closed
 
 - VERIFIED (MAILBOX/CLOUDFLARE ACCOUNT BINDING): The exact Chrome alias
