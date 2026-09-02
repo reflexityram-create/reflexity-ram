@@ -1,5 +1,48 @@
 # Project State
 
+## 2026-09-02 — Cloudflare domain notice and Pages integration closed
+
+- VERIFIED (MAILBOX/CLOUDFLARE ACCOUNT BINDING): The exact Chrome alias
+  `reflexity` resolved Profile 6 and `reflexityram@gmail.com`. Cloudflare's
+  `[Action required] Add reflexityram.com again to finish setup` notice referred
+  to an incomplete duplicate zone under `Reflexityram@gmail.com's Account`,
+  removed after four weeks without nameserver setup. It did not refer to the
+  live zone under account `Reflexity RAM` (`8e3881f002067c247adad30f8d4a9bc1`).
+- VERIFIED (DOMAIN/DNS/TLS): Live zone `df0c36229a1fcfa3a133fbb76071e35b`
+  is active and unpaused. RDAP reports registration through 2027-05-20 and the
+  authoritative nameservers `bingo.ns.cloudflare.com` and
+  `miguel.ns.cloudflare.com`. Cloudflare reports DNSSEC active; Cloudflare,
+  Google, Quad9, and the `.com` authority return DS key tag 2371, algorithm 13,
+  digest SHA-256. Full (strict), Always Use HTTPS, TLS 1.3, and minimum TLS 1.2
+  remain enabled. No DNS record or registration setting was changed.
+- VERIFIED (GITHUB/PAGES REPAIR): The Cloudflare GitHub App was reduced from
+  all repositories to only `reflexityram-create/reflexity-ram`. Pages project
+  `reflexity-ram` was reconnected to that exact repository, production branch
+  `main`, root `frontend`, build `npm ci && npm run build`, destination `dist`,
+  with preview and production deployments enabled. Fresh preview deployment
+  `f1de4f67-66f4-420e-8763-25ff87ed49e9` and production deployment
+  `9a1cf282-8a52-4856-bbdd-76cda9cbbfc5` both cloned and deployed successfully.
+- VERIFIED (DEPENDENCY/CI/DEPLOY): Cloudflare's production log exposed one high
+  build-time Browserslist advisory on the pre-fix lockfile. Pull request `#21`
+  updated the lockfile, passed 58 frontend tests, the production build,
+  `git diff --check`, and a full zero-vulnerability audit, then merged as
+  `fbe8a9042ab21b4a94fc9396908822d24d7aed96`. All three GitHub checks passed,
+  the exact production deployment reported zero vulnerabilities, and the apex
+  serves the same `assets/index-Byedyi2w.js` bundle as its deployment URL.
+- VERIFIED (PRODUCTION/RUNTIME): The apex, feed, sitemap, and Render
+  `/api/health` return HTTP 200. Render reports `status=ok`, `env=production`,
+  and Stripe enabled. `www` returns HTTP 301 to the apex while preserving the
+  exact path and query. The remaining repository-access banner is a
+  CONTRADICTED UI WARNING: two fresh Git clones and deployments succeeded, and
+  the Pages API reads back the intended source and automatic deployment flags.
+- VERIFIED (MAILBOX/CLEANUP): Three exact incident conversations were moved to
+  Gmail Trash and read back there: the Cloudflare duplicate-zone notice, the
+  GitHub sudo-verification thread (two messages), and the pull request `#21`
+  Cloudflare Pages deployment notification. No other mailbox conversation was
+  changed and no message was sent. No password, API token, Stripe resource, or
+  payment setting was changed. Detailed evidence is in
+  `docs/security/2026-09-02-cloudflare-domain-incident-closeout.md`.
+
 ## 2026-08-28 — Flexible wholesale quantity requests live
 
 - VERIFIED (GITHUB/CI/DEPLOY): Pull request `#17` passed the required verify

@@ -25,6 +25,11 @@ MongoDB Atlas + Stripe + Resend + Cloudinary
 
 Both deployments track the repository's `main` branch.
 
+Cloudflare's GitHub App must have access to exactly
+`reflexityram-create/reflexity-ram`. Keep automatic preview and production
+deployments enabled. Do not broaden the installation to every repository just
+to clear a dashboard warning.
+
 ## 1. Pre-deploy verification
 
 From the repository root:
@@ -151,6 +156,8 @@ the website, shipping options, feed, and Stripe Prices use the same currency.
 
 Configure project `reflexity-ram`:
 
+- GitHub owner: `reflexityram-create`
+- GitHub repository: `reflexity-ram`
 - Production branch: `main`
 - Root directory: `frontend`
 - Build command: `npm ci && npm run build`
@@ -191,6 +198,14 @@ curl -i http://127.0.0.1:8788/sitemap.xml
 curl -i http://127.0.0.1:8788/shop/<current-product-slug>
 ```
 
+If Pages reports that the repository cannot be accessed, first verify the
+GitHub App installation includes the exact repository, then disconnect and
+reconnect the Pages source to the owner/repository above. Treat the warning as
+resolved only after a new commit passes `clone_repo`, build, and deploy. If
+those stages succeed but the banner remains, record it as a contradicted UI
+warning rather than breaking a working integration by repeatedly reconnecting
+it.
+
 ## 6. Post-deploy verification
 
 ```bash
@@ -203,7 +218,8 @@ curl -fsS -D - https://reflexityram.com/shop/<current-product-slug>
 
 Required checks:
 
-1. Apex homepage returns HTTP 200 and the current hashed JS bundle.
+1. Apex homepage returns HTTP 200 and the same hashed JS bundle as the exact
+   successful production deployment URL.
 2. HTTP redirects to HTTPS.
 3. Static and product-edge pages include HSTS and the enforced CSP policy.
 4. Feed and sitemap include `X-Reflexity-Source: live-catalog-api`.
@@ -219,6 +235,9 @@ Required checks:
     shortcuts open the same `/admin/wholesale?new=1` editor, and the public
     wholesale page shows no sample inventory.
 12. A disallowed CORS origin receives no access-control permission.
+13. The Pages deployment source reads back as GitHub owner
+    `reflexityram-create`, repository `reflexity-ram`, branch `main`, with
+    automatic deployments enabled.
 
 Do not place a live order merely as a deployment smoke test. Use Stripe test
 mode and isolated data for end-to-end payment verification.

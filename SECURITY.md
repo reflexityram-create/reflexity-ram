@@ -18,6 +18,12 @@ Use one of these patterns instead:
 
 Use the smallest possible token scope. For a Pages deploy token, do not give DNS, billing, account-wide admin, or unrelated zone permissions.
 
+The Cloudflare GitHub App follows the same least-privilege rule: its repository
+selection must be **Only select repositories** with
+`reflexityram-create/reflexity-ram`. A Pages repository-access warning does not
+justify granting the app access to unrelated repositories. Verify recovery by
+observing a fresh clone/build/deploy of the expected commit.
+
 ## Frontend environment variables
 
 Anything prefixed with `VITE_` is public after the site is built. Treat it like it can be viewed by anyone in the browser.
