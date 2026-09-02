@@ -314,7 +314,7 @@ export default function Shop() {
               ) : (
                 <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4" data-testid="shop-grid">
                   {filtered.map((p, i) => (
-                    <ProductCard key={p.slug} p={p} index={i} />
+                    <ProductCard key={p.slug} p={p} index={i} priority={i < 3} />
                   ))}
                 </div>
               )}

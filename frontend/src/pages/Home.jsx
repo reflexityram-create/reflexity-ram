@@ -113,7 +113,7 @@ export default function Home() {
             ) : (
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
                 {products.map((p, i) => (
-                  <ProductCard key={p._id} p={p} index={i} />
+                  <ProductCard key={p._id} p={p} index={i} priority={i < 3} />
                 ))}
               </div>
             )}

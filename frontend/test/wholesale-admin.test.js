@@ -101,7 +101,7 @@ test('the technical workspace sees every status and uses revisioned soft transit
 test('wholesale media and CRUD use their own API surface', async () => {
   const api = await read('../src/lib/api.js');
 
-  assert.match(api, /wholesaleApi = \{[\s\S]*?api\.get\('\/wholesale'/);
+  assert.match(api, /wholesaleApi = \{[\s\S]*?publicApi\.get\('\/wholesale'/);
   assert.match(api, /listWholesaleLots: \(params\) => api\.get\('\/admin\/wholesale'/);
   assert.match(api, /createWholesaleLot: \(data\) => api\.post\('\/admin\/wholesale'/);
   assert.match(api, /updateWholesaleLot: \(id, data\) => api\.patch\(`\/admin\/wholesale\/\$\{id\}`/);

@@ -16,6 +16,8 @@ test('policy copy and analytics cannot use sensitive light-theme or URL defaults
   assert.match(css, /\.policy-content a[^\n]*color: var\(--policy-link\)/);
   assert.match(html, /<script defer src="\/analytics-bootstrap\.js"><\/script>/);
   assert.match(html, /<script defer src="\/font-bootstrap\.js"><\/script>/);
+  assert.match(html, /rel="preconnect" href="https:\/\/reflexity-ram\.onrender\.com" crossorigin/);
+  assert.match(html, /rel="preconnect" href="https:\/\/res\.cloudinary\.com" crossorigin/);
   assert.doesNotMatch(html, /googletagmanager\.com\/gtag\/js/);
   assert.match(analytics, /window\.location\.hostname === "reflexityram\.com"/);
   assert.match(analytics, /document\.head\.appendChild\(analyticsScript\)/);
@@ -25,6 +27,26 @@ test('policy copy and analytics cannot use sensitive light-theme or URL defaults
   assert.match(app, /page_path: location\.pathname/);
   assert.doesNotMatch(app, /location\.hash/);
   assert.doesNotMatch(app, /location\.search/);
+});
+
+test('public catalog reads avoid credentialed custom headers and product images are prioritized responsively', async () => {
+  const [api, card, product, wholesale, wholesaleLot] = await Promise.all([
+    read('../src/lib/api.js'),
+    read('../src/components/ProductCard.jsx'),
+    read('../src/pages/Product.jsx'),
+    read('../src/pages/Wholesale.jsx'),
+    read('../src/pages/WholesaleLot.jsx'),
+  ]);
+  assert.match(api, /const publicApi = axios\.create/);
+  assert.match(api, /list: \(params, config = \{\}\) => publicApi\.get\('\/products'/);
+  assert.match(api, /getBySlug: \(slug, config = \{\}\) => publicApi\.get/);
+  assert.doesNotMatch(api.match(/const publicApi = axios\.create\([\s\S]*?\n\}\);/)?.[0] || '', /withCredentials|Content-Type|x-session-id/);
+  for (const source of [card, product, wholesale, wholesaleLot]) {
+    assert.match(source, /srcSet=\{imageSrcSet/);
+    assert.match(source, /fetchPriority=/);
+  }
+  assert.match(card, /loading=\{priority \? "eager" : "lazy"\}/);
+  assert.match(product, /loading="eager"/);
 });
 
 test('product and order detail requests are cancelled and identity-guarded', async () => {

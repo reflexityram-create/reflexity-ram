@@ -20,7 +20,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import ImageModal from "@/components/ImageModal";
 import ProductCard from "@/components/ProductCard";
-import { imageUrl } from "@/lib/imageUrl";
+import { DETAIL_IMAGE_WIDTHS, imageSrcSet, imageUrl } from "@/lib/imageUrl";
 import EmptyState from "@/components/EmptyState";
 import { useCart, useRecentlyViewed } from "@/lib/store";
 import useAuthStore from "@/lib/authStore";
@@ -305,8 +305,15 @@ export default function Product() {
                 {imageUrls[imgIdx] ? (
                   <img
                     src={imageUrl(imageUrls[imgIdx], { width: 1200 })}
+                    srcSet={imageSrcSet(imageUrls[imgIdx], DETAIL_IMAGE_WIDTHS)}
+                    sizes="(min-width: 1024px) 52vw, 100vw"
                     alt={p.name}
                     className="w-full h-full object-cover"
+                    width="1200"
+                    height="960"
+                    loading="eager"
+                    fetchPriority="high"
+                    decoding="async"
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">

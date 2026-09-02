@@ -20,12 +20,14 @@ import useAuthStore from "@/lib/authStore";
 import { useSEO } from "@/lib/seo";
 import { buildWholesaleEmailUrl, publishedWholesaleLots } from "@/lib/wholesaleLots";
 import { formatStorePrice, STORE_CURRENCY_CODE } from "@/lib/currency";
+import { imageSrcSet, imageUrl } from "@/lib/imageUrl";
 import "@/pages/wholesale-concepts.css";
 
 const WHOLESALE_GMAIL_URL = buildWholesaleEmailUrl();
 
 function WholesaleLotCard({ badgeLabel, detailBasePath = "/wholesale", index = 0, lot }) {
   const isEcc = /\bECC\b/i.test(`${lot.title} ${lot.notes || ""}`);
+  const priorityImage = index < 3;
   return (
     <Link
       aria-label={`View wholesale lot ${lot.title}`}
@@ -40,9 +42,13 @@ function WholesaleLotCard({ badgeLabel, detailBasePath = "/wholesale", index = 0
             alt={lot.imageAlt || lot.title}
             className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform"
             decoding="async"
-            fetchPriority={index < 3 ? "high" : "auto"}
-            loading={index < 6 ? "eager" : "lazy"}
-            src={lot.imageUrl}
+            fetchPriority={priorityImage ? "high" : "auto"}
+            loading={priorityImage ? "eager" : "lazy"}
+            sizes="(min-width: 1024px) 30vw, (min-width: 640px) 45vw, 92vw"
+            src={imageUrl(lot.imageUrl, { width: 480 })}
+            srcSet={imageSrcSet(lot.imageUrl)}
+            width="640"
+            height="512"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center"><Cpu aria-hidden="true" className="text-neutral-700" size={36} /></div>

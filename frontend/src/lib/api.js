@@ -12,6 +12,14 @@ const api = axios.create({
   },
 });
 
+// Public catalog reads do not need a cart session, credentials, or a JSON
+// content-type. Keeping them on a header-free client avoids the browser's CORS
+// preflight, so product data arrives sooner and image downloads can start.
+const publicApi = axios.create({
+  baseURL: API_BASE,
+  timeout: 15000,
+});
+
 // ─── Request Interceptor ──────────────────────────────────────────────────────
 api.interceptors.request.use((config) => {
   // Attach JWT token from localStorage if present
@@ -78,22 +86,22 @@ export const authApi = {
 
 // ─── Products API ─────────────────────────────────────────────────────────────
 export const productsApi = {
-  list: (params, config = {}) => api.get('/products', { ...config, params }),
-  featured: () => api.get('/products/featured'),
-  filters: () => api.get('/products/filters'),
-  getBySlug: (slug, config = {}) => api.get(`/products/${slug}`, config),
+  list: (params, config = {}) => publicApi.get('/products', { ...config, params }),
+  featured: () => publicApi.get('/products/featured'),
+  filters: () => publicApi.get('/products/filters'),
+  getBySlug: (slug, config = {}) => publicApi.get(`/products/${slug}`, config),
 };
 
 // ─── Wholesale lots API ──────────────────────────────────────────────────────
 // Quote-only wholesale inventory is intentionally separate from retail
 // products, checkout stock, Stripe, orders, and the Merchant feed.
 export const wholesaleApi = {
-  list: (config = {}) => api.get('/wholesale', config),
+  list: (config = {}) => publicApi.get('/wholesale', config),
 };
 
 // Reviews are public to read, but the server only accepts verified purchases.
 export const reviewsApi = {
-  list: (slug, config = {}) => api.get(`/reviews/product/${slug}`, config),
+  list: (slug, config = {}) => publicApi.get(`/reviews/product/${slug}`, config),
   create: (slug, data) => api.post(`/reviews/product/${slug}`, data),
 };
 
@@ -172,7 +180,7 @@ export const adminApi = {
 
 // ─── Editable page content (shipping / returns / warranty / faq) ───────────────
 export const pagesApi = {
-  get: (slug) => api.get(`/pages/${slug}`),
+  get: (slug) => publicApi.get(`/pages/${slug}`),
   save: (slug, data) => api.put(`/pages/${slug}`, data),
   reset: (slug) => api.delete(`/pages/${slug}`),
 };

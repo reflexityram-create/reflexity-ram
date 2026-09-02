@@ -1,10 +1,11 @@
 import { Link } from "react-router-dom";
 import { Cpu } from "lucide-react";
-import { imageUrl } from "@/lib/imageUrl";
+import { imageSrcSet, imageUrl } from "@/lib/imageUrl";
 import { formatStorePrice, STORE_CURRENCY_CODE } from "@/lib/currency";
 
-export default function ProductCard({ p, index = 0 }) {
-  const primaryImage = imageUrl(p.images?.[0], { width: 640 });
+export default function ProductCard({ p, index = 0, priority = false }) {
+  const image = p.images?.[0];
+  const primaryImage = imageUrl(image, { width: 480 });
 
   return (
     <Link
@@ -17,10 +18,14 @@ export default function ProductCard({ p, index = 0 }) {
         {primaryImage ? (
           <img
             src={primaryImage}
+            srcSet={imageSrcSet(image)}
+            sizes="(min-width: 1024px) 30vw, (min-width: 640px) 45vw, 92vw"
             alt={p.name}
             className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform"
-            loading="lazy"
-            fetchPriority="auto"
+            width="640"
+            height="512"
+            loading={priority ? "eager" : "lazy"}
+            fetchPriority={priority ? "high" : "auto"}
             decoding="async"
           />
         ) : (
