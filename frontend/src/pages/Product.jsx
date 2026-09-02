@@ -120,6 +120,15 @@ export default function Product() {
     });
   }, [p?.slug]);
 
+  // A direct request gets crawler-visible Product JSON-LD from the Pages
+  // Function. Once React owns the rendered route, remove that server copy so
+  // the live DOM has exactly the current client schema (including reviews) and
+  // SPA navigation cannot retain metadata for the previously viewed product.
+  useEffect(() => {
+    if (!p?.slug) return;
+    document.querySelectorAll("script[data-edge-product]").forEach((node) => node.remove());
+  }, [p?.slug]);
+
   const recentlyViewed = useMemo(() => {
     return recentSlugs
       .filter((s) => s !== slug)
