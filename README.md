@@ -116,6 +116,12 @@ Production deploys from `main`:
 - Cloudflare Pages project `reflexity-ram` builds `frontend/` and discovers
   the file-routed XML and product-metadata Pages Functions.
 
+The Cloudflare GitHub App is intentionally limited to the canonical
+`reflexityram-create/reflexity-ram` repository. Pages tracks `main` with
+automatic production and preview deployments enabled. A provider warning is
+not a deployment receipt: require a fresh build to clone the expected commit,
+finish successfully, and appear on the canonical domain.
+
 See [DEPLOY.md](./DEPLOY.md) for the exact configuration and post-deploy checks.
 Current operational evidence and known limitations live in
 [PROJECT_STATE.md](./PROJECT_STATE.md).
