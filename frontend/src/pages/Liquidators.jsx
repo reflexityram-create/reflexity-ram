@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { useSEO } from "@/lib/seo";
+import { trackEvent } from "@/lib/analytics";
 
 /**
  * Reflexity Liquidators — IT asset liquidation landing page.
@@ -131,7 +132,7 @@ export default function Liquidators() {
               One quote against the whole lot, one pickup, paid on receipt.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
-              <a href={GMAIL_COMPOSE_URL} target="_blank" rel="noopener noreferrer" className="btn-primary">
+              <a href={GMAIL_COMPOSE_URL} onClick={() => trackEvent("generate_lead", { lead_type: "liquidation_quote" })} target="_blank" rel="noopener noreferrer" className="btn-primary">
                 <Mail size={16} /> Send your inventory list
               </a>
               <a href="#what-we-take" className="btn-secondary">
@@ -228,6 +229,7 @@ export default function Liquidators() {
                 </button>
                 <a
                   href={GMAIL_COMPOSE_URL}
+                  onClick={() => trackEvent("generate_lead", { lead_type: "liquidation_quote" })}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="btn-primary"

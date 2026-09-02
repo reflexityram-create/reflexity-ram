@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import ReflexityMark from "@/components/ReflexityMark";
+import { trackEvent } from "@/lib/analytics";
 
 export default function Footer() {
   return (
@@ -43,6 +44,7 @@ export default function Footer() {
         <div>
           <a
             href="mailto:reflexityram@gmail.com"
+            onClick={() => trackEvent("contact", { contact_method: "email", contact_context: "footer" })}
             className="text-[13px] text-neutral-300 hover:text-white transition-colors font-medium"
             data-testid="footer-email"
           >
@@ -60,7 +62,7 @@ export default function Footer() {
       </div>
 
       {/* BOTTOM: Copyright + License */}
-      <div className="container-tight pt-6 border-t border-white/5 mono text-[11px] text-neutral-600 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+      <div className="container-tight pt-6 border-t border-white/5 mono text-[11px] flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between" style={{ color: "var(--fg-muted)" }}>
         <div>© 2026 Reflexity RAM.</div>
         <div>
           Licensed under the{" "}

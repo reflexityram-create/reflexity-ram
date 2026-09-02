@@ -4,7 +4,7 @@ import { imageUrl } from "@/lib/imageUrl";
 import { formatStorePrice, STORE_CURRENCY_CODE } from "@/lib/currency";
 
 export default function ProductCard({ p, index = 0 }) {
-  const primaryImage = imageUrl(p.images?.[0]);
+  const primaryImage = imageUrl(p.images?.[0], { width: 640 });
 
   return (
     <Link
@@ -19,8 +19,8 @@ export default function ProductCard({ p, index = 0 }) {
             src={primaryImage}
             alt={p.name}
             className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform"
-            loading={index < 6 ? "eager" : "lazy"}
-            fetchPriority={index < 3 ? "high" : "auto"}
+            loading="lazy"
+            fetchPriority="auto"
             decoding="async"
           />
         ) : (
@@ -62,9 +62,9 @@ export default function ProductCard({ p, index = 0 }) {
         <div className="mono text-[10px] text-neutral-500 tracking-widest mb-2">
           {p.sku}
         </div>
-        <h3 className="text-[15px] font-semibold tracking-tight text-white leading-snug mb-2">
+        <h2 className="text-[15px] font-semibold tracking-tight text-white leading-snug mb-2">
           {p.name}
-        </h3>
+        </h2>
 
         <div className="flex flex-wrap gap-1.5 mb-4">
           <span className="pill text-[10px] py-0.5">{p.capacityLabel}</span>

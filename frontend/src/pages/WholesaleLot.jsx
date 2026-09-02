@@ -7,6 +7,7 @@ import { wholesaleApi } from "@/lib/api";
 import { useSEO } from "@/lib/seo";
 import { buildWholesaleEmailUrl, normalizeWholesaleQuantity, publishedWholesaleLots } from "@/lib/wholesaleLots";
 import { formatStorePrice, STORE_CURRENCY_CODE } from "@/lib/currency";
+import { trackEvent } from "@/lib/analytics";
 
 export function LotUnavailable({ loading }) {
   return (
@@ -137,7 +138,7 @@ export function WholesaleLotDetail({ backTo = "/wholesale", lot }) {
               </button>
             </div>
 
-            <a className="btn-primary w-full justify-center" data-testid="wholesale-email-request" href={quoteUrl} rel="noopener noreferrer" target="_blank">
+            <a className="btn-primary w-full justify-center" data-testid="wholesale-email-request" href={quoteUrl} onClick={() => trackEvent("generate_lead", { lead_type: "wholesale_quote", lot_id: lot.lotCode || lot._id, quantity })} rel="noopener noreferrer" target="_blank">
               <Mail aria-hidden="true" size={15} /> Request {quantity} {quantity === 1 ? "unit" : "units"} <ArrowRight aria-hidden="true" size={15} />
             </a>
           </div>

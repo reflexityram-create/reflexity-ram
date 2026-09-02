@@ -1,5 +1,5 @@
 {
   "version": 1,
-  "include": ["/feed.xml", "/sitemap.xml", "/shop/*"],
+  "include": ["/", "/shop", "/shop/*", "/categories", "/guides", "/guides/*", "/wholesale", "/liquidators", "/support", "/business-info", "/shipping", "/international", "/returns", "/warranty", "/faq", "/privacy", "/terms", "/feed.xml", "/sitemap.xml"],
   "exclude": []
 }

@@ -19,10 +19,17 @@ Production ecommerce storefront for tested server, desktop, and laptop memory.
 | Hosting | Cloudflare Pages frontend, Render backend |
 
 Cloudflare Pages Functions serve `/feed.xml` and `/sitemap.xml` from the live
-catalog API and enrich raw `/shop/:slug` HTML with product-specific title,
-description, canonical, and social metadata. The XML must not be replaced by
-checked-in product snapshots: stock, price, and availability need to follow
-MongoDB automatically.
+catalog API. They also provide crawlable initial HTML, canonical metadata, and
+internal links for every public sitemap route; `/shop/:slug` adds live product
+metadata and Product structured data from the catalog API. The XML must not be
+replaced by checked-in product snapshots: stock, price, and availability need
+to follow MongoDB automatically.
+
+GA4 loads only on the canonical production host and excludes administrator,
+authentication, lab, and explicitly tagged QA/release traffic. Public funnel
+events include product views, add-to-cart, checkout starts, verified purchases,
+and wholesale/liquidation leads. Purchase values come only from the backend's
+verified paid-order response.
 
 ## Local setup
 
@@ -114,7 +121,7 @@ Production deploys from `main`:
 
 - Render builds and starts `backend/`.
 - Cloudflare Pages project `reflexity-ram` builds `frontend/` and discovers
-  the file-routed XML and product-metadata Pages Functions.
+  the file-routed XML and crawlable-metadata Pages Functions.
 
 The Cloudflare GitHub App is intentionally limited to the canonical
 `reflexityram-create/reflexity-ram` repository. Pages tracks `main` with

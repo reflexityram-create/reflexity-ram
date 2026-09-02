@@ -124,7 +124,7 @@ export default function OrderSuccess() {
                 {order.items?.map((item, idx) => (
                   <div key={idx} className="flex gap-3">
                     <div className="w-14 h-14 rounded-lg overflow-hidden bg-white/5 shrink-0">
-                      {item.image && <img src={imageUrl(item.image)} alt="" className="w-full h-full object-cover" />}
+                      {item.image && <img src={imageUrl(item.image, { width: 160 })} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />}
                     </div>
                     <div className="flex-1">
                       <div className="text-[13px] font-medium">{item.name}</div>

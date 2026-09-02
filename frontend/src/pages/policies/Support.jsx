@@ -14,6 +14,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import SectionLabel from "@/components/SectionLabel";
 import { useSEO } from "@/lib/seo";
+import { trackEvent } from "@/lib/analytics";
 
 const SUPPORT_EMAIL = "reflexityram@gmail.com";
 const GMAIL_COMPOSE_URL =
@@ -102,6 +103,7 @@ export default function Support() {
                 </button>
                 <a
                   href={GMAIL_COMPOSE_URL}
+                  onClick={() => trackEvent("contact", { contact_method: "email", contact_context: "support" })}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="btn-primary"
