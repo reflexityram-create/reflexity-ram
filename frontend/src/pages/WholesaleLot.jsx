@@ -7,6 +7,7 @@ import { wholesaleApi } from "@/lib/api";
 import { useSEO } from "@/lib/seo";
 import { buildWholesaleEmailUrl, normalizeWholesaleQuantity, publishedWholesaleLots } from "@/lib/wholesaleLots";
 import { formatStorePrice, STORE_CURRENCY_CODE } from "@/lib/currency";
+import { DETAIL_IMAGE_WIDTHS, imageSrcSet, imageUrl } from "@/lib/imageUrl";
 import { trackEvent } from "@/lib/analytics";
 
 export function LotUnavailable({ loading }) {
@@ -61,7 +62,18 @@ export function WholesaleLotDetail({ backTo = "/wholesale", lot }) {
         <div>
           <div className="block w-full glass rounded-2xl overflow-hidden aspect-[5/4] mb-3">
             {lot.imageUrl ? (
-              <img alt={lot.imageAlt || lot.title} className="w-full h-full object-cover" src={lot.imageUrl} />
+              <img
+                alt={lot.imageAlt || lot.title}
+                className="w-full h-full object-cover"
+                decoding="async"
+                fetchPriority="high"
+                height="960"
+                loading="eager"
+                sizes="(min-width: 1024px) 52vw, 100vw"
+                src={imageUrl(lot.imageUrl, { width: 1200 })}
+                srcSet={imageSrcSet(lot.imageUrl, DETAIL_IMAGE_WIDTHS)}
+                width="1200"
+              />
             ) : (
               <div className="w-full h-full flex items-center justify-center"><Cpu aria-hidden="true" className="text-neutral-700" size={48} /></div>
             )}
