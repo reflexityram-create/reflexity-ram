@@ -1,5 +1,35 @@
 # Project State
 
+## 2026-09-02 — Responsive image delivery and catalog-read latency live
+
+- VERIFIED (PRODUCTION/NETWORK): Pull request `#27` passed all three protected
+  checks and merged as `5ded8e6cff0c0b85843b3469250c9d6d7b91e070`. The
+  canonical storefront now preconnects to the public catalog API and Cloudinary,
+  uses a header-free client for anonymous catalog reads so they do not trigger a
+  CORS preflight, and prioritizes only the first visible retail/wholesale cards
+  plus the product hero.
+- VERIFIED (STATIC/TEST/BUILD): Retail and wholesale images publish responsive
+  Cloudinary `srcset` candidates. Catalog cards are capped at 320/480/640px;
+  detail images use 480/640/960/1200px with `c_limit`, format negotiation, and
+  automatic quality. Frontend passed 65/65 tests; backend passed 76/76 runnable
+  tests with two explicitly disposable Atlas tests skipped. The production
+  build, secret scan, dependency audits, and `git diff --check` passed.
+- VERIFIED (CLOUDINARY/PRODUCTION): All 30 current retail and wholesale image
+  derivatives across 320/480/640/960/1200px returned HTTP 200 during cache
+  warming. Subsequent direct 640px WebP reads completed in 52–140 ms including
+  connection setup. A browser run on `/shop` loaded warmed card images in
+  13–27 ms at the expected 640px candidate; the product hero loaded its 960px
+  candidate in 23 ms. No product request was preceded by a CORS preflight.
+- VERIFIED (LIGHTHOUSE): Mobile simulated Lighthouse on the canonical homepage
+  scored Performance 99 with FCP/LCP 1.6 s. Unthrottled browser acceptance scored
+  100 on `/shop` and the product detail route; the product route measured FCP
+  0.5 s and LCP 1.3 s. Query marker `image-hotfix=release` suppressed these QA
+  runs from GA4.
+- VERIFIED (CATALOG/REVIEWS): The live retail catalog currently contains five
+  active products, all server RAM. Each has one image and all five have zero
+  verified reviews. Buyer-growth priorities and the measurement gate are in
+  `docs/buyer-acquisition-priorities-2026-09-02.md`.
+
 ## 2026-09-02 — Traffic measurement, crawlability, and mobile performance live
 
 - VERIFIED (GA4/SEARCH CONSOLE): Property `546945877` measured 205 users, 268
