@@ -1,6 +1,5 @@
-import { permanentRedirect } from "../../functions-shared/legacyRedirects.js";
+import { renderProductPage } from "../../functions-shared/productMetadata.js";
 
 export function onRequest(context) {
-  const slug = encodeURIComponent(context.params?.slug || "");
-  return permanentRedirect(context.request, `/inventory/${slug}`);
+  return renderProductPage(context);
 }

@@ -1,8 +1,6 @@
-import { renderStaticPage } from "../functions-shared/staticMetadata.js";
 import { legacyRedirect } from "../functions-shared/legacyRedirects.js";
+import { renderStaticPage } from "../functions-shared/staticMetadata.js";
 
 export function onRequest(context) {
-  const redirect = legacyRedirect(context.request);
-  if (redirect) return redirect;
-  return renderStaticPage(context);
+  return legacyRedirect(context.request) || renderStaticPage(context);
 }

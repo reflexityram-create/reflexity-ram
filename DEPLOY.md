@@ -1,8 +1,9 @@
 # Reflexity deployment guide
 
-The public Reflexity website is a quote-based wholesale/B2B hardware catalog.
-Normal releases do not change domains, DNS, billing, provider credentials, or
-authentication configuration.
+The public Reflexity website is a Server RAM storefront with individual,
+business, and wholesale paths. Consumer and laptop inventory records remain
+managed but are excluded from public catalog exposure. Normal releases do not
+change domains, DNS, billing, provider credentials, or authentication settings.
 
 ## Production topology
 
@@ -12,7 +13,7 @@ reflexityram.com
   Root directory: frontend
   Build command: npm ci && npm run build
   Output directory: dist
-  Pages Functions: crawlable B2B metadata, redirects, sitemap, retired-feed proxy
+  Pages Functions: crawlable storefront metadata, sitemap, feeds, and route metadata
 
 https://reflexity-ram.onrender.com
   Render service root: backend
@@ -81,13 +82,14 @@ Use the narrowest MongoDB Atlas network access compatible with Render. If
 dynamic egress requires a temporary broad rule, pair it with a least-privilege
 database user, a unique rotated password, and monitoring.
 
-Stripe remains for historical/admin operations only. Keep the existing
+Stripe supports the retained storefront checkout and historical/admin
+operations. Keep the existing
 `/api/stripe/webhook` endpoint subscribed to `checkout.session.completed`,
 `checkout.session.async_payment_succeeded`,
 `checkout.session.async_payment_failed`, `checkout.session.expired`, and
-`charge.refunded`; retain its signing secret. Do not create public checkout
-sessions as a release probe: the public creation endpoint intentionally returns
-`410 Gone`.
+`charge.refunded`; retain its signing secret. Do not create a live order as a
+release probe; verify cart reads and checkout-session validation with isolated
+or unauthenticated requests only.
 
 ## Cloudflare Pages
 
@@ -107,19 +109,18 @@ frontend/functions/feed.csv.js
 frontend/functions/sitemap.xml.js
 ```
 
-`/inventory/:slug` and `/wholesale/:lotId` supply canonical B2B metadata and Product JSON-LD without
-`Offer`, price, or purchase availability. Legacy `/shop`, `/shop/:slug`,
-`/categories`, `/liquidators`, `/support`, and `/business-info` paths receive permanent edge
-redirects. `/feed.xml` and `/feed.csv` are intentionally `410 Gone` because
-consumer Merchant/RSS/CSV feeds are retired. The sitemap uses `/inventory` and
-`/inventory/:slug` rather than `/shop` paths.
+`/shop/:slug` and `/wholesale/:lotId` supply canonical product metadata. Public
+catalog, feed, and sitemap entries are limited to exact `line === "Server"`
+products; consumer and laptop records remain available to authorized admin
+users. `/shop`, `/categories`, `/liquidators`, `/support`, `/business-info`,
+`/cart`, `/checkout`, and `/account` remain public application routes.
 
 For a local Pages probe after a production build:
 
 ```bash
 cd frontend
 npx wrangler pages dev ./dist --port 8788
-curl -i http://127.0.0.1:8788/inventory/<current-product-slug>
+curl -i http://127.0.0.1:8788/shop/<current-product-slug>
 curl -i http://127.0.0.1:8788/wholesale/<published-lot-id>
 curl -i http://127.0.0.1:8788/feed.xml
 ```
@@ -133,8 +134,8 @@ or replace the source merely to clear a stale dashboard warning.
 
 ```bash
 curl -fsSI https://reflexityram.com/
-curl -sSI https://reflexityram.com/inventory
 curl -sSI https://reflexityram.com/shop
+curl -sSI https://reflexityram.com/categories
 curl -sSI https://reflexityram.com/liquidators
 curl -sSI https://reflexityram.com/support
 curl -sSI https://reflexityram.com/business-info
@@ -145,17 +146,15 @@ curl -fsS https://reflexity-ram.onrender.com/api/health
 
 Require the following read-backs:
 
-1. The homepage, inventory, wholesale, sell-to-us, contact, about, guides, and
-   legal routes return the expected crawlable content.
-2. Legacy routes return `308` to their B2B replacements, preserving query
-   strings.
-3. `/feed.xml` returns `410` with `Cache-Control: no-store`; do not treat that
-   status as an incident.
-4. The sitemap contains `/inventory` and active `/inventory/:slug` URLs, and
-   contains no `/shop` URL.
-5. An inventory detail response includes `X-Reflexity-SEO: product-edge`, an
-   `/inventory/:slug` canonical, and Product JSON-LD with no Offer, price, or
-   purchase availability fields.
+1. The homepage, Server shop, product detail, categories, Liquidation/ITAD,
+   wholesale, account, cart, checkout, guides, and legal routes render.
+2. Public catalog, feed, sitemap, and related-product outputs contain only
+   exact Server-line products; no consumer/laptop records are deleted.
+3. Product detail retains its normal price, cart, and checkout controls; verify
+   the cart and checkout API read-back without placing a live order.
+4. Wholesale lots remain separate, quote-based, and protected by admin auth.
+5. Product and static edge responses carry the expected SEO markers and
+   canonical URLs for the restored public routes.
 6. A controlled, non-production lead test is accepted only after Resend accepts
    it; do not send a real enquiry merely to smoke-test production.
 7. Health reports `status=ok`, and a disallowed CORS origin receives no access
@@ -163,25 +162,30 @@ Require the following read-backs:
 
 ## Two-phase release gate
 
-Release a backend contract change before the frontend that depends on it:
+Release a backend contract change before the frontend that depends on it. For
+the restored storefront, the backend must expose the cart/checkout contract
+before the frontend controls are published:
 
 1. Push the backend-only commit and wait for the exact Render deployment to be
    live. Verify `/api/health`, `/api/wholesale`, a known public
    `/api/wholesale/:lotId`, unauthenticated admin-route rejection, lead-limit
-   headers, and the intentional `410` cart/checkout responses.
+   headers, cart reads, and checkout-session behavior without creating a live
+   order.
 2. Push the frontend and Pages-function commit only after that readback. Verify
-   the production bundle, B2B redirects, sitemap lot URLs, inventory and
-   wholesale metadata, and quote submissions with a non-production recipient.
+   the production bundle, Server-only catalog, shop/product metadata, restored
+   Liquidation routes, wholesale metadata, and quote submissions with a
+   non-production recipient.
 
 ## Retained operational infrastructure
 
-Public consumer commerce is retired, but existing Stripe webhooks, historical
-orders, administrative order tooling, product administration, and Google OAuth
-remain operational infrastructure. Do not delete Stripe products, prices,
-webhooks, customer/order records, Google OAuth credentials, or administrative
-access during this conversion. `/api/cart` and
-`/api/stripe/create-checkout-session` are intentionally retired at the public
-API boundary; Stripe webhook and historical order processing are not.
+Public Server RAM commerce is restored while consumer/laptop inventory remains
+hidden from the public catalog. Existing Stripe webhooks, historical orders,
+administrative order tooling, product administration, Google OAuth, ITAD leads,
+and wholesale administration remain operational infrastructure. Do not delete
+Stripe products, prices, webhooks, customer/order records, inventory records,
+Google OAuth credentials, or administrative access during this conversion. The
+public checkout flow must be read back after release; do not call it retired
+unless the deployed API explicitly returns that status.
 
 ## Rollback
 
@@ -194,5 +198,5 @@ API boundary; Stripe webhook and historical order processing are not.
 not use it for normal production releases. Source recovery must keep the exact
 GitHub owner, repository, production branch, and automatic deployments above.
 
-After rollback, repeat the health, redirect, retired-feed, sitemap, inventory,
-and lead-path checks.
+After rollback, repeat the health, storefront, cart/checkout, sitemap,
+catalog-scope, and lead-path checks.

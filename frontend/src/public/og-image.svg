@@ -39,7 +39,7 @@
 
   <!-- bottom row -->
   <text x="80" y="530" font-family="Figtree, sans-serif" font-size="22" fill="#cfcfd6">Memory, made accessible.</text>
-  <text x="80" y="562" font-family="JetBrains Mono, monospace" font-size="14" fill="#4F8FBF" letter-spacing="0.08em">WHOLESALE  ·  QUOTE-LED  ·  TORONTO</text>
+  <text x="80" y="562" font-family="JetBrains Mono, monospace" font-size="14" fill="#6e6e76" letter-spacing="0.08em">WHOLESALE  ·  RETAIL  ·  DIRECT</text>
 
   <!-- accent dot -->
   <circle cx="1060" cy="310" r="120" fill="#ffffff" opacity="0.03"/>

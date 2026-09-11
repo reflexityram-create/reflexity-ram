@@ -72,6 +72,7 @@ export function getOrCreateSessionId() {
 
 // ─── Auth API ─────────────────────────────────────────────────────────────────
 export const authApi = {
+  signup: (data) => api.post('/auth/signup', { ...data, sessionId: getOrCreateSessionId() }),
   login: (data) => api.post('/auth/login', { ...data, sessionId: getOrCreateSessionId() }),
   logout: () => api.post('/auth/logout'),
   me: () => api.get('/auth/me'),
@@ -79,6 +80,7 @@ export const authApi = {
   resendVerification: () => api.post('/auth/resend-verification'),
   forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
   resetPassword: (token, password) => api.post('/auth/reset-password', { token, password }),
+  updateProfile: (data) => api.patch('/auth/profile', data),
   changePassword: (data) => api.post('/auth/change-password', data),
 };
 
@@ -95,13 +97,37 @@ export const productsApi = {
 // products, checkout stock, Stripe, orders, and the Merchant feed.
 export const wholesaleApi = {
   list: (config = {}) => publicApi.get('/wholesale', config),
-  getById: (id, config = {}) => publicApi.get(`/wholesale/${id}`, config),
 };
 
-// Public quote and acquisition inquiries. These are deliberately separate from
-// cart, checkout, and order APIs: submitting a lead never creates an order.
-export const leadsApi = {
-  create: (data) => publicApi.post('/leads', data),
+// Reviews are public to read, but the server only accepts verified purchases.
+export const reviewsApi = {
+  list: (slug, config = {}) => publicApi.get(`/reviews/product/${slug}`, config),
+  create: (slug, data) => api.post(`/reviews/product/${slug}`, data),
+};
+
+// ─── Cart API ─────────────────────────────────────────────────────────────────
+export const cartApi = {
+  get: () => api.get('/cart'),
+  add: (slug, qty) => api.post('/cart/add', { slug, qty }),
+  update: (slug, qty) => api.patch('/cart/update', { slug, qty }),
+  remove: (slug) => api.delete(`/cart/remove/${slug}`),
+  clear: () => api.delete('/cart/clear'),
+};
+
+// ─── Orders API ───────────────────────────────────────────────────────────────
+export const ordersApi = {
+  list: (params) => api.get('/orders', { params }),
+  getByNumber: (orderNumber, email) =>
+    api.get(`/orders/${orderNumber}`, {
+      headers: email ? { 'x-order-email': email } : {},
+    }),
+};
+
+// ─── Stripe API ───────────────────────────────────────────────────────────────
+export const stripeApi = {
+  createCheckoutSession: () => api.post('/stripe/create-checkout-session'),
+  sessionStatus: (sessionId) =>
+    api.get('/stripe/session-status', { params: { session_id: sessionId } }),
 };
 
 // ─── Admin API ────────────────────────────────────────────────────────────────

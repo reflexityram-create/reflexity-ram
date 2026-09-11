@@ -6,9 +6,9 @@ const WORKSPACES = [
   {
     to: '/admin/products',
     end: true,
-    label: 'Catalog inventory',
-    description: 'Public inventory records and exact product specifications',
-    action: 'Manage catalog inventory',
+    label: 'Retail products',
+    description: 'Store catalog, prices, checkout stock, and product feeds',
+    action: 'Open retail catalog',
     icon: Package,
   },
   {
@@ -27,8 +27,8 @@ export default function ProductWorkspaceNav({ showWholesaleActions = false }) {
       <div className="product-workspace-heading">
         <div>
           <p>Product workspaces</p>
-          <h2 id="product-workspaces-title">Catalog and wholesale lots, clearly separated.</h2>
-          <span>Published records support quote-led inventory inquiries.</span>
+          <h2 id="product-workspaces-title">Retail and wholesale, clearly separated.</h2>
+          <span>Wholesale lots never enter the retail cart, checkout stock, or product feed.</span>
         </div>
 
         {showWholesaleActions && (

@@ -1,11 +1,11 @@
 import { Link, useLocation, Navigate } from 'react-router-dom';
-import { Boxes, Package, ShoppingBag, Users, Shield, LogOut, ChevronRight, Cpu } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingBag, Users, Shield, LogOut, ChevronRight, Cpu } from 'lucide-react';
 import useAuthStore from '@/lib/authStore';
 import { toast } from 'sonner';
 
 const NAV_ITEMS = [
-  { to: '/admin/products', label: 'Catalog inventory', icon: Package },
-  { to: '/admin/wholesale', label: 'Wholesale lots', icon: Boxes },
+  { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { to: '/admin/products', label: 'Products', icon: Package },
   { to: '/admin/orders', label: 'Orders', icon: ShoppingBag },
   { to: '/admin/users', label: 'Users', icon: Users },
   { to: '/admin/security', label: 'Security', icon: Shield },
@@ -25,8 +25,9 @@ export default function AdminLayout({ children }) {
   }
 
   // Redirect non-admins
-  if (!user) return <Navigate to="/admin/sign-in" replace />;
-  if (user.role !== 'admin') return <Navigate to="/" replace />;
+  if (!user || user.role !== 'admin') {
+    return <Navigate to="/account" replace />;
+  }
 
   const handleLogout = async () => {
     await logout();
@@ -77,7 +78,7 @@ export default function AdminLayout({ children }) {
             className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-[12px] text-neutral-400 hover:text-white hover:bg-white/4 transition-all"
           >
             <ChevronRight size={13} />
-            View site
+            View store
           </Link>
           <button
             onClick={handleLogout}

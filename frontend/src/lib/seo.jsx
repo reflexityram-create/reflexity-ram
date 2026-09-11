@@ -4,7 +4,7 @@ export function useSEO({ title, description, noindex = false }) {
   useEffect(() => {
     const fullTitle = title
       ? title.endsWith("Reflexity RAM") ? title : `${title} — Reflexity RAM`
-      : "Wholesale Memory & IT Hardware — Reflexity";
+      : "Tested DDR4 & DDR5 RAM in Canada — Reflexity RAM";
     document.title = fullTitle;
 
     if (description) {

@@ -13,6 +13,10 @@ export function readShopFilters(params) {
   };
 }
 
+export function readPublicShopFilters(params) {
+  return { ...readShopFilters(params), lines: ["Server"] };
+}
+
 export function productMatchesShopFilters(product, filters) {
   const {
     query,

@@ -78,14 +78,19 @@ function safeImageUrl(product) {
 }
 
 function productMetadata(product, requestedSlug) {
-  const productName = normalizeText(product.name, 100);
-  const title = normalizeText(`${productName} — Bulk Memory Inventory | Reflexity`, 120);
-  const details = [product.generation, product.formFactor, product.speedLabel]
-    .map((value) => normalizeText(value, 40))
+  const title = normalizeText(product.metaTitle || product.name, 120);
+  const fallbackDescription = [
+    product.name,
+    product.generation,
+    product.formFactor,
+    product.speedLabel,
+    product.condition,
+    product.warranty ? `${product.warranty} warranty` : "",
+  ]
     .filter(Boolean)
-    .join(", ");
+    .join(" · ");
   const description = normalizeText(
-    `Wholesale availability for ${productName}${details ? ` (${details})` : ""}. Request a quote for bulk supply and exact part-number confirmation.`,
+    product.metaDescription || product.description || fallbackDescription,
     180,
   );
   const canonicalSlug = VALID_SLUG.test(product.slug || "") ? product.slug : requestedSlug;
@@ -93,7 +98,7 @@ function productMetadata(product, requestedSlug) {
   return {
     title,
     description,
-    canonicalUrl: `${STOREFRONT_ORIGIN}/inventory/${encodeURIComponent(canonicalSlug)}`,
+    canonicalUrl: `${STOREFRONT_ORIGIN}/shop/${encodeURIComponent(canonicalSlug)}`,
     imageUrl: safeImageUrl(product),
   };
 }
@@ -118,6 +123,7 @@ export function injectProductMetadata(html, product, requestedSlug) {
   const sku = normalizeText(product.sku, 80);
   const generation = normalizeText(product.generation, 30);
   const formFactor = normalizeText(product.formFactor, 40);
+  const availability = product.stock === "out" ? "https://schema.org/OutOfStock" : "https://schema.org/InStock";
   const schema = {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -126,10 +132,18 @@ export function injectProductMetadata(html, product, requestedSlug) {
     image: [metadata.imageUrl],
     sku: sku || undefined,
     brand: product.brand ? { "@type": "Brand", name: normalizeText(product.brand, 60) } : undefined,
+    offers: {
+      "@type": "Offer",
+      url: metadata.canonicalUrl,
+      priceCurrency: "CAD",
+      price: Number(product.price || 0),
+      availability,
+      itemCondition: product.condition === "New" ? "https://schema.org/NewCondition" : "https://schema.org/UsedCondition",
+    },
   };
   output = insertBeforeHeadClose(output, `<script type="application/ld+json" data-edge-product>${safeJson(schema)}</script>`);
   const details = [generation, formFactor, normalizeText(product.capacityLabel, 40), normalizeText(product.speedLabel, 40)].filter(Boolean).join(" · ");
-  const body = `<div id="root"><main data-edge-content="product"><nav><a href="/">Reflexity</a> · <a href="/inventory">Inventory</a> · <a href="/wholesale">Wholesale supply</a></nav><article><h1>${escapeHtml(name)}</h1><p>${escapeHtml(metadata.description)}</p>${details ? `<p>${escapeHtml(details)}</p>` : ""}${sku ? `<p>SKU: ${escapeHtml(sku)}</p>` : ""}<p><a href="/contact">Request availability and bulk pricing</a> · <a href="/sell-to-us">Sell hardware to Reflexity</a></p></article></main></div>`;
+  const body = `<div id="root"><main data-edge-content="product"><nav><a href="/">Reflexity RAM</a> · <a href="/shop">Shop tested RAM</a> · <a href="/guides">Compatibility guides</a></nav><article><h1>${escapeHtml(name)}</h1><p>${escapeHtml(metadata.description)}</p>${details ? `<p>${escapeHtml(details)}</p>` : ""}${sku ? `<p>SKU: ${escapeHtml(sku)}</p>` : ""}<p><a href="${escapeHtml(metadata.canonicalUrl)}">View product details</a> · <a href="/support">Ask about compatibility</a></p></article></main></div>`;
   return output.replace(/<div\s+id=(['"])root\1\s*><\/div>/i, body);
 }
 
@@ -273,6 +287,10 @@ export async function renderProductPage(
     !/<\/head>/i.test(html)
   ) {
     return responseWithHeaders(shell, html, "spa-pass-through");
+  }
+
+  if (productResult.product.line !== "Server") {
+    return productNotFound(new Response(html, { status: shell.status, headers: shell.headers }), method);
   }
 
   const enriched = injectProductMetadata(html, productResult.product, slug);

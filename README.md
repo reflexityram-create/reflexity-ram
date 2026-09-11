@@ -1,8 +1,8 @@
 # Reflexity
 
-Wholesale and bulk computer-memory and IT-hardware website for buyers and
-sellers. The public site is a quote-based B2B catalog, not a direct-to-consumer
-ecommerce storefront.
+Tested Server RAM and IT-hardware storefront for individual buyers, businesses,
+and wholesale customers. Consumer and laptop RAM records remain in the managed
+inventory but are not publicly exposed.
 
 - Storefront: https://reflexityram.com
 - API: https://reflexity-ram.onrender.com
@@ -12,18 +12,18 @@ ecommerce storefront.
 
 The primary public routes are:
 
-- `/inventory` and `/inventory/:slug` — catalog visibility and part-number
-  availability enquiries
-- `/wholesale` — supply relationships for resellers, refurbishers, MSPs,
-  system integrators, and other hardware businesses
-- `/sell-to-us` — bulk hardware acquisition enquiries
-- `/contact` — buyer, seller, and general quote requests
+- `/shop` and `/shop/:slug` — tested Server RAM catalog and product details
+- `/categories` — the public Server RAM category
+- `/wholesale` and `/wholesale/:lotId` — small and bulk lot quote requests
+- `/liquidators` — IT asset liquidation and ITAD intake
+- `/guides`, `/support`, and policy routes — buyer information and support
+- `/cart`, `/checkout`, and `/account` — retained storefront account and order flow
 
-Legacy `/shop`, `/shop/:slug`, `/categories`, `/liquidators`, `/support`, and
-`/business-info` URLs permanently redirect to their B2B replacements. The
-retail Merchant/RSS/CSV feeds at `/feed.xml` and `/feed.csv` deliberately
-return `410 Gone` with `Cache-Control: no-store`; they must not be restored as
-consumer product feeds without an explicit business decision.
+The public catalog and product metadata expose only products whose exact
+`line` is `Server`. This is a visibility rule, not a deletion or migration:
+consumer and laptop inventory remains available to authorized administration.
+Wholesale lots remain separate from the retail catalog and continue through the
+quote/acquisition lead path.
 
 `POST /api/leads` accepts a JSON quote enquiry with a stable UUID `requestId`,
 `intent` (`buy`, `sell`, or `general`), name, email, and product type. Optional fields cover company,
@@ -46,20 +46,19 @@ per IP per hour.
 | Images | Cloudinary |
 | Hosting | Cloudflare Pages frontend, Render backend |
 
-Cloudflare Pages Functions provide crawlable B2B metadata and initial HTML for
-the public routes. `/inventory/:slug` emits Product structured data for the
-catalog item, deliberately without `Offer`, price, or purchase-availability
-data. `/sitemap.xml` follows the live catalog and B2B routes. The edge feed
-proxy preserves the backend's intentional `410` response.
+Cloudflare Pages Functions provide crawlable metadata and initial HTML for
+public Server RAM, product, and wholesale routes. Product pages retain their
+normal price and purchase metadata; `/sitemap.xml` and the catalog feeds follow
+the publicly exposed Server-line products and public routes.
 
-Stripe, cart, checkout, order, Google OAuth, and product-management backend code remain as
-historical/admin infrastructure and are not deleted by this conversion. They
-are not part of the public wholesale purchase flow. Do not remove production
-data or provider resources as part of a frontend positioning change.
+Cart, checkout, orders, Google OAuth, ITAD/Liquidation, wholesale leads, and
+product-management code remain active application infrastructure. Do not remove
+production data or provider resources when narrowing public catalog visibility.
 
-Stale public cart requests and checkout-session creation return `410 Gone` with
-`Cache-Control: no-store`. Stripe webhooks and historical/admin order paths
-remain mounted for retained records and provider reconciliation.
+Stripe webhooks, order history, and admin access remain mounted for retained
+records and provider reconciliation. The public checkout flow must be verified
+against the live API before release; documentation must not describe it as
+retired unless the API read-back confirms that state.
 
 ## Local setup
 
