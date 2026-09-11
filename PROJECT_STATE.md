@@ -3,7 +3,8 @@
 ## 2026-09-11 — Wholesale-only B2B release and soft-404 follow-up
 
 - VERIFIED (PARENT): Wholesale-only architecture is live at `https://reflexityram.com` with backend at `https://reflexity-ram.onrender.com`; PR #30 merged as `444cc6d` and PR #31 as `e2ce709`. Retail feeds/consumer commerce now return 410; inventory and lot CTAs submit quote/acquisition leads through `/api/leads`, not checkout. Parent verified 82/82 frontend tests and 88 backend passes with 2 skips.
-- VERIFIED (STATIC/TEST ONLY): The Pages edge returns raw HTTP 404 with `noindex, nofollow` for unknown static/guide routes and invalid or confirmed-missing inventory/wholesale GET requests; matching HEAD requests are bodyless 404s. Valid item HEAD requests perform bounded existence lookup, while transient upstream failures retain the SPA fallback. Production readback remains pending parent verification.
+- VERIFIED (PRODUCTION): PR #32 passed all three checks and merged as `4bf1b13`. Canonical-apex unknown/static/guide and invalid-or-missing inventory/lot GET and HEAD routes read back as 404 with the expected edge marker and noindex HTML or blank HEAD; valid product/lot GET and HEAD remained 200. Transient-upstream 200 SPA fallback remains covered by tests.
+- VERIFIED (PRODUCTION): Responsive sweep passed 60/60 page-width combinations across home, inventory, exact lot, sell, contact, and terms from 1440px to 320px with no overflow or dead anchors; major console sweep found no application exceptions (excluding the expected main-document 404 resource warning), and mobile navigation was verified. A live `/api/leads` request `d89179e4-8c53-4b16-82d7-c5e9221f3933` returned 202 and its exact labeled email appeared in `reflexityram@gmail.com`.
 
 ## 2026-09-02 — Responsive image delivery and catalog-read latency live
 
