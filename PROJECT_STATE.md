@@ -9,8 +9,20 @@
   modules, small lots, and wholesale lots remain supported.
 - VERIFIED (STATIC/ARCHITECTURE): The restored route structure retains cart, checkout,
   orders, account, Google OAuth, ITAD/Liquidation, guides, support, and admin
-  surfaces. Wholesale lots and acquisition remain quote/lead based. This block
-  records code architecture only; production deployment status is not asserted.
+  surfaces. Wholesale lots and acquisition remain quote/lead based.
+- VERIFIED (PRODUCTION/RELEASE, 2026-09-11): Backend bridge PR #34 is live on
+  `main` at `cc06eaf`; storefront PR #35 is live on `main` at `441de5c`; CSV
+  follow-up PR #36 is live on `main` at
+  `7d0b3c296bddb74270dae0e91c9b35064b668f69`. Production HTTP read-backs
+  observed health `ok`/`production`/Stripe enabled; five products, all
+  `Server`; one wholesale lot; cart `200`; empty checkout `400` (not retired);
+  OAuth entry `302`; unauthenticated admin wholesale `401`; restored public
+  routes `200`; query-preserving redirects `308`; arbitrary, guide, product,
+  and lot negatives returned GET/HEAD `404` with noindex; `feed.xml`,
+  `feed.csv`, and `sitemap.xml` returned `200`.
+- VERIFIED (LOCAL VISUAL, 2026-09-11): Local responsive screenshots at 1440px
+  and 390px and the restored `Continue with Google` preview were verified.
+  These are local visual checks, not production-browser evidence.
 
 ## 2026-09-11 — SUPERSEDED: Wholesale-only B2B release and soft-404 follow-up
 
