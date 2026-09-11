@@ -13,6 +13,8 @@ const { isDisposableEmail } = require('../utils/disposableEmail');
 const { isFullyRefundedCharge } = require('../utils/refunds');
 
 const router = express.Router();
+let checkoutPriceEnsurer = ensureStripePrice;
+let checkoutSessionCreator = (payload) => stripe.checkout.sessions.create(payload);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CHECKOUT SESSIONS (primary checkout flow)
@@ -39,13 +41,20 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
       return res.status(400).json({ error: 'Cart is empty' });
     }
 
+    const cartSlugs = [...new Set(cart.items.map((item) => item.slug).filter(Boolean))];
+    const products = cartSlugs.length
+      ? await Product.find({ slug: { $in: cartSlugs }, isActive: true, line: 'Server' })
+      : [];
+    const productsBySlug = new Map(products.map((product) => [product.slug, product]));
+    const eligibleItems = cart.items.filter((item) => productsBySlug.has(item.slug));
+    if (eligibleItems.length === 0) {
+      return res.status(400).json({ error: 'Cart has no purchasable Server RAM' });
+    }
+
     // ── Build line_items from DB-stored Stripe Price IDs ──────────────────────
     const lineItems = [];
-    for (const item of cart.items) {
-      const product = await Product.findOne({ slug: item.slug, isActive: true });
-      if (!product) {
-        return res.status(400).json({ error: `Product "${item.name}" is no longer available` });
-      }
+    for (const item of eligibleItems) {
+      const product = productsBySlug.get(item.slug);
       if (product.stockQuantity <= 0 || product.stock === 'out') {
         return res.status(400).json({ error: `"${product.name}" is out of stock` });
       }
@@ -57,7 +66,7 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
 
       // Lazy sync: guarantees a current Price ID even if admin-time sync failed
       // or the price changed without a re-sync.
-      const priceId = await ensureStripePrice(product);
+      const priceId = await checkoutPriceEnsurer(product);
       if (!priceId) {
         return res.status(503).json({ error: 'Payment processing is not configured.' });
       }
@@ -67,7 +76,7 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
 
     const frontendUrl = process.env.FRONTEND_URL || 'https://reflexityram.com';
 
-    const session = await stripe.checkout.sessions.create({
+    const session = await checkoutSessionCreator({
       mode: 'payment',
       line_items: lineItems,
 
@@ -399,5 +408,12 @@ router.post('/webhook', async (req, res) => {
     res.status(500).json({ error: 'Webhook processing failed' });
   }
 });
+
+if (process.env.NODE_ENV === 'test') {
+  router.setCheckoutDependenciesForTest = ({ ensurePrice = ensureStripePrice, createSession } = {}) => {
+    checkoutPriceEnsurer = ensurePrice;
+    checkoutSessionCreator = createSession || ((payload) => stripe.checkout.sessions.create(payload));
+  };
+}
 
 module.exports = router;

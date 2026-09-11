@@ -3,6 +3,7 @@ const Product = require('../models/Product');
 const { normalizeProductPagination, buildProductSort } = require('../utils/pagination');
 const {
   PUBLIC_PRODUCT_PROJECTION,
+  PUBLIC_SERVER_FILTER,
   ProductQueryError,
   parseProductQuery,
 } = require('../utils/publicProducts');
@@ -54,7 +55,7 @@ router.get('/', async (req, res) => {
 // ─── GET /api/products/featured ───────────────────────────────────────────────
 router.get('/featured', async (req, res) => {
   try {
-    const products = await Product.find({ isActive: true, isFeatured: true })
+    const products = await Product.find({ ...PUBLIC_SERVER_FILTER, isFeatured: true })
       .select(PUBLIC_PRODUCT_PROJECTION)
       .sort({ createdAt: -1 })
       .limit(8)
@@ -69,12 +70,12 @@ router.get('/featured', async (req, res) => {
 router.get('/filters', async (req, res) => {
   try {
     const [generations, formFactors, capacities, conditions, priceRange] = await Promise.all([
-      Product.distinct('generation', { isActive: true }),
-      Product.distinct('formFactor', { isActive: true }),
-      Product.distinct('capacity', { isActive: true }),
-      Product.distinct('condition', { isActive: true }),
+      Product.distinct('generation', PUBLIC_SERVER_FILTER),
+      Product.distinct('formFactor', PUBLIC_SERVER_FILTER),
+      Product.distinct('capacity', PUBLIC_SERVER_FILTER),
+      Product.distinct('condition', PUBLIC_SERVER_FILTER),
       Product.aggregate([
-        { $match: { isActive: true } },
+        { $match: PUBLIC_SERVER_FILTER },
         { $group: { _id: null, min: { $min: '$price' }, max: { $max: '$price' } } },
       ]),
     ]);
@@ -96,7 +97,7 @@ router.get('/:slug', async (req, res) => {
   try {
     const product = await Product.findOne({
       slug: req.params.slug,
-      isActive: true,
+      ...PUBLIC_SERVER_FILTER,
     }).select(PUBLIC_PRODUCT_PROJECTION).lean();
 
     if (!product) {
@@ -107,7 +108,7 @@ router.get('/:slug', async (req, res) => {
     const related = await Product.find({
       generation: product.generation,
       _id: { $ne: product._id },
-      isActive: true,
+      ...PUBLIC_SERVER_FILTER,
     })
       .select(PUBLIC_PRODUCT_PROJECTION)
       .limit(4)

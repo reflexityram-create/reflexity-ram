@@ -3,6 +3,7 @@ const BASE_URL = 'https://reflexityram.com';
 const STATIC_PAGES = [
   { path: '/', changefreq: 'daily', priority: '1.0' },
   { path: '/inventory', changefreq: 'daily', priority: '0.9' },
+  { path: '/shop', changefreq: 'daily', priority: '0.9' },
   { path: '/guides', changefreq: 'weekly', priority: '0.8' },
   { path: '/guides/ddr4-vs-ddr5', changefreq: 'monthly', priority: '0.7' },
   { path: '/guides/ecc-rdimm-udimm-explained', changefreq: 'monthly', priority: '0.7' },

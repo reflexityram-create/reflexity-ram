@@ -11,6 +11,7 @@ const usableQuantity = (value) => {
 
 const isAvailableProduct = (product) => (
   product
+  && product.line === 'Server'
   && product.isActive !== false
   && product.stock !== 'out'
   && Number(product.stockQuantity) > 0
@@ -44,6 +45,7 @@ const mergeCartItems = (existingItems = [], guestItems = [], products = []) => {
 
   for (const item of existingItems) {
     const product = productsBySlug.get(item.slug);
+    if (product && product.line !== 'Server') continue;
     // Preserve unavailable pre-existing items; guest items for them are never
     // added below. Cart read/checkout continue to handle those legacy items.
     if (!isAvailableProduct(product)) {
