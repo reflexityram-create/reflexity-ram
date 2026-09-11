@@ -7,7 +7,10 @@ const { sanitizeHtml } = require('../utils/sanitizeHtml');
 
 const router = express.Router();
 
-const VALID_SLUGS = ['shipping', 'returns', 'warranty', 'faq', 'international'];
+const VALID_SLUGS = [
+  'shipping', 'returns', 'warranty', 'faq', 'international',
+  'shipping-b2b', 'returns-b2b', 'warranty-b2b', 'faq-b2b', 'international-b2b',
+];
 
 // ─── GET /api/pages/:slug — public ─────────────────────────────────────────────
 // Returns the stored content for a page, or 204 if none exists yet (the
@@ -96,3 +99,4 @@ router.delete(
 );
 
 module.exports = router;
+module.exports.VALID_SLUGS = VALID_SLUGS;
