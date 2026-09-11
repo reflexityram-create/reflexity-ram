@@ -55,6 +55,29 @@ test("Pages Functions expose inventory metadata, XML, and legacy redirect routes
   assert.equal(typeof staticHandler, "function");
 });
 
+test("specific inventory and wholesale handlers reject invalid GET and HEAD identifiers", async () => {
+  const invalidRoutes = [
+    [productHandler, productContext("INVALID", { method: "GET" })],
+    [productHandler, productContext("INVALID", { method: "HEAD" })],
+    [wholesaleLotHandler, {
+      request: new Request("https://reflexityram.com/wholesale/not-a-lot", { method: "GET" }),
+      params: { lotId: "not-a-lot" },
+      next: async () => new Response(PRODUCT_SHELL, { status: 200, headers: { "Content-Type": "text/html" } }),
+    }],
+    [wholesaleLotHandler, {
+      request: new Request("https://reflexityram.com/wholesale/not-a-lot", { method: "HEAD" }),
+      params: { lotId: "not-a-lot" },
+      next: async () => new Response(PRODUCT_SHELL, { status: 200, headers: { "Content-Type": "text/html" } }),
+    }],
+  ];
+  for (const [handler, context] of invalidRoutes) {
+    const response = await handler(context);
+    assert.equal(response.status, 404);
+    if (context.request.method === "HEAD") assert.equal(await response.text(), "");
+    else assert.match(await response.text(), /name="robots" content="noindex, nofollow"/);
+  }
+});
+
 test("catalog XML proxy requests the live backend and normalizes safe response headers", async () => {
   const calls = [];
   const response = await proxyCatalogXml(context(), "/feed.xml", {
@@ -124,8 +147,8 @@ test("Pages route manifest invokes Functions for public crawlable routes", async
   );
   assert.deepEqual(routes, {
     version: 1,
-    include: ["/", "/inventory", "/inventory/*", "/guides", "/guides/*", "/wholesale", "/wholesale/*", "/sell-to-us", "/contact", "/about", "/shipping", "/international", "/returns", "/warranty", "/faq", "/privacy", "/terms", "/feed.xml", "/feed.csv", "/sitemap.xml", "/shop", "/shop/*", "/categories", "/liquidators", "/support", "/business-info"],
-    exclude: [],
+    include: ["/*"],
+    exclude: ["/assets/*", "/.well-known/*", "/LICENSE.txt", "/analytics-bootstrap.js", "/error-bootstrap.js", "/favicon.svg", "/font-bootstrap.js", "/og-image.svg", "/robots.txt", "/security.txt", "/theme-bootstrap.js"],
   });
 });
 
@@ -221,6 +244,50 @@ test("static edge pages provide unique metadata and meaningful initial HTML", as
   assert.equal(await head.text(), "");
 });
 
+test("static edge turns only unknown SPA fallbacks into raw crawl-safe 404s", async () => {
+  const pageContext = (path, method = "GET") => ({
+    request: new Request(`https://reflexityram.com${path}`, { method }),
+    next: async () => new Response(PRODUCT_SHELL, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }),
+  });
+  for (const path of ["/__missing_20260911", "/guides/unknown-guide"]) {
+    const missing = await renderStaticPage(pageContext(path));
+    assert.equal(missing.status, 404, path);
+    assert.equal(missing.headers.get("x-reflexity-seo"), "static-not-found", path);
+    assert.match(await missing.text(), /name="robots" content="noindex, nofollow"/, path);
+  }
+
+  for (const path of ["/admin", "/admin/sign-in", "/auth/callback", "/reset-password", "/guides/how-to-identify-ram", "/inventory/unknown-item", "/wholesale/unknown-lot"]) {
+    const response = await renderStaticPage(pageContext(path));
+    assert.equal(response.status, 200, path);
+    assert.notEqual(response.headers.get("x-reflexity-seo"), "static-not-found", path);
+  }
+});
+
+test("static 404 fallback does not rewrite oversized or malformed shells", async () => {
+  for (const shell of [
+    `${PRODUCT_SHELL}${"x".repeat(128 * 1024)}`,
+    "<!doctype html><html><head><title>Legacy shell</title></head><body>legacy body</body></html>",
+  ]) {
+    const response = await renderStaticPage({
+      request: new Request("https://reflexityram.com/not-a-page"),
+      next: async () => new Response(shell, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }),
+    });
+    const html = await response.text();
+    assert.equal(response.status, 404);
+    assert.match(html, /name="robots" content="noindex, nofollow"/);
+    assert.match(html, /data-edge-content="not-found"/);
+    assert.doesNotMatch(html, /Legacy shell|legacy body|Home description/);
+  }
+
+  const known = await renderStaticPage({
+    request: new Request("https://reflexityram.com/contact"),
+    next: async () => new Response(`${PRODUCT_SHELL}${"x".repeat(128 * 1024)}`, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }),
+  });
+  assert.equal(known.status, 200);
+  assert.equal(known.headers.get("x-reflexity-seo"), "spa-pass-through");
+  assert.match(await known.text(), /<title>Home title<\/title>/);
+});
+
 test("legacy shop and support paths redirect to their B2B replacements", async () => {
   const productRedirect = legacyProductHandler({
     request: new Request("https://reflexityram.com/shop/rfx-ddr4?source=legacy"),
@@ -239,16 +306,17 @@ test("legacy shop and support paths redirect to their B2B replacements", async (
   }
 });
 
-test("wholesale lot edge metadata is quote-only and fails closed for missing lots", async () => {
+test("wholesale lot edge metadata is quote-only and resolves GET and HEAD existence", async () => {
   const lotId = "64b64c66a2d15e51234abcde";
-  const lotContext = (id) => ({
-    request: new Request(`https://reflexityram.com/wholesale/${id}`), params: { lotId: id },
+  const lotContext = (id, method = "GET") => ({
+    request: new Request(`https://reflexityram.com/wholesale/${id}`, { method }), params: { lotId: id },
     next: async () => new Response(PRODUCT_SHELL, { status: 200, headers: { "Content-Type": "text/html" } }),
   });
+  const validLot = () => Response.json({ lot: {
+    id: lotId, title: "Samsung 32GB RDIMM", lotCode: "WS-DETAIL", brand: "Samsung", mpn: "M393A4K40DB3", imageUrl: "https://images.example.test/lot.jpg",
+  } });
   const response = await renderWholesaleLotPage(lotContext(lotId), {
-    fetchImpl: async () => Response.json({ lot: {
-      id: lotId, title: "Samsung 32GB RDIMM", lotCode: "WS-DETAIL", brand: "Samsung", mpn: "M393A4K40DB3", imageUrl: "https://images.example.test/lot.jpg",
-    } }),
+    fetchImpl: validLot,
   });
   const html = await response.text();
   assert.equal(response.headers.get("x-reflexity-seo"), "wholesale-lot-edge");
@@ -259,38 +327,59 @@ test("wholesale lot edge metadata is quote-only and fails closed for missing lot
   assert.match(html, /data-edge-wholesale-lot/);
   assert.doesNotMatch(html, /"offers"|"price"|"availability"/);
 
-  const missing = await renderWholesaleLotPage(lotContext(lotId), { fetchImpl: async () => new Response("missing", { status: 404 }) });
-  assert.equal(missing.status, 404);
-  assert.equal(missing.headers.get("x-reflexity-seo"), "wholesale-lot-not-found");
-  assert.match(await missing.text(), /noindex, nofollow/);
+  const validHead = await renderWholesaleLotPage(lotContext(lotId, "HEAD"), { fetchImpl: validLot });
+  assert.equal(validHead.status, 200);
+  assert.equal(await validHead.text(), "");
 
-  const transient = await renderWholesaleLotPage(lotContext(lotId), { fetchImpl: async () => new Response("temporary", { status: 503 }) });
-  assert.equal(transient.status, 200);
-  assert.equal(transient.headers.get("x-reflexity-seo"), "spa-error-fallback");
+  for (const method of ["GET", "HEAD"]) {
+    const missing = await renderWholesaleLotPage(lotContext(lotId, method), { fetchImpl: async () => new Response("missing", { status: 404 }) });
+    assert.equal(missing.status, 404);
+    assert.equal(missing.headers.get("x-reflexity-seo"), "wholesale-lot-not-found");
+    if (method === "HEAD") assert.equal(await missing.text(), "");
+    else assert.match(await missing.text(), /noindex, nofollow/);
+  }
+
+  for (const method of ["GET", "HEAD"]) {
+    const transient = await renderWholesaleLotPage(lotContext(lotId, method), { fetchImpl: async () => new Response("temporary", { status: 503 }) });
+    assert.equal(transient.status, 200);
+    assert.equal(transient.headers.get("x-reflexity-seo"), "spa-error-fallback");
+    if (method === "HEAD") assert.equal(await transient.text(), "");
+  }
 });
 
-test("product edge returns a crawl-safe 404 only when the API confirms it", async () => {
-  const response = await renderProductPage(productContext("missing-product"), {
-    fetchImpl: async () => new Response("not found", { status: 404 }),
-  });
+test("product edge resolves GET and HEAD existence before choosing a crawl-safe fallback", async () => {
+  for (const method of ["GET", "HEAD"]) {
+    const response = await renderProductPage(productContext("missing-product", { method }), {
+      fetchImpl: async () => new Response("not found", { status: 404 }),
+    });
+    assert.equal(response.status, 404);
+    assert.equal(response.headers.get("x-reflexity-seo"), "product-not-found");
+    if (method === "HEAD") assert.equal(await response.text(), "");
+    else {
+      const html = await response.text();
+      assert.match(html, /<title>Product not found \| Reflexity RAM<\/title>/);
+      assert.match(html, /name="robots" content="noindex, nofollow"/);
+    }
+  }
 
-  const html = await response.text();
-  assert.equal(response.status, 404);
-  assert.equal(response.headers.get("x-reflexity-seo"), "product-not-found");
-  assert.match(html, /<title>Product not found \| Reflexity RAM<\/title>/);
-  assert.match(html, /name="robots" content="noindex, nofollow"/);
+  const validHead = await renderProductPage(productContext("rfx-live-product", { method: "HEAD" }), {
+    fetchImpl: async () => Response.json({ product: { name: "Live product", slug: "rfx-live-product" } }),
+  });
+  assert.equal(validHead.status, 200);
+  assert.equal(await validHead.text(), "");
 });
 
-test("product edge preserves the storefront shell on upstream errors", async () => {
-  const response = await renderProductPage(productContext("rfx-live-product"), {
-    fetchImpl: async () => new Response("failure", { status: 503 }),
-    logger: { warn() {} },
-  });
-
-  assert.equal(response.status, 200);
-  assert.equal(response.headers.get("x-reflexity-seo"), "spa-error-fallback");
-  assert.equal(response.headers.get("etag"), '"shell-v1"');
-  assert.equal(await response.text(), PRODUCT_SHELL);
+test("product edge preserves the storefront shell only on upstream errors", async () => {
+  for (const method of ["GET", "HEAD"]) {
+    const response = await renderProductPage(productContext("rfx-live-product", { method }), {
+      fetchImpl: async () => new Response("failure", { status: 503 }),
+      logger: { warn() {} },
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("x-reflexity-seo"), "spa-error-fallback");
+    assert.equal(response.headers.get("etag"), '"shell-v1"');
+    assert.equal(await response.text(), method === "HEAD" ? "" : PRODUCT_SHELL);
+  }
 });
 
 test("product edge returns quickly and defers a slow metadata fetch", async () => {

@@ -139,6 +139,15 @@ function injectNotFoundMetadata(html) {
   return output;
 }
 
+async function productNotFound(shell, method) {
+  if (method === "HEAD") return responseWithHeaders(shell, null, "product-not-found", 404);
+  const html = await shell.text();
+  const body = new TextEncoder().encode(html).byteLength <= MAX_HTML_BYTES && /<\/head>/i.test(html)
+    ? injectNotFoundMetadata(html)
+    : '<!doctype html><html lang="en"><head><meta name="robots" content="noindex, nofollow" /><title>Product not found | Reflexity RAM</title></head><body><main><h1>Product not found</h1></main></body></html>';
+  return responseWithHeaders(shell, body, "product-not-found", 404);
+}
+
 function responseWithHeaders(response, body, source, status = response.status) {
   const headers = applyStorefrontSecurityHeaders(new Headers(response.headers));
   if (typeof body === "string") {
@@ -209,7 +218,7 @@ export async function renderProductPage(
   const method = context.request.method.toUpperCase();
   const shellPromise = context.next();
 
-  if (method !== "GET") {
+  if (method !== "GET" && method !== "HEAD") {
     const shell = await shellPromise;
     return responseWithHeaders(shell, method === "HEAD" ? null : shell.body, "spa-pass-through");
   }
@@ -217,7 +226,7 @@ export async function renderProductPage(
   const slug = typeof context.params?.slug === "string" ? context.params.slug : "";
   if (!VALID_SLUG.test(slug)) {
     const shell = await shellPromise;
-    return responseWithHeaders(shell, shell.body, "spa-fallback");
+    return productNotFound(shell, method);
   }
 
   const productPromise = loadProduct(slug, fetchImpl);
@@ -234,7 +243,7 @@ export async function renderProductPage(
       });
     });
     if (typeof context.waitUntil === "function") context.waitUntil(completion);
-    return responseWithHeaders(shell, shell.body, "spa-timeout-fallback");
+    return responseWithHeaders(shell, method === "HEAD" ? null : shell.body, "spa-timeout-fallback");
   }
 
   if (productResult.kind === "error") {
@@ -245,8 +254,11 @@ export async function renderProductPage(
           ? productResult.error.message
           : "unknown error",
     });
-    return responseWithHeaders(shell, shell.body, "spa-error-fallback");
+    return responseWithHeaders(shell, method === "HEAD" ? null : shell.body, "spa-error-fallback");
   }
+
+  if (productResult.kind === "not-found") return productNotFound(shell, method);
+  if (method === "HEAD") return responseWithHeaders(shell, null, "product-edge");
 
   const contentType = shell.headers.get("Content-Type") || "";
   const declaredLength = Number(shell.headers.get("Content-Length") || 0);
@@ -261,10 +273,6 @@ export async function renderProductPage(
     !/<\/head>/i.test(html)
   ) {
     return responseWithHeaders(shell, html, "spa-pass-through");
-  }
-
-  if (productResult.kind === "not-found") {
-    return responseWithHeaders(shell, injectNotFoundMetadata(html), "product-not-found", 404);
   }
 
   const enriched = injectProductMetadata(html, productResult.product, slug);

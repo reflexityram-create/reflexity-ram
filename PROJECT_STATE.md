@@ -1,5 +1,10 @@
 # Project State
 
+## 2026-09-11 — Wholesale-only B2B release and soft-404 follow-up
+
+- VERIFIED (PARENT): Wholesale-only architecture is live at `https://reflexityram.com` with backend at `https://reflexity-ram.onrender.com`; PR #30 merged as `444cc6d` and PR #31 as `e2ce709`. Retail feeds/consumer commerce now return 410; inventory and lot CTAs submit quote/acquisition leads through `/api/leads`, not checkout. Parent verified 82/82 frontend tests and 88 backend passes with 2 skips.
+- VERIFIED (STATIC/TEST ONLY): The Pages edge returns raw HTTP 404 with `noindex, nofollow` for unknown static/guide routes and invalid or confirmed-missing inventory/wholesale GET requests; matching HEAD requests are bodyless 404s. Valid item HEAD requests perform bounded existence lookup, while transient upstream failures retain the SPA fallback. Production readback remains pending parent verification.
+
 ## 2026-09-02 — Responsive image delivery and catalog-read latency live
 
 - VERIFIED (PRODUCTION/NETWORK): Pull request `#27` passed all three protected

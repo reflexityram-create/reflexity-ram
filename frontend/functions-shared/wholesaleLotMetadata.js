@@ -33,6 +33,15 @@ function withHeaders(response, body, source, status = response.status) {
   return new Response(body, { status, headers });
 }
 
+async function lotNotFound(shell, method) {
+  if (method === "HEAD") return withHeaders(shell, null, "wholesale-lot-not-found", 404);
+  const html = await shell.text();
+  const body = /<\/head>/i.test(html)
+    ? replaceMeta(replaceTitle(html, "Wholesale lot not found | Reflexity"), "name", "robots", "noindex, nofollow")
+    : '<!doctype html><html lang="en"><head><meta name="robots" content="noindex, nofollow" /><title>Wholesale lot not found | Reflexity</title></head><body><main><h1>Wholesale lot not found</h1></main></body></html>';
+  return withHeaders(shell, body, "wholesale-lot-not-found", 404);
+}
+
 function timeout(promise, milliseconds) {
   return new Promise((resolve) => {
     let done = false;
@@ -86,22 +95,20 @@ function injectLot(html, lot, id) {
 export async function renderWholesaleLotPage(context, { fetchImpl = fetch, fetchBudgetMs = FETCH_BUDGET_MS } = {}) {
   const method = context.request.method.toUpperCase();
   const shellPromise = context.next();
-  if (method !== "GET") {
+  if (method !== "GET" && method !== "HEAD") {
     const shell = await shellPromise;
     return withHeaders(shell, method === "HEAD" ? null : shell.body, "spa-pass-through");
   }
   const id = typeof context.params?.lotId === "string" ? context.params.lotId : "";
   if (!LOT_ID.test(id)) {
     const shell = await shellPromise;
-    return withHeaders(shell, shell.body, "spa-fallback");
+    return lotNotFound(shell, method);
   }
   const [shell, result] = await Promise.all([shellPromise, timeout(loadLot(id, fetchImpl), fetchBudgetMs)]);
-  if (result.kind === "timeout" || result.kind === "error") return withHeaders(shell, shell.body, result.kind === "timeout" ? "spa-timeout-fallback" : "spa-error-fallback");
+  if (result.kind === "timeout" || result.kind === "error") return withHeaders(shell, method === "HEAD" ? null : shell.body, result.kind === "timeout" ? "spa-timeout-fallback" : "spa-error-fallback");
+  if (result.kind === "not-found") return lotNotFound(shell, method);
+  if (method === "HEAD") return withHeaders(shell, null, "wholesale-lot-edge");
   if (!shell.ok || !(shell.headers.get("Content-Type") || "").includes("text/html")) return withHeaders(shell, shell.body, "spa-pass-through");
   const html = await shell.text();
-  if (result.kind === "not-found") {
-    const noindex = replaceMeta(replaceTitle(html, "Wholesale lot not found | Reflexity"), "name", "robots", "noindex, nofollow");
-    return withHeaders(shell, noindex, "wholesale-lot-not-found", 404);
-  }
   return withHeaders(shell, injectLot(html, result.lot, id), "wholesale-lot-edge");
 }
