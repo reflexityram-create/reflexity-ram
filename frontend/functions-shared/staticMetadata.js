@@ -6,135 +6,124 @@ const EMPTY_ROOT = /<div\s+id=(['"])root\1\s*><\/div>/i;
 
 const PAGES = {
   "/": {
-    title: "Wholesale Memory & IT Hardware — Reflexity",
-    description: "Bulk RAM, server memory, storage, and IT hardware for resellers, refurbishers, businesses, and IT operators.",
-    heading: "Wholesale memory and IT hardware",
-    body: "Reflexity supplies and buys bulk RAM, server memory, storage, and related hardware through quote-based B2B relationships.",
-    links: [["View inventory", "/inventory"], ["Request a quote", "/contact"], ["Sell hardware", "/sell-to-us"]],
+    title: "Tested Server RAM in Canada — Reflexity RAM",
+    description: "Shop individually tested Server RAM across DDR generations and form factors, shipped from Toronto.",
+    heading: "Tested Server RAM, shipped from Toronto",
+    links: [["Shop tested RAM", "/shop"], ["Find the right memory", "/guides/how-to-identify-ram"]],
   },
-  "/inventory": {
-    title: "Bulk RAM & IT Hardware Inventory — Reflexity",
-    description: "Browse wholesale inventory types including server RAM, ECC RDIMMs, LRDIMMs, desktop and laptop memory, CPUs, and storage.",
-    heading: "Wholesale inventory",
-    body: "Browse available memory and hardware categories, then request availability and bulk pricing for your required part numbers and quantities.",
-    links: [["Request bulk pricing", "/contact"], ["Wholesale supply", "/wholesale"]],
+  "/shop": {
+    title: "Shop Tested Server RAM in Canada — Reflexity RAM",
+    description: "Browse tested Server RAM with clear compatibility details and warranty coverage.",
+    heading: "Shop tested Server RAM",
+    links: [["Browse RAM categories", "/categories"], ["RAM compatibility guides", "/guides"]],
+  },
+  "/categories": {
+    title: "Server RAM Categories — Reflexity RAM",
+    description: "Browse tested Server RAM by DDR generation, form factor, and capacity.",
+    heading: "Browse Server RAM",
+    links: [["Shop all tested RAM", "/shop"], ["How to identify RAM", "/guides/how-to-identify-ram"]],
   },
   "/guides": {
-    title: "Memory Compatibility Guides for IT Buyers — Reflexity",
-    description: "Practical RAM reference guides for IT buyers: DDR generations, ECC, RDIMM, LRDIMM, part numbers, and compatibility.",
-    heading: "Memory compatibility guides",
-    links: [["Identify a RAM part number", "/guides/how-to-identify-ram"], ["View inventory", "/inventory"]],
+    title: "RAM Compatibility & Buying Guides — Reflexity RAM",
+    description: "Practical guides to DDR4, DDR5, ECC, RDIMM, LRDIMM, laptop, desktop, server memory, and capacity.",
+    heading: "RAM compatibility and buying guides",
+    links: [["How to identify RAM", "/guides/how-to-identify-ram"], ["DDR4 vs DDR5", "/guides/ddr4-vs-ddr5"], ["ECC and RDIMM explained", "/guides/ecc-rdimm-udimm-explained"]],
   },
   "/guides/ddr4-vs-ddr5": {
-    title: "DDR4 vs DDR5 for Bulk IT Procurement — Reflexity",
-    description: "Compare DDR4 and DDR5 platform compatibility and sourcing considerations for business and IT hardware buyers.",
-    heading: "DDR4 vs DDR5 for IT hardware buyers",
-    body: "DDR4 and DDR5 are not interchangeable. Confirm platform support, capacity, speed, and form factor before requesting bulk availability.",
-    links: [["View inventory", "/inventory"], ["Request a quote", "/contact"]],
+    title: "DDR4 or DDR5? Compatibility, Speed & Upgrade Guide — Reflexity RAM",
+    description: "Compare DDR4 and DDR5 compatibility, speed, price, and upgrade value before buying desktop or laptop memory.",
+    heading: "DDR4 or DDR5: which memory should you buy?",
+    body: "DDR4 and DDR5 are not interchangeable. Your motherboard and processor determine which generation fits; capacity usually matters more than a small speed increase.",
+    links: [["Browse RAM categories", "/categories"], ["Shop tested RAM", "/shop"]],
   },
   "/guides/ecc-rdimm-udimm-explained": {
-    title: "ECC, RDIMM, LRDIMM & UDIMM Guide — Reflexity",
-    description: "Understand ECC, RDIMM, LRDIMM, and UDIMM compatibility when sourcing server and workstation memory in bulk.",
-    heading: "ECC, RDIMM, LRDIMM, and UDIMM explained",
-    body: "Registered, load-reduced, and unbuffered DIMMs serve different platforms and are usually not interchangeable. Confirm the server or motherboard memory rules first.",
-    links: [["Browse server memory", "/inventory"], ["Ask about a part number", "/contact"]],
+    title: "RDIMM vs UDIMM: ECC, LRDIMM & Server RAM Explained — Reflexity RAM",
+    description: "Understand ECC, RDIMM, LRDIMM, and UDIMM differences before choosing compatible server or workstation memory.",
+    heading: "RDIMM vs UDIMM, ECC, and LRDIMM explained",
+    body: "Registered, load-reduced, and unbuffered DIMMs serve different platforms and are usually not interchangeable. Check the server or motherboard memory rules before ordering.",
+    links: [["Shop tested server RAM", "/shop"], ["Ask about compatibility", "/support"]],
   },
   "/guides/how-to-identify-ram": {
-    title: "Identify RAM by Part Number — Reflexity",
-    description: "Use labels and manufacturer part numbers to identify RAM capacity, DDR generation, speed, form factor, ECC type, and rank.",
-    heading: "Identify RAM from its label and part number",
-    body: "Use the complete manufacturer part number, then confirm capacity, DDR generation, speed, form factor, ECC type, and rank against the target platform.",
-    links: [["Search inventory", "/inventory"], ["Send purchase requirements", "/contact"]],
+    title: "How to Identify RAM: Labels & Part Numbers — Reflexity RAM",
+    description: "Read a RAM label and part number to identify capacity, DDR generation, speed, form factor, ECC type, and rank.",
+    heading: "How to identify RAM from its label and part number",
+    body: "Use the complete manufacturer part number, then verify capacity, DDR generation, speed, form factor, ECC type, and rank against the computer or server manual.",
+    links: [["Search the RAM catalog", "/shop"], ["Ask us to identify a module", "/support"]],
   },
   "/guides/how-much-ram-do-i-need": {
-    title: "RAM Capacity Planning for Business Systems — Reflexity",
-    description: "RAM capacity planning considerations for office systems, workstations, servers, virtual machines, and IT refresh projects.",
-    heading: "Plan memory capacity for your systems",
-    body: "Capacity needs depend on workload, virtualization, platform limits, and deployment plans. Include exact system and part-number requirements in a quote request.",
-    links: [["View inventory", "/inventory"], ["Request a quote", "/contact"]],
+    title: "How Much RAM Do I Need? Capacity Guide — Reflexity RAM",
+    description: "Choose RAM capacity for office work, gaming, content creation, virtual machines, workstations, and servers.",
+    heading: "How much RAM do you need?",
+    body: "Sixteen gigabytes is a practical everyday baseline, 32GB adds headroom, and professional or server workloads may need 64GB or more.",
+    links: [["Browse RAM categories", "/categories"], ["Shop tested RAM", "/shop"]],
   },
   "/wholesale": {
-    title: "Wholesale IT Hardware Supply — Reflexity",
-    description: "Bulk RAM and IT hardware supply for resellers, refurbishers, MSPs, system integrators, and server operators.",
-    heading: "Wholesale supply relationships",
-    body: "Reflexity works with businesses seeking lot-based memory and hardware supply, exact part-number availability, and repeat sourcing relationships.",
-    links: [["View inventory", "/inventory"], ["Request bulk pricing", "/contact"]],
+    title: "Wholesale Tested RAM Lots in Canada — Reflexity RAM",
+    description: "Browse posted wholesale lots of tested server and computer memory, with quantities and inquiry details.",
+    heading: "Wholesale tested RAM lots",
+    links: [["View retail RAM", "/shop"], ["Contact Reflexity RAM", "/support"]],
   },
-  "/sell-to-us": {
-    title: "Sell Bulk RAM & IT Hardware — Reflexity",
-    description: "Sell bulk server RAM, desktop and laptop memory, CPUs, storage, servers, and related IT hardware to Reflexity.",
-    heading: "Sell hardware to Reflexity",
-    body: "Tell us the product type, part numbers, quantities, condition, and location. We review bulk hardware opportunities through a straightforward quote process.",
-    links: [["Send hardware details", "/contact"], ["See what we supply", "/inventory"]],
+  "/liquidators": {
+    title: "IT Asset Liquidation in Toronto — Reflexity Liquidators",
+    description: "Sell decommissioned servers, RAM, drives, and networking gear in bulk with one quote and GTA pickup or prepaid shipping.",
+    heading: "Sell retired servers, RAM, drives, and networking gear",
+    links: [["See what we buy", "/liquidators#what-we-take"], ["View wholesale stock", "/wholesale"]],
   },
-  "/contact": {
-    title: "Request a Bulk Hardware Quote — Reflexity",
-    description: "Contact Reflexity about bulk RAM, server memory, storage, and IT hardware availability, pricing, or acquisition opportunities.",
-    heading: "Request availability or a bulk quote",
-    body: "Send your part numbers, quantities, condition requirements, and location. Quote requests are enquiries and do not create an accepted purchase agreement.",
-    links: [["View inventory", "/inventory"], ["Sell hardware", "/sell-to-us"]],
+  "/support": {
+    title: "RAM Compatibility & Order Support — Reflexity RAM",
+    description: "Get help with RAM compatibility, orders, shipping, returns, and warranty from Reflexity RAM.",
+    heading: "Reflexity RAM support",
+    links: [["Frequently asked questions", "/faq"], ["Shipping information", "/shipping"], ["Shop tested RAM", "/shop"]],
   },
-  "/about": {
-    title: "About Reflexity — Wholesale IT Hardware",
-    description: "Reflexity is a quote-based supplier and buyer of bulk computer memory and related IT hardware.",
-    heading: "About Reflexity",
-    body: "Reflexity focuses on wholesale and bulk computer hardware enquiries rather than direct consumer ecommerce on this website.",
-    links: [["Wholesale supply", "/wholesale"], ["Contact Reflexity", "/contact"]],
+  "/business-info": {
+    title: "Business Information — Reflexity RAM",
+    description: "Business identity, contact, and operating information for Reflexity RAM, an independent online memory retailer in Toronto.",
+    heading: "Reflexity RAM business information",
+    links: [["Contact support", "/support"], ["Shop tested RAM", "/shop"]],
   },
   "/shipping": {
-    title: "Shipping Information for Quote-Based Orders — Reflexity",
-    description: "Shipping and delivery details are confirmed as part of accepted Reflexity wholesale transactions.",
+    title: "Shipping Information — Reflexity RAM",
+    description: "Shipping rates, destinations, handling, tracking, and delivery information for Reflexity RAM orders.",
     heading: "Shipping information",
-    body: "Website inventory and quote submissions are enquiries. Shipping arrangements are confirmed separately when a transaction is accepted.",
-    links: [["International enquiries", "/international"], ["Contact Reflexity", "/contact"]],
+    links: [["International orders", "/international"], ["Contact support", "/support"]],
   },
   "/international": {
-    title: "International Wholesale Hardware Enquiries — Reflexity",
-    description: "Contact Reflexity about international bulk hardware supply or acquisition requirements.",
-    heading: "International enquiries",
-    body: "Share your location and requirements so shipping feasibility and transaction terms can be considered for the specific opportunity.",
-    links: [["Request a quote", "/contact"], ["View inventory", "/inventory"]],
+    title: "International RAM Orders — Reflexity RAM",
+    description: "How to request custom shipping for Reflexity RAM orders outside Canada and the United States.",
+    heading: "International RAM orders",
+    links: [["Contact support", "/support"], ["Shop tested RAM", "/shop"]],
   },
   "/returns": {
-    title: "Returns Information — Reflexity",
-    description: "Returns and related terms for accepted Reflexity transactions are confirmed for the specific agreement.",
-    heading: "Returns information",
-    body: "Quote requests do not create an order. Any applicable return terms are confirmed for the accepted transaction rather than inferred from a website enquiry.",
-    links: [["Warranty information", "/warranty"], ["Contact Reflexity", "/contact"]],
+    title: "Returns Policy — Reflexity RAM",
+    description: "Return eligibility, time limits, condition requirements, and the return process for Reflexity RAM purchases.",
+    heading: "Returns policy",
+    links: [["Warranty coverage", "/warranty"], ["Contact support", "/support"]],
   },
   "/warranty": {
-    title: "Warranty Information — Reflexity",
-    description: "Warranty terms, where applicable, are confirmed for the specific Reflexity wholesale transaction.",
-    heading: "Warranty information",
-    body: "Product condition and any applicable warranty terms are discussed for the specific inventory and accepted transaction.",
-    links: [["Returns information", "/returns"], ["Contact Reflexity", "/contact"]],
+    title: "RAM Warranty Coverage — Reflexity RAM",
+    description: "Warranty coverage and claim steps for tested memory purchased from Reflexity RAM.",
+    heading: "RAM warranty coverage",
+    links: [["Returns policy", "/returns"], ["Contact support", "/support"]],
   },
   "/faq": {
-    title: "Wholesale RAM & Hardware FAQ — Reflexity",
-    description: "Answers about bulk memory, part-number availability, quote requests, hardware acquisition, and wholesale supply.",
-    heading: "Wholesale hardware questions",
-    links: [["Memory guides", "/guides"], ["Request a quote", "/contact"]],
+    title: "Frequently Asked RAM Questions — Reflexity RAM",
+    description: "Answers about RAM compatibility, testing, orders, shipping, returns, warranty, and wholesale purchases.",
+    heading: "Frequently asked questions",
+    links: [["RAM buying guides", "/guides"], ["Contact support", "/support"]],
   },
   "/privacy": {
-    title: "Privacy Policy — Reflexity",
-    description: "How Reflexity handles website and quote-enquiry information.",
+    title: "Privacy Policy — Reflexity RAM",
+    description: "How Reflexity RAM collects, uses, protects, and retains customer and website information.",
     heading: "Privacy policy",
-    links: [["Terms of service", "/terms"], ["Contact Reflexity", "/contact"]],
+    links: [["Terms of service", "/terms"], ["Contact support", "/support"]],
   },
   "/terms": {
-    title: "Terms of Service — Reflexity",
-    description: "Terms governing use of the Reflexity website and quote-based wholesale enquiries.",
+    title: "Terms of Service — Reflexity RAM",
+    description: "Terms governing purchases and use of the Reflexity RAM website and services.",
     heading: "Terms of service",
-    body: "Website inventory and quote submissions are enquiries only. They do not automatically form an accepted purchase agreement.",
-    links: [["Privacy policy", "/privacy"], ["Contact Reflexity", "/contact"]],
+    links: [["Privacy policy", "/privacy"], ["Contact support", "/support"]],
   },
 };
-
-const CLIENT_ROUTE_PATTERNS = [
-  /^\/admin(?:\/(?:products|wholesale|orders|users|security|sign-in))?$/,
-  /^\/(?:auth\/callback|reset-password)$/,
-  /^\/(?:inventory|wholesale)\/[^/]+$/,
-];
 
 function escapeHtml(value) {
   return String(value).replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("'", "&#39;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -172,7 +161,7 @@ export function injectStaticPage(html, page, pathname) {
   output = upsertMeta(output, "name", "twitter:description", page.description);
   output = upsertCanonical(output, canonicalUrl);
   const links = page.links.map(([label, href]) => `<li><a href="${escapeHtml(href)}">${escapeHtml(label)}</a></li>`).join("");
-  const body = `<div id="root"><main data-edge-content="static"><nav><a href="/">Reflexity</a> · <a href="/inventory">Inventory</a> · <a href="/wholesale">Wholesale</a> · <a href="/contact">Contact</a></nav><article><h1>${escapeHtml(page.heading)}</h1><p>${escapeHtml(page.body || page.description)}</p><ul>${links}</ul></article></main></div>`;
+  const body = `<div id="root"><main data-edge-content="static"><nav><a href="/">Reflexity RAM</a> · <a href="/shop">Shop</a> · <a href="/guides">Guides</a></nav><article><h1>${escapeHtml(page.heading)}</h1><p>${escapeHtml(page.body || page.description)}</p><ul>${links}</ul></article></main></div>`;
   return output.replace(/<div\s+id=(['"])root\1\s*><\/div>/i, body);
 }
 
@@ -187,6 +176,13 @@ function responseWithHeaders(response, body, source, status = response.status) {
   return new Response(body, { status, statusText: status === response.status ? response.statusText : "Not Found", headers });
 }
 
+const CLIENT_ROUTE_PATTERNS = [
+  /^\/shop\/[^/]+$/, /^\/wholesale\/[^/]+$/,
+  /^\/(?:cart|checkout|order\/success|account|reset-password|verify-email|auth\/callback)$/, /^\/order\/[^/]+$/,
+  /^\/(?:shipping|returns|warranty|privacy|terms|support|faq|international|business-info)$/,
+  /^\/admin(?:\/(?:products|wholesale|orders|users|security))?$/,
+];
+
 function isKnownClientRoute(pathname) {
   return Boolean(PAGES[pathname]) || CLIENT_ROUTE_PATTERNS.some((pattern) => pattern.test(pathname));
 }
@@ -199,8 +195,7 @@ function injectNotFoundPage(html) {
   let output = upsertTitle(html, "Page not found | Reflexity");
   output = upsertMeta(output, "name", "robots", "noindex, nofollow");
   output = upsertMeta(output, "name", "description", "The requested Reflexity page was not found.");
-  const body = `<div id="root"><main data-edge-content="not-found"><h1>Page not found</h1><p>The requested page is unavailable.</p><a href="/">Return to Reflexity</a></main></div>`;
-  return output.replace(EMPTY_ROOT, body);
+  return output.replace(EMPTY_ROOT, '<div id="root"><main data-edge-content="not-found"><h1>Page not found</h1><p>The requested page is unavailable.</p><a href="/">Return to Reflexity</a></main></div>');
 }
 
 function standaloneNotFoundPage() {

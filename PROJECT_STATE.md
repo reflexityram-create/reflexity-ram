@@ -1,6 +1,18 @@
 # Project State
 
-## 2026-09-11 — Wholesale-only B2B release and soft-404 follow-up
+## 2026-09-11 — Restored Server-only storefront (current)
+
+- VERIFIED (STATIC/ARCHITECTURE): The restored public storefront exposes exact
+  `line === "Server"` products through `/shop`, `/shop/:slug`, and
+  `/categories`; consumer and laptop inventory records remain available to
+  authorized administration but are not publicly exposed. Individual Server
+  modules, small lots, and wholesale lots remain supported.
+- VERIFIED (STATIC/ARCHITECTURE): The restored route structure retains cart, checkout,
+  orders, account, Google OAuth, ITAD/Liquidation, guides, support, and admin
+  surfaces. Wholesale lots and acquisition remain quote/lead based. This block
+  records code architecture only; production deployment status is not asserted.
+
+## 2026-09-11 — SUPERSEDED: Wholesale-only B2B release and soft-404 follow-up
 
 - VERIFIED (PARENT): Wholesale-only architecture is live at `https://reflexityram.com` with backend at `https://reflexity-ram.onrender.com`; PR #30 merged as `444cc6d` and PR #31 as `e2ce709`. Retail feeds/consumer commerce now return 410; inventory and lot CTAs submit quote/acquisition leads through `/api/leads`, not checkout. Parent verified 82/82 frontend tests and 88 backend passes with 2 skips.
 - VERIFIED (PRODUCTION): PR #32 passed all three checks and merged as `4bf1b13`. Canonical-apex unknown/static/guide and invalid-or-missing inventory/lot GET and HEAD routes read back as 404 with the expected edge marker and noindex HTML or blank HEAD; valid product/lot GET and HEAD remained 200. Transient-upstream 200 SPA fallback remains covered by tests.

@@ -1,5 +1,5 @@
-import { renderProductPage } from "../../functions-shared/productMetadata.js";
+import { permanentRedirect } from "../../functions-shared/legacyRedirects.js";
 
 export function onRequest(context) {
-  return renderProductPage(context);
+  return permanentRedirect(context.request, `/shop/${encodeURIComponent(context.params?.slug || "")}`);
 }

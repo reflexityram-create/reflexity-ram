@@ -1,11 +1,10 @@
 import { applyStorefrontSecurityHeaders } from "./securityHeaders.js";
 
 const LEGACY_PATHS = new Map([
-  ["/shop", "/inventory"],
-  ["/categories", "/inventory"],
-  ["/liquidators", "/sell-to-us"],
-  ["/support", "/contact"],
-  ["/business-info", "/about"],
+  ["/inventory", "/shop"],
+  ["/sell-to-us", "/liquidators"],
+  ["/contact", "/support"],
+  ["/about", "/business-info"],
 ]);
 
 export function permanentRedirect(request, destination) {

@@ -1,19 +1,25 @@
 export const RAM_CATEGORIES = Object.freeze({
   desktop: Object.freeze({
     line: "Desktop",
-    href: "/inventory?line=Desktop",
+    href: "/shop?line=Desktop",
   }),
   laptop: Object.freeze({
     line: "Laptop",
-    href: "/inventory?line=Laptop",
+    href: "/shop?line=Laptop",
   }),
   server: Object.freeze({
     line: "Server",
-    href: "/inventory?line=Server",
+    href: "/shop?line=Server",
   }),
 });
 
 export const PRODUCT_PAGE_SIZE = 100;
+
+// The public storefront is intentionally Server-only. This uses the inventory
+// line as the authority so Server UDIMM/SO-DIMM stock remains available.
+export function isPublicServerRam(product) {
+  return product?.line === "Server";
+}
 
 export function getCatalogCategoryLabel(generation, formFactors, lines, eccOnly) {
   const serverForms = ["RDIMM", "LRDIMM"];

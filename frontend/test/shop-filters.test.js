@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   productMatchesShopFilters,
+  readPublicShopFilters,
   readShopFilters,
   setShopFilterParam,
   toggleShopFilterParam,
@@ -51,6 +52,18 @@ test("combined ECC, capacity, form factor, and line filters narrow the catalog",
     products.filter((product) => productMatchesShopFilters(product, filters)).map(({ sku }) => sku),
     ["ECC-64"],
   );
+});
+
+test("public shop state always normalizes forged catalog-line URLs to Server", () => {
+  for (const query of ["", "line=Server", "line=Desktop", "line=Laptop", "line=Desktop&line=Server&line=Laptop"]) {
+    const filters = readPublicShopFilters(new URLSearchParams(`${query}&gen=DDR4&form=UDIMM&cap=16&cond=Used&q=sku`));
+    assert.deepEqual(filters.lines, ["Server"]);
+    assert.deepEqual(filters.generations, ["DDR4"]);
+    assert.deepEqual(filters.formFactors, ["UDIMM"]);
+    assert.deepEqual(filters.capacities, [16]);
+    assert.deepEqual(filters.conditions, ["Used"]);
+    assert.equal(filters.query, "sku");
+  }
 });
 
 test("ECC-only excludes truthy non-boolean values and non-ECC products", () => {

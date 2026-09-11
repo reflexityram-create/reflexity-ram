@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   fetchAllCatalogProducts,
   getCatalogCategoryLabel,
+  isPublicServerRam,
   matchesCatalogLines,
   RAM_CATEGORIES,
 } from "../src/lib/catalog.js";
@@ -46,6 +48,46 @@ test("line filters retain Server products regardless of form factor", () => {
   assert.equal(matchesCatalogLines({ line: "Server", formFactor: "SO-DIMM" }, ["Server"]), true);
   assert.equal(matchesCatalogLines({ line: "Desktop", formFactor: "UDIMM" }, ["Server"]), false);
   assert.equal(matchesCatalogLines({ line: "Server" }, ["Desktop", "Server"]), true);
+});
+
+test("the public catalog authority is the exact Server line, not a form-factor heuristic", () => {
+  assert.equal(isPublicServerRam({ line: "Server", formFactor: "UDIMM" }), true);
+  assert.equal(isPublicServerRam({ line: "Server", formFactor: "SO-DIMM" }), true);
+  assert.equal(isPublicServerRam({ line: "Desktop", formFactor: "RDIMM" }), false);
+  assert.equal(isPublicServerRam({ line: "Laptop", formFactor: "LRDIMM" }), false);
+});
+
+test("the restored storefront applies the Server-only authority at every public catalog surface", async () => {
+  const source = await Promise.all(["Home", "Categories", "Shop", "Product"].map(
+    (page) => readFile(new URL(`../src/pages/${page}.jsx`, import.meta.url), "utf8"),
+  ));
+  const [home, categories, shop, product] = source;
+
+  assert.match(home, /isPublicServerRam/);
+  assert.match(categories, /const CATEGORIES = \[\s*\{[\s\S]*id: "server"/);
+  assert.doesNotMatch(categories, /id: "desktop"|id: "laptop"/);
+  assert.match(shop, /products\.filter\(isPublicServerRam\)/);
+  const shopActiveFilters = shop.match(/const activeCount =[\s\S]*?const FilterBody/)[0];
+  assert.doesNotMatch(shopActiveFilters, /\+ line\.length|\.\.\.line/);
+  assert.match(product, /if \(!isPublicServerRam\(product\)\)/);
+  assert.match(product, /\.filter\(isPublicServerRam\)/);
+  assert.match(product, /setItems\(results\.filter\(Boolean\)\.filter\(isPublicServerRam\)\)/);
+});
+
+test("the restored navigation and account flow retain the original ITAD, commerce, and Google sign-in paths", async () => {
+  const [header, authModal, app] = await Promise.all([
+    readFile(new URL("../src/components/Header.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/AuthModal.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/App.jsx", import.meta.url), "utf8"),
+  ]);
+
+  for (const label of ["Shop RAM", "Wholesale", "Liquidation", "Support", "Guides"]) {
+    assert.match(header, new RegExp(label));
+  }
+  assert.match(authModal, /Continue with Google/);
+  for (const route of ["/liquidators", "/cart", "/checkout", "/account", "/shop", "/wholesale", "/wholesale/:lotId"]) {
+    assert.match(app, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
 });
 
 test("fetchAllCatalogProducts requests every backend page and orders ties consistently", async () => {
