@@ -3,7 +3,11 @@ const { CURRENCY } = require('../config/shipping');
 const { escapeHtml } = require('./htmlEscape');
 const { orderAccessUrl } = require('./orderAccessLink');
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+let resend;
+const getResend = () => {
+  if (!resend) resend = new Resend(process.env.RESEND_API_KEY);
+  return resend;
+};
 const DISPLAY_CURRENCY = CURRENCY.toUpperCase();
 
 // IMPORTANT: onboarding@resend.dev is Resend's sandbox sender.
@@ -19,7 +23,7 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 const sendVerificationEmail = async ({ email, firstName, token }) => {
   const verifyUrl = `${FRONTEND_URL}/verify-email?token=${token}`;
 
-  const { data, error } = await resend.emails.send({
+  const { data, error } = await getResend().emails.send({
     from: FROM_EMAIL,
     to: email,
     subject: 'Verify your Reflexity RAM account',
@@ -55,7 +59,7 @@ const sendVerificationEmail = async ({ email, firstName, token }) => {
 const sendPasswordResetEmail = async ({ email, firstName, token }) => {
   const resetUrl = `${FRONTEND_URL}/reset-password?token=${token}`;
 
-  const { data, error } = await resend.emails.send({
+  const { data, error } = await getResend().emails.send({
     from: FROM_EMAIL,
     to: email,
     subject: 'Reset your Reflexity RAM password',
@@ -101,7 +105,7 @@ const sendOrderConfirmationEmail = async ({ email, firstName, order }) => {
     </tr>
   `).join('');
 
-  const { data, error } = await resend.emails.send({
+  const { data, error } = await getResend().emails.send({
     from: FROM_EMAIL,
     to: email,
     subject: `Order confirmed — ${order.orderNumber}`,
@@ -166,7 +170,7 @@ const sendOrderConfirmationEmail = async ({ email, firstName, order }) => {
 const sendShippingNotificationEmail = async ({ email, firstName, order }) => {
   const orderUrl = orderAccessUrl(FRONTEND_URL, order, email);
 
-  const { data, error } = await resend.emails.send({
+  const { data, error } = await getResend().emails.send({
     from: FROM_EMAIL,
     to: email,
     subject: `Your order has shipped — ${order.orderNumber}`,

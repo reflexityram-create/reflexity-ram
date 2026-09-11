@@ -4,6 +4,7 @@ const { publicWholesaleLot } = require('../utils/wholesaleLots');
 
 const PUBLIC_LOT_LIMIT = 100;
 const PUBLIC_CANDIDATE_LIMIT = 1000;
+const OBJECT_ID = /^[a-f\d]{24}$/i;
 
 function createWholesaleRouter(Model = WholesaleLot) {
   const router = express.Router();
@@ -49,6 +50,28 @@ function createWholesaleRouter(Model = WholesaleLot) {
     }
   });
 
+  router.get('/:lotId', async (req, res) => {
+    if (!OBJECT_ID.test(req.params.lotId)) {
+      return res.status(404).json({ error: 'Wholesale lot not found.' });
+    }
+    try {
+      const candidate = await Model.findOne({
+        _id: req.params.lotId,
+        status: 'published',
+        visibility: 'public',
+        archivedAt: null,
+        quoteOnly: true,
+      }).lean();
+      const lot = publicWholesaleLot(candidate);
+      if (!lot) return res.status(404).json({ error: 'Wholesale lot not found.' });
+      res.set('Cache-Control', 'no-store');
+      return res.json({ lot });
+    } catch (err) {
+      console.error('Public wholesale detail error', err);
+      return res.status(503).json({ error: 'Wholesale inventory is temporarily unavailable.' });
+    }
+  });
+
   return router;
 }
 
@@ -56,3 +79,4 @@ const router = createWholesaleRouter();
 module.exports = router;
 module.exports.createWholesaleRouter = createWholesaleRouter;
 module.exports.PUBLIC_CANDIDATE_LIMIT = PUBLIC_CANDIDATE_LIMIT;
+module.exports.OBJECT_ID = OBJECT_ID;

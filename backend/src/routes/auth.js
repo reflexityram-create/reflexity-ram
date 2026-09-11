@@ -31,6 +31,70 @@ const bcryptPasswordBytes = (value) => {
   return true;
 };
 
+const OAUTH_PURPOSES = new Set(['general', 'admin']);
+
+function oauthStateCookie(state, purpose, secret = process.env.JWT_SECRET) {
+  const payload = Buffer.from(JSON.stringify({ state, purpose }), 'utf8').toString('base64url');
+  const signature = crypto.createHmac('sha256', secret || '').update(payload).digest('base64url');
+  return `${payload}.${signature}`;
+}
+
+function readOauthStateCookie(value, secret = process.env.JWT_SECRET) {
+  if (typeof value !== 'string') return null;
+  const [payload, signature, extra] = value.split('.');
+  if (!payload || !signature || extra) return null;
+  const expected = crypto.createHmac('sha256', secret || '').update(payload).digest('base64url');
+  const actualBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  if (actualBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(actualBuffer, expectedBuffer)) return null;
+  try {
+    const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    if (typeof decoded?.state !== 'string' || !OAUTH_PURPOSES.has(decoded.purpose)) return null;
+    return decoded;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveGoogleUser(profile, purpose, { UserModel = User, now = () => new Date() } = {}) {
+  const email = typeof profile?.email === 'string' ? profile.email.toLowerCase() : '';
+  if (!email || typeof profile?.id !== 'string' || !profile.id) return null;
+  const identityFilter = { $or: [{ googleId: profile.id }, { email }] };
+
+  if (purpose === 'admin') {
+    const user = await UserModel.findOne({ ...identityFilter, role: 'admin', isActive: true });
+    if (!user || (user.googleId && user.googleId !== profile.id)) return null;
+    if (!user.googleId) user.googleId = profile.id;
+    if (!user.avatar && profile.picture) user.avatar = profile.picture;
+    if (!user.isEmailVerified) user.isEmailVerified = true;
+    user.lastLoginAt = now();
+    await user.save({ validateBeforeSave: false });
+    return user;
+  }
+
+  let user = await UserModel.findOne(identityFilter);
+  if (user) {
+    if (!user.googleId) user.googleId = profile.id;
+    if (!user.avatar && profile.picture) user.avatar = profile.picture;
+    if (!user.isEmailVerified) user.isEmailVerified = true;
+    user.lastLoginAt = now();
+    await user.save({ validateBeforeSave: false });
+  } else {
+    const nameParts = (profile.name || '').split(' ').filter(Boolean);
+    user = await UserModel.create({
+      email,
+      googleId: profile.id,
+      firstName: profile.given_name || nameParts[0] || 'User',
+      lastName: profile.family_name || nameParts.slice(1).join(' ') || '—',
+      avatar: profile.picture || null,
+      isEmailVerified: true,
+      isActive: true,
+      lastLoginAt: now(),
+    });
+  }
+  return user?.isActive ? user : null;
+}
+
 // ─── POST /api/auth/signup ─────────────────────────────────────────────────────
 router.post(
   '/signup',
@@ -433,8 +497,9 @@ router.get('/google', (req, res) => {
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CALLBACK_URL) {
     return res.status(503).json({ error: 'Google OAuth not configured' });
   }
+  const purpose = req.query.intent === 'admin' ? 'admin' : 'general';
   const state = generateState();
-  res.cookie('oauth_state', state, {
+  res.cookie('oauth_state', oauthStateCookie(state, purpose), {
     httpOnly: true,
     secure: true,
     sameSite: 'none',
@@ -449,9 +514,9 @@ router.get('/google/callback', async (req, res) => {
   const fail = (reason) => res.redirect(`${FRONTEND_URL}/auth/callback?auth_error=${reason}`);
 
   const { code, error, state } = req.query;
-  const storedState = req.cookies?.oauth_state;
+  const storedState = readOauthStateCookie(req.cookies?.oauth_state);
 
-  if (!state || !storedState || state !== storedState) {
+  if (!state || !storedState || state !== storedState.state) {
     return fail('state_mismatch');
   }
 
@@ -471,39 +536,8 @@ router.get('/google/callback', async (req, res) => {
     const profile = await getGoogleUserInfo(tokens.access_token);
     if (!profile.email) return fail('no_email');
 
-    const email = profile.email.toLowerCase();
-    let user = await User.findOne({ $or: [{ googleId: profile.id }, { email }] });
-
-    if (user) {
-      if (!user.googleId) user.googleId = profile.id;
-      if (!user.avatar && profile.picture) user.avatar = profile.picture;
-      if (!user.isEmailVerified) user.isEmailVerified = true;
-      user.lastLoginAt = new Date();
-      await user.save({ validateBeforeSave: false });
-    } else {
-      const nameParts = (profile.name || '').split(' ').filter(Boolean);
-      // lastName is required on the User model. Google accounts with a
-      // single-word name (no family_name) would otherwise produce an empty
-      // lastName and fail validation → server_error. Fall back so creation
-      // always succeeds; the user can edit it later in their profile.
-      const firstName = profile.given_name || nameParts[0] || 'User';
-      const lastName =
-        profile.family_name ||
-        nameParts.slice(1).join(' ') ||
-        '—';
-      user = await User.create({
-        email,
-        googleId: profile.id,
-        firstName,
-        lastName,
-        avatar: profile.picture || null,
-        isEmailVerified: true,
-        isActive: true,
-        lastLoginAt: new Date(),
-      });
-    }
-
-    if (!user.isActive) return fail('account_deactivated');
+    const user = await resolveGoogleUser(profile, storedState.purpose);
+    if (!user) return fail(storedState.purpose === 'admin' ? 'admin_not_authorized' : 'account_deactivated');
 
     const sessionId = validGuestSessionId(req.cookies?.cartSessionId);
     await mergeGuestCartForUser(user._id, sessionId);
@@ -516,9 +550,12 @@ router.get('/google/callback', async (req, res) => {
     // URL creates needless browser-history and extension exposure.
     res.redirect(`${FRONTEND_URL}/auth/callback#token=${token}`);
   } catch (err) {
-    console.error('Google OAuth callback error:', err.message, err);
+    console.error('Google OAuth callback failed');
     fail('server_error');
   }
 });
 
 module.exports = router;
+module.exports.oauthStateCookie = oauthStateCookie;
+module.exports.readOauthStateCookie = readOauthStateCookie;
+module.exports.resolveGoogleUser = resolveGoogleUser;

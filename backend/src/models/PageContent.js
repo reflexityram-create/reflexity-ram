@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
-// Editable content for informational pages (shipping, returns, warranty, faq).
+// Editable informational pages. Legacy retail slugs remain for historical
+// documents; B2B variants serve wholesale-facing copy.
 // One document per page slug. Content is stored as sanitized HTML produced by
 // the inline admin editor. If a page has no document yet, the frontend falls
 // back to its built-in default content.
@@ -12,7 +13,10 @@ const pageContentSchema = new mongoose.Schema(
       unique: true,
       lowercase: true,
       trim: true,
-      enum: ['shipping', 'returns', 'warranty', 'faq', 'international'],
+      enum: [
+        'shipping', 'returns', 'warranty', 'faq', 'international',
+        'shipping-b2b', 'returns-b2b', 'warranty-b2b', 'faq-b2b', 'international-b2b',
+      ],
     },
     title: { type: String, required: true, trim: true },
     // Sanitized HTML body
