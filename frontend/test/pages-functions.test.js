@@ -89,6 +89,28 @@ test("catalog XML proxy supports HEAD without returning a body", async () => {
   assert.equal(await response.text(), "");
 });
 
+test("catalog CSV proxy forwards GET and HEAD with the CSV contract", async () => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url: url.toString(), init });
+    return new Response(init.method === "HEAD" ? null : "id,title\nserver-1,Server RAM\n", { status: 200, headers: { ETag: '"csv-v1"' } });
+  };
+  const get = await proxyCatalogXml(context(), "/feed.csv", { fetchImpl });
+  assert.equal(get.status, 200);
+  assert.equal(get.headers.get("content-type"), "text/csv; charset=utf-8");
+  assert.equal(get.headers.get("x-reflexity-source"), "live-catalog-api");
+  assert.equal(await get.text(), "id,title\nserver-1,Server RAM\n");
+  const head = await proxyCatalogXml(context("HEAD"), "/feed.csv", { fetchImpl });
+  assert.equal(head.status, 200);
+  assert.equal(await head.text(), "");
+  assert.deepEqual(calls.map(({ url, init }) => [url, init.method, init.headers.Accept]), [
+    ["https://reflexity-ram.onrender.com/feed.csv", "GET", "text/csv"],
+    ["https://reflexity-ram.onrender.com/feed.csv", "HEAD", "text/csv"],
+  ]);
+  assert.equal((await proxyCatalogXml(context("POST"), "/feed.csv")).status, 405);
+  assert.equal((await proxyCatalogXml(context(), "/feed.csv", { fetchImpl: async () => new Response("failure", { status: 503 }), logger: { error() {} } })).status, 502);
+});
+
 test("catalog XML proxy rejects writes and fails closed on upstream errors", async () => {
   const writeResponse = await proxyCatalogXml(context("POST"), "/feed.xml");
   assert.equal(writeResponse.status, 405);

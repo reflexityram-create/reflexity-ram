@@ -1,5 +1,5 @@
 const BACKEND_ORIGIN = "https://reflexity-ram.onrender.com";
-const ALLOWED_PATHS = new Set(["/feed.xml", "/sitemap.xml"]);
+const ALLOWED_PATHS = new Set(["/feed.xml", "/feed.csv", "/sitemap.xml"]);
 
 function baseHeaders(contentType = "text/plain; charset=utf-8") {
   return {
@@ -18,6 +18,7 @@ export async function proxyCatalogXml(
   { fetchImpl = fetch, logger = console } = {},
 ) {
   const method = context.request.method.toUpperCase();
+  const csv = path === "/feed.csv";
 
   if (!ALLOWED_PATHS.has(path)) {
     return new Response("Not found", {
@@ -41,7 +42,7 @@ export async function proxyCatalogXml(
     const upstreamUrl = new URL(path, BACKEND_ORIGIN);
     const upstream = await fetchImpl(upstreamUrl, {
       method,
-      headers: { Accept: "application/xml" },
+      headers: { Accept: csv ? "text/csv" : "application/xml" },
       cf: { cacheEverything: true, cacheTtl: 300 },
     });
 
@@ -61,7 +62,7 @@ export async function proxyCatalogXml(
     }
 
     const headers = new Headers({
-      ...baseHeaders("application/xml; charset=utf-8"),
+      ...baseHeaders(csv ? "text/csv; charset=utf-8" : "application/xml; charset=utf-8"),
       "Cache-Control": "public, max-age=300, s-maxage=300",
       "X-Reflexity-Source": "live-catalog-api",
     });
