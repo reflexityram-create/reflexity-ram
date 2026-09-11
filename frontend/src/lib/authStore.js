@@ -41,22 +41,6 @@ const useAuthStore = create(
         }
       },
 
-      signup: async (data) => {
-        set({ isLoading: true });
-        try {
-          const res = await authApi.signup(data);
-          const { user, token } = res.data;
-          localStorage.setItem('rfx_token', token);
-          set({ user, token, isLoading: false });
-          return { success: true, message: res.data.message };
-        } catch (err) {
-          set({ isLoading: false });
-          const message = err.response?.data?.error || 'Signup failed';
-          const details = err.response?.data?.details;
-          return { success: false, message, details };
-        }
-      },
-
       login: async (data) => {
         set({ isLoading: true });
         try {
@@ -72,10 +56,6 @@ const useAuthStore = create(
         }
       },
 
-      setGoogleAuth: (token, user) => {
-        localStorage.setItem('rfx_token', token);
-        set({ user, token, isLoading: false });
-      },
       setAuthToken: (token) => {
         localStorage.setItem('rfx_token', token);
         set({ user: null, token, isLoading: false, isInitialized: true });
@@ -95,16 +75,6 @@ const useAuthStore = create(
           await authApi.logout();
         } catch {}
         get().clearAuth();
-      },
-
-      updateProfile: async (data) => {
-        try {
-          const res = await authApi.updateProfile(data);
-          set({ user: res.data.user });
-          return { success: true };
-        } catch (err) {
-          return { success: false, message: err.response?.data?.error || 'Update failed' };
-        }
       },
 
       changePassword: async (data) => {

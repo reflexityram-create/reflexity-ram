@@ -1,136 +1,16 @@
 import { Link } from "react-router-dom";
-import { Server, Laptop, Monitor, ArrowRight } from "lucide-react";
+import { ArrowUpRight, Boxes, Search, Upload } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import ProductCard from "@/components/ProductCard";
-import { RAM_CATEGORIES } from "@/lib/catalog";
 import { useSEO } from "@/lib/seo";
-import { useStock } from "@/lib/useStock";
 
-/**
- * Storefront home — "What are you building?".
- * Server memory gets the wide, primary tile since it is the main stock;
- * laptop and desktop sit beside it. Featured stock sits underneath.
- */
-const LANES = [
-  {
-    icon: Server,
-    title: "Server memory",
-    sub: "RDIMM · LRDIMM · ECC",
-    body: "Registered DDR4 server pulls, tested and ECC-verified.",
-    to: RAM_CATEGORIES.server.href,
-    primary: true,
-  },
-  {
-    icon: Laptop,
-    title: "Laptop",
-    sub: "SO-DIMM",
-    body: "DDR4 and DDR5 laptop sticks.",
-    to: RAM_CATEGORIES.laptop.href,
-  },
-  {
-    icon: Monitor,
-    title: "Desktop",
-    sub: "UDIMM",
-    body: "Standard desktop memory.",
-    to: RAM_CATEGORIES.desktop.href,
-  },
+const rails = [
+  ["01", "Inventory", "Posted RAM and hardware lots with part-number detail."],
+  ["02", "Requirements", "Tell us the exact specification and total quantity you need."],
+  ["03", "Supply", "Offer available hardware and send your acquisition list."],
 ];
 
 export default function Home() {
-  useSEO({
-    title: "Server & Laptop RAM in Canada — Tested DDR4 & DDR5",
-    description:
-      "Pick your build: server RDIMM/LRDIMM, laptop SO-DIMM, or desktop UDIMM. Tested memory shipped from Toronto.",
-  });
-  const { loading, products } = useStock(6);
-
-  return (
-    <>
-      <Header />
-      <main className="page" data-testid="home-page">
-        <section className="border-b" style={{ borderColor: "var(--border)" }}>
-          <div className="container-tight pt-14 pb-12">
-            <div className="section-label mb-5">
-              <span className="num">01</span> WHAT ARE YOU BUILDING?
-            </div>
-            <h1 className="display-2 max-w-[17ch] mb-9">
-              Memory that's been <span className="hl">tested first.</span>
-            </h1>
-
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
-              {LANES.map(({ icon: Icon, title, sub, body, to, primary }) => (
-                <Link
-                  key={title}
-                  to={to}
-                  className="glass card-hover rounded-xl p-6 flex flex-col"
-                  style={{
-                    textDecoration: "none",
-                    gridColumn: primary ? "span 2" : undefined,
-                    borderTop: primary ? "3px solid var(--brand-yellow)" : undefined,
-                  }}
-                >
-                  <Icon
-                    size={primary ? 30 : 24}
-                    style={{ color: primary ? "var(--brand-yellow-deep)" : "var(--fg-muted)" }}
-                  />
-                  <div className="mt-4 font-semibold" style={{ fontSize: primary ? 21 : 17 }}>
-                    {title}
-                  </div>
-                  <div className="mono text-[11px] mt-1" style={{ color: "var(--fg-faint)" }}>
-                    {sub}
-                  </div>
-                  <p className="text-[14px] mt-3 flex-1" style={{ color: "var(--fg-muted)" }}>
-                    {body}
-                  </p>
-                  <span
-                    className="mt-4 inline-flex items-center gap-1.5 text-[14px] font-medium"
-                    style={{ color: "var(--fg)" }}
-                  >
-                    Browse <ArrowRight size={14} />
-                  </span>
-                </Link>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section>
-          <div className="container-tight pt-16 pb-14">
-            <div className="section-label mb-6">
-              <span className="num">02</span> FEATURED STOCK
-            </div>
-            {loading ? (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {[0, 1, 2].map((i) => (
-                  <div key={i} className="skeleton" style={{ height: 320 }} />
-                ))}
-              </div>
-            ) : products.length === 0 ? (
-              <p style={{ color: "var(--fg-muted)" }}>
-                Nothing listed right now — <Link to="/support" className="underline">email us</Link> for current stock.
-              </p>
-            ) : (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {products.map((p, i) => (
-                  <ProductCard key={p._id} p={p} index={i} priority={i < 3} />
-                ))}
-              </div>
-            )}
-
-            <div className="callout-brand mt-14 rounded-xl px-6 py-5 flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <div className="callout-title font-semibold">Buying in volume?</div>
-                <div className="callout-body text-[14px]">
-                  We do wholesale on server pulls — tell us the SKU and quantity.
-                </div>
-              </div>
-              <Link to="/wholesale" className="btn-primary">Get bulk pricing</Link>
-            </div>
-          </div>
-        </section>
-      </main>
-      <Footer />
-    </>
-  );
+  useSEO({ title: "Wholesale Memory & IT Hardware", description: "Reflexity supplies and buys bulk RAM, server memory, and computer hardware for resellers, refurbishers, businesses, and IT operators." });
+  return <><Header /><main className="page home-page"><section className="container-tight hero-ledger"><div className="hero-copy"><p className="mono">REFLEXITY / TORONTO, ONTARIO</p><h1>Wholesale memory <span>&amp; IT hardware.</span></h1><p>Bulk RAM, server memory, and computer hardware for resellers, refurbishers, businesses, and IT operators.</p><div className="hero-actions"><Link className="btn-secondary" to="/inventory"><Boxes size={16} />View inventory</Link><Link className="btn-primary" to="/contact?intent=buy&productType=RAM"><Search size={16} />Request a quote</Link><Link className="text-link" to="/sell-to-us"><Upload size={15} />Sell us hardware</Link></div></div><div className="ledger-panel" aria-label="Wholesale inventory workflow"><div className="ledger-head"><span>LOT LEDGER</span><span>LIVE INQUIRY</span></div><div className="ledger-row"><b>SERVER</b><span>ECC RDIMM / LRDIMM</span><i>QUOTE</i></div><div className="ledger-row"><b>DESKTOP</b><span>DDR3 / DDR4 / DDR5</span><i>QUOTE</i></div><div className="ledger-row"><b>LAPTOP</b><span>SODIMM / bulk lots</span><i>QUOTE</i></div><div className="ledger-row"><b>HARDWARE</b><span>CPUs / storage / components</span><i>INQUIRE</i></div><div className="ledger-foot">Part number + quantity → availability conversation</div></div></section><section className="container-tight home-rails"><div className="section-heading"><p className="mono">HOW REFLEXITY WORKS</p><h2>A quote-led hardware partner—not a consumer checkout.</h2></div><div className="rail-grid">{rails.map(([number, title, text]) => <article key={number}><span className="mono">{number}</span><h3>{title}</h3><p>{text}</p><ArrowUpRight size={17} /></article>)}</div></section><section className="container-tight home-split"><div><p className="mono">FOR BUYERS</p><h2>Build repeat supply around the parts you actually need.</h2><p>Share the memory generation, form factor, capacity, part number, and quantity. We will use the inquiry to discuss posted or available inventory.</p><Link to="/wholesale">Wholesale buyer information</Link></div><div><p className="mono">FOR SELLERS</p><h2>Have a meaningful hardware lot?</h2><p>Send the key details: product type, manufacturer, part number, quantity, condition, and location. A concise list is enough to start.</p><Link to="/sell-to-us">Sell to Reflexity</Link></div></section></main><Footer /></>;
 }

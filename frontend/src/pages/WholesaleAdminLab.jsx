@@ -222,7 +222,7 @@ export default function WholesaleAdminLab() {
                 <div><p>LOCAL INVENTORY</p><h2>Special lots</h2></div>
                 <button onClick={restoreExamples} type="button"><RotateCcw aria-hidden="true" size={14} /> Restore demo examples</button>
               </div>
-              <div className="wla-safety-note">Demo-only records. No retail products, prices, customer orders, or production data are connected.</div>
+              <div className="wla-safety-note">Demo-only records. No live inventory, customer orders, or production data are connected.</div>
               {storageError && <div className="wla-error" role="alert">{storageError}</div>}
               <div className="wla-lot-list">
                 {lots.length ? lots.map((lot) => (

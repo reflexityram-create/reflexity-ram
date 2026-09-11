@@ -2,6 +2,5 @@ User-agent: *
 Allow: /
 Disallow: /admin
 Disallow: /account
-Disallow: /checkout
 
 Sitemap: https://reflexityram.com/sitemap.xml

@@ -15,14 +15,14 @@ export default function NotFound() {
             <div className="mono text-[11px] text-neutral-500 tracking-widest mb-3">ERROR 404</div>
             <h1 className="display-1 display-grad mb-5">Not in stock.</h1>
             <p className="text-[15px] text-neutral-400 leading-relaxed mb-8">
-              That page isn't in our catalog. Could be a moved SKU, a dead link, or a typo. Head back home or browse the shop.
+              That page is not in the current catalog. It may be a moved SKU, a retired link, or a typo. Return home or view inventory.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-3">
               <Link to="/" className="btn-primary" data-testid="notfound-home-btn">
                 <Home size={15} /> Back to home
               </Link>
-              <Link to="/shop" className="btn-secondary" data-testid="notfound-shop-btn">
-                <Search size={15} /> Browse shop
+              <Link to="/inventory" className="btn-secondary" data-testid="notfound-inventory-btn">
+                <Search size={15} /> View inventory
               </Link>
               <button onClick={() => window.history.back()} className="btn-ghost" data-testid="notfound-back-btn">
                 <ArrowLeft size={14} /> Go back
