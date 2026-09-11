@@ -74,6 +74,14 @@ test("NotFound sets noindex and normal SEO cleanup restores robots metadata", as
   assert.match(seo, /return \(\) => \{/);
 });
 
+test("unknown guide slugs render a noindex guide-not-found state", async () => {
+  const guides = await read("../src/pages/Guides.jsx");
+  assert.match(guides, /const unknownGuide = Boolean\(slug && !guide\)/);
+  assert.match(guides, /useSEO\(\{ title, description, noindex: unknownGuide \}\)/);
+  assert.match(guides, /data-testid="guide-not-found-page"/);
+  assert.match(guides, /Guide not found\./);
+});
+
 test("deactivated and replaced sessions are cleared or revalidated across tabs", async () => {
   const [api, app] = await Promise.all([read("../src/lib/api.js"), read("../src/App.jsx")]);
   assert.match(api, /authError\.includes\('deactivated'\)/);

@@ -1,5 +1,5 @@
 {
   "version": 1,
-  "include": ["/", "/inventory", "/inventory/*", "/guides", "/guides/*", "/wholesale", "/wholesale/*", "/sell-to-us", "/contact", "/about", "/shipping", "/international", "/returns", "/warranty", "/faq", "/privacy", "/terms", "/feed.xml", "/feed.csv", "/sitemap.xml", "/shop", "/shop/*", "/categories", "/liquidators", "/support", "/business-info"],
-  "exclude": []
+  "include": ["/*"],
+  "exclude": ["/assets/*", "/.well-known/*", "/LICENSE.txt", "/analytics-bootstrap.js", "/error-bootstrap.js", "/favicon.svg", "/font-bootstrap.js", "/og-image.svg", "/robots.txt", "/security.txt", "/theme-bootstrap.js"]
 }

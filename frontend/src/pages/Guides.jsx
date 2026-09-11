@@ -77,10 +77,17 @@ function GuideSchema({ guide }) {
 export default function Guides() {
   const { slug } = useParams();
   const guide = GUIDES.find((item) => item.slug === slug);
-  const title = guide ? guide.title : "RAM Buying Guides";
-  const description = guide?.description || "Practical guides to DDR4, DDR5, ECC, RDIMM, LRDIMM, laptop, desktop, and server RAM.";
+  const unknownGuide = Boolean(slug && !guide);
+  const title = guide ? guide.title : unknownGuide ? "Guide not found" : "RAM Buying Guides";
+  const description = guide?.description || (unknownGuide ? "The requested Reflexity guide was not found." : "Practical guides to DDR4, DDR5, ECC, RDIMM, LRDIMM, laptop, desktop, and server RAM.");
 
-  useSEO({ title, description });
+  useSEO({ title, description, noindex: unknownGuide });
+
+  if (unknownGuide) {
+    return (
+      <><Header /><main className="page pb-16 flex items-center" data-testid="guide-not-found-page"><div className="container-tight pt-10 w-full"><div className="glass rounded-2xl p-10 md:p-16 text-center max-w-2xl mx-auto"><div className="mono text-[11px] text-neutral-500 tracking-widest mb-3">ERROR 404</div><h1 className="display-1 display-grad mb-5">Guide not found.</h1><p className="text-[15px] text-neutral-400 leading-relaxed mb-8">This guide is unavailable. Browse the current memory guides or view inventory.</p><div className="flex flex-wrap items-center justify-center gap-3"><Link to="/guides" className="btn-primary">All guides</Link><Link to="/inventory" className="btn-secondary">View inventory</Link></div></div></div></main><Footer /></>
+    );
+  }
 
   if (guide) {
     return (

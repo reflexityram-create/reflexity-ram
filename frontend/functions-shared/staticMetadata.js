@@ -2,6 +2,7 @@ import { applyStorefrontSecurityHeaders } from "./securityHeaders.js";
 
 const ORIGIN = "https://reflexityram.com";
 const MAX_HTML_BYTES = 128 * 1024;
+const EMPTY_ROOT = /<div\s+id=(['"])root\1\s*><\/div>/i;
 
 const PAGES = {
   "/": {
@@ -129,6 +130,12 @@ const PAGES = {
   },
 };
 
+const CLIENT_ROUTE_PATTERNS = [
+  /^\/admin(?:\/(?:products|wholesale|orders|users|security|sign-in))?$/,
+  /^\/(?:auth\/callback|reset-password)$/,
+  /^\/(?:inventory|wholesale)\/[^/]+$/,
+];
+
 function escapeHtml(value) {
   return String(value).replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("'", "&#39;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
@@ -169,7 +176,7 @@ export function injectStaticPage(html, page, pathname) {
   return output.replace(/<div\s+id=(['"])root\1\s*><\/div>/i, body);
 }
 
-function responseWithHeaders(response, body, source) {
+function responseWithHeaders(response, body, source, status = response.status) {
   const headers = applyStorefrontSecurityHeaders(new Headers(response.headers));
   headers.delete("Content-Length");
   headers.delete("Content-Encoding");
@@ -177,20 +184,46 @@ function responseWithHeaders(response, body, source) {
   headers.delete("Last-Modified");
   headers.set("Cache-Control", "public, max-age=0, must-revalidate");
   headers.set("X-Reflexity-SEO", source);
-  return new Response(body, { status: response.status, statusText: response.statusText, headers });
+  return new Response(body, { status, statusText: status === response.status ? response.statusText : "Not Found", headers });
+}
+
+function isKnownClientRoute(pathname) {
+  return Boolean(PAGES[pathname]) || CLIENT_ROUTE_PATTERNS.some((pattern) => pattern.test(pathname));
+}
+
+function canRewriteShell(html) {
+  return new TextEncoder().encode(html).byteLength <= MAX_HTML_BYTES && EMPTY_ROOT.test(html);
+}
+
+function injectNotFoundPage(html) {
+  let output = upsertTitle(html, "Page not found | Reflexity");
+  output = upsertMeta(output, "name", "robots", "noindex, nofollow");
+  output = upsertMeta(output, "name", "description", "The requested Reflexity page was not found.");
+  const body = `<div id="root"><main data-edge-content="not-found"><h1>Page not found</h1><p>The requested page is unavailable.</p><a href="/">Return to Reflexity</a></main></div>`;
+  return output.replace(EMPTY_ROOT, body);
+}
+
+function standaloneNotFoundPage() {
+  return '<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="robots" content="noindex, nofollow" /><title>Page not found | Reflexity</title></head><body><main data-edge-content="not-found"><h1>Page not found</h1><p>The requested page is unavailable.</p><a href="/">Return to Reflexity</a></main></body></html>';
 }
 
 export async function renderStaticPage(context) {
   const method = context.request.method.toUpperCase();
   const shell = await context.next();
-  if (method !== "GET") return responseWithHeaders(shell, method === "HEAD" ? null : shell.body, "spa-pass-through");
   const pathname = new URL(context.request.url).pathname.replace(/\/$/, "") || "/";
+  const knownClientRoute = isKnownClientRoute(pathname);
+  if (method === "HEAD" && !knownClientRoute && shell.ok) return responseWithHeaders(shell, null, "static-not-found", 404);
+  if (method !== "GET") return responseWithHeaders(shell, method === "HEAD" ? null : shell.body, "spa-pass-through");
+  if (!knownClientRoute && shell.ok && (shell.headers.get("Content-Type") || "").toLowerCase().includes("text/html")) {
+    const html = await shell.text();
+    return responseWithHeaders(shell, canRewriteShell(html) ? injectNotFoundPage(html) : standaloneNotFoundPage(), "static-not-found", 404);
+  }
   const page = PAGES[pathname];
   if (!page || !shell.ok || !(shell.headers.get("Content-Type") || "").toLowerCase().includes("text/html")) {
     return responseWithHeaders(shell, shell.body, "spa-pass-through");
   }
   const html = await shell.text();
-  if (new TextEncoder().encode(html).byteLength > MAX_HTML_BYTES || !/<div\s+id=(['"])root\1\s*><\/div>/i.test(html)) {
+  if (!canRewriteShell(html)) {
     return responseWithHeaders(shell, html, "spa-pass-through");
   }
   return responseWithHeaders(shell, injectStaticPage(html, page, pathname), "static-edge");
