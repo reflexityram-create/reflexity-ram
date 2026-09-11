@@ -3,11 +3,16 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { proxyCatalogXml } from "../functions-shared/proxyCatalogXml.js";
 import { renderProductPage } from "../functions-shared/productMetadata.js";
+import { renderWholesaleLotPage } from "../functions-shared/wholesaleLotMetadata.js";
 import { renderStaticPage } from "../functions-shared/staticMetadata.js";
 import { STOREFRONT_SECURITY_HEADERS } from "../functions-shared/securityHeaders.js";
 import { onRequest as feedHandler } from "../functions/feed.xml.js";
-import { onRequest as productHandler } from "../functions/shop/[slug].js";
+import { onRequest as csvFeedHandler } from "../functions/feed.csv.js";
+import { onRequest as legacyProductHandler } from "../functions/shop/[slug].js";
+import { onRequest as productHandler } from "../functions/inventory/[slug].js";
+import { onRequest as wholesaleLotHandler } from "../functions/wholesale/[lotId].js";
 import { onRequest as sitemapHandler } from "../functions/sitemap.xml.js";
+import { onRequest as staticHandler } from "../functions/[[path]].js";
 
 const context = (method = "GET") => ({
   request: new Request("https://reflexityram.com/feed.xml", { method }),
@@ -27,7 +32,7 @@ const PRODUCT_SHELL = `<!doctype html>
 </head><body><div id="root"></div></body></html>`;
 
 const productContext = (slug, { method = "GET", waitUntil } = {}) => ({
-  request: new Request(`https://reflexityram.com/shop/${slug}`, { method }),
+  request: new Request(`https://reflexityram.com/inventory/${slug}`, { method }),
   params: { slug },
   next: async () =>
     new Response(PRODUCT_SHELL, {
@@ -40,10 +45,14 @@ const productContext = (slug, { method = "GET", waitUntil } = {}) => ({
   waitUntil,
 });
 
-test("Pages Functions expose live XML and product metadata routes", () => {
+test("Pages Functions expose inventory metadata, XML, and legacy redirect routes", () => {
   assert.equal(typeof feedHandler, "function");
+  assert.equal(typeof csvFeedHandler, "function");
   assert.equal(typeof sitemapHandler, "function");
   assert.equal(typeof productHandler, "function");
+  assert.equal(typeof wholesaleLotHandler, "function");
+  assert.equal(typeof legacyProductHandler, "function");
+  assert.equal(typeof staticHandler, "function");
 });
 
 test("catalog XML proxy requests the live backend and normalizes safe response headers", async () => {
@@ -82,6 +91,20 @@ test("catalog XML proxy supports HEAD without returning a body", async () => {
   assert.equal(await response.text(), "");
 });
 
+test("catalog XML proxy preserves an intentionally retired retail feed", async () => {
+  const response = await proxyCatalogXml(context(), "/feed.xml", {
+    fetchImpl: async () => new Response("Retail product feeds are no longer available.", {
+      status: 410,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    }),
+  });
+
+  assert.equal(response.status, 410);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(response.headers.get("x-reflexity-source"), "retired-retail-feed");
+  assert.match(await response.text(), /no longer available/i);
+});
+
 test("catalog XML proxy rejects writes and fails closed on upstream errors", async () => {
   const writeResponse = await proxyCatalogXml(context("POST"), "/feed.xml");
   assert.equal(writeResponse.status, 405);
@@ -101,7 +124,7 @@ test("Pages route manifest invokes Functions for public crawlable routes", async
   );
   assert.deepEqual(routes, {
     version: 1,
-    include: ["/", "/shop", "/shop/*", "/categories", "/guides", "/guides/*", "/wholesale", "/liquidators", "/support", "/business-info", "/shipping", "/international", "/returns", "/warranty", "/faq", "/privacy", "/terms", "/feed.xml", "/sitemap.xml"],
+    include: ["/", "/inventory", "/inventory/*", "/guides", "/guides/*", "/wholesale", "/wholesale/*", "/sell-to-us", "/contact", "/about", "/shipping", "/international", "/returns", "/warranty", "/faq", "/privacy", "/terms", "/feed.xml", "/feed.csv", "/sitemap.xml", "/shop", "/shop/*", "/categories", "/liquidators", "/support", "/business-info"],
     exclude: [],
   });
 });
@@ -162,17 +185,18 @@ test("product edge metadata uses the exact live API contract and escapes values"
   );
   assert.equal(response.headers.get("content-security-policy-report-only"), null);
   assert.equal(response.headers.get("etag"), null);
-  assert.match(html, /<title>Tested &quot;64GB&quot;<\/title>/);
+  assert.match(html, /<title>Tested &quot;64GB&quot; — Bulk Memory Inventory \| Reflexity<\/title>/);
   assert.doesNotMatch(html, /&lt;RAM&gt;|<RAM>/);
-  assert.match(html, /content="Fast &amp; individually tested server memory\."/);
+  assert.match(html, /content="Wholesale availability for Tested &quot;64GB&quot;\. Request a quote for bulk supply and exact part-number confirmation\."/);
   assert.match(html, /property="og:type" content="product"/);
-  assert.match(html, new RegExp(`property="og:url" content="https://reflexityram\\.com/shop/${slug}"`));
-  assert.match(html, new RegExp(`rel="canonical" href="https://reflexityram\\.com/shop/${slug}"`));
+  assert.match(html, new RegExp(`property="og:url" content="https://reflexityram\\.com/inventory/${slug}"`));
+  assert.match(html, new RegExp(`rel="canonical" href="https://reflexityram\\.com/inventory/${slug}"`));
   assert.match(html, /name="twitter:image" content="https:\/\/images\.example\.test\/product\.jpg"/);
   assert.match(html, /data-edge-content="product"/);
   assert.match(html, /<h1>Tested &quot;64GB&quot;<\/h1>/);
   assert.match(html, /type="application\/ld\+json" data-edge-product/);
-  assert.match(html, /"priceCurrency":"CAD"/);
+  assert.match(html, /"@type":"Product"/);
+  assert.doesNotMatch(html, /"offers"|"price"|"availability"/);
   assert.doesNotMatch(html, /<div id="root"><\/div>/);
   assert.doesNotMatch(html, /<title>Home title<\/title>/);
 });
@@ -186,15 +210,63 @@ test("static edge pages provide unique metadata and meaningful initial HTML", as
   const html = await response.text();
   assert.equal(response.headers.get("x-reflexity-seo"), "static-edge");
   assert.equal(response.headers.get("etag"), null);
-  assert.match(html, /<title>How to Identify RAM: Labels &amp; Part Numbers — Reflexity RAM<\/title>/);
+  assert.match(html, /<title>Identify RAM by Part Number — Reflexity<\/title>/);
   assert.match(html, /rel="canonical" href="https:\/\/reflexityram\.com\/guides\/how-to-identify-ram"/);
   assert.match(html, /data-edge-content="static"/);
-  assert.match(html, /<h1>How to identify RAM from its label and part number<\/h1>/);
-  assert.match(html, /href="\/shop"/);
+  assert.match(html, /<h1>Identify RAM from its label and part number<\/h1>/);
+  assert.match(html, /href="\/inventory"/);
   assert.doesNotMatch(html, /<div id="root"><\/div>/);
 
   const head = await renderStaticPage(pageContext("/shop", "HEAD"));
   assert.equal(await head.text(), "");
+});
+
+test("legacy shop and support paths redirect to their B2B replacements", async () => {
+  const productRedirect = legacyProductHandler({
+    request: new Request("https://reflexityram.com/shop/rfx-ddr4?source=legacy"),
+    params: { slug: "rfx-ddr4" },
+  });
+  assert.equal(productRedirect.status, 308);
+  assert.equal(productRedirect.headers.get("location"), "https://reflexityram.com/inventory/rfx-ddr4?source=legacy");
+
+  for (const [from, to] of [["/shop", "/inventory"], ["/categories", "/inventory"], ["/liquidators", "/sell-to-us"], ["/support", "/contact"], ["/business-info", "/about"]]) {
+    const response = await staticHandler({
+      request: new Request(`https://reflexityram.com${from}?legacy=1`),
+      next: async () => new Response(PRODUCT_SHELL, { status: 200, headers: { "Content-Type": "text/html" } }),
+    });
+    assert.equal(response.status, 308, from);
+    assert.equal(response.headers.get("location"), `https://reflexityram.com${to}?legacy=1`);
+  }
+});
+
+test("wholesale lot edge metadata is quote-only and fails closed for missing lots", async () => {
+  const lotId = "64b64c66a2d15e51234abcde";
+  const lotContext = (id) => ({
+    request: new Request(`https://reflexityram.com/wholesale/${id}`), params: { lotId: id },
+    next: async () => new Response(PRODUCT_SHELL, { status: 200, headers: { "Content-Type": "text/html" } }),
+  });
+  const response = await renderWholesaleLotPage(lotContext(lotId), {
+    fetchImpl: async () => Response.json({ lot: {
+      id: lotId, title: "Samsung 32GB RDIMM", lotCode: "WS-DETAIL", brand: "Samsung", mpn: "M393A4K40DB3", imageUrl: "https://images.example.test/lot.jpg",
+    } }),
+  });
+  const html = await response.text();
+  assert.equal(response.headers.get("x-reflexity-seo"), "wholesale-lot-edge");
+  assert.match(html, new RegExp(`rel="canonical" href="https://reflexityram\\.com/wholesale/${lotId}"`));
+  assert.match(html, /name="twitter:title" content="Samsung 32GB RDIMM"/);
+  assert.match(html, /name="twitter:description" content="Wholesale availability for Samsung 32GB RDIMM/);
+  assert.match(html, /name="twitter:image" content="https:\/\/images\.example\.test\/lot\.jpg"/);
+  assert.match(html, /data-edge-wholesale-lot/);
+  assert.doesNotMatch(html, /"offers"|"price"|"availability"/);
+
+  const missing = await renderWholesaleLotPage(lotContext(lotId), { fetchImpl: async () => new Response("missing", { status: 404 }) });
+  assert.equal(missing.status, 404);
+  assert.equal(missing.headers.get("x-reflexity-seo"), "wholesale-lot-not-found");
+  assert.match(await missing.text(), /noindex, nofollow/);
+
+  const transient = await renderWholesaleLotPage(lotContext(lotId), { fetchImpl: async () => new Response("temporary", { status: 503 }) });
+  assert.equal(transient.status, 200);
+  assert.equal(transient.headers.get("x-reflexity-seo"), "spa-error-fallback");
 });
 
 test("product edge returns a crawl-safe 404 only when the API confirms it", async () => {

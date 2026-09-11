@@ -389,7 +389,7 @@ function LotEditor({ initialLot, onClose, onPersisted, onSaved, onStale }) {
   }
 
   return createPortal(
-    <div aria-labelledby="wholesale-editor-title" aria-modal="true" className="wholesale-admin fixed inset-0 z-50 flex justify-end" ref={dialogRef} role="dialog">
+    <div role="dialog" aria-modal="true" aria-labelledby="wholesale-editor-title" className="wholesale-admin fixed inset-0 z-50 flex justify-end" ref={dialogRef}>
       <button aria-label="Close wholesale editor" className="absolute inset-0 bg-black/75 backdrop-blur-sm" disabled={busy} onClick={requestClose} tabIndex={-1} type="button" />
       <section className="wa-editor relative z-10 h-full w-full max-w-3xl overflow-y-auto border-l shadow-2xl">
         <p aria-atomic="true" aria-live="assertive" className="sr-only" role="alert">{editorError}</p>
@@ -653,7 +653,7 @@ export default function WholesaleAdmin() {
           <div>
             <p className="wa-accent-text mb-2 text-[10px] font-bold uppercase tracking-[0.15em]">Products / Wholesale</p>
             <h1 className="text-2xl font-bold tracking-tight">Wholesale stock</h1>
-            <p className="wa-muted mt-1 max-w-2xl text-[12px] leading-5">All special lots in one place. Draft privately, publish exact stock, and archive without touching the retail catalog.</p>
+            <p className="wa-muted mt-1 max-w-2xl text-[12px] leading-5">All special lots in one place. Draft privately, publish exact stock, and archive without changing catalog inventory.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link className="btn-secondary flex items-center gap-2" target="_blank" to="/wholesale"><Eye size={14} /> View wholesale page</Link>

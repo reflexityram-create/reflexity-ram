@@ -1,5 +1,5 @@
 const BACKEND_ORIGIN = "https://reflexity-ram.onrender.com";
-const ALLOWED_PATHS = new Set(["/feed.xml", "/sitemap.xml"]);
+const ALLOWED_PATHS = new Set(["/feed.xml", "/feed.csv", "/sitemap.xml"]);
 
 function baseHeaders(contentType = "text/plain; charset=utf-8") {
   return {
@@ -44,6 +44,17 @@ export async function proxyCatalogXml(
       headers: { Accept: "application/xml" },
       cf: { cacheEverything: true, cacheTtl: 300 },
     });
+
+    if (upstream.status === 410) {
+      return new Response(method === "HEAD" ? null : upstream.body, {
+        status: 410,
+        headers: {
+          ...baseHeaders(upstream.headers.get("content-type") || "text/plain; charset=utf-8"),
+          "Cache-Control": "no-store",
+          "X-Reflexity-Source": "retired-retail-feed",
+        },
+      });
+    }
 
     if (!upstream.ok) {
       logger.error("Catalog XML upstream returned an error", {

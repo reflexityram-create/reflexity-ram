@@ -1,229 +1,41 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowRight, ChevronLeft, Cpu, Loader2, Mail, Minus, Package, Plus, Shield, Truck } from "lucide-react";
+import { ChevronLeft, Cpu, Loader2, Minus, Plus } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import { buildLeadPrefill } from "@/components/LeadForm";
 import { wholesaleApi } from "@/lib/api";
-import { useSEO } from "@/lib/seo";
-import { buildWholesaleEmailUrl, normalizeWholesaleQuantity, publishedWholesaleLots } from "@/lib/wholesaleLots";
-import { formatStorePrice, STORE_CURRENCY_CODE } from "@/lib/currency";
 import { DETAIL_IMAGE_WIDTHS, imageSrcSet, imageUrl } from "@/lib/imageUrl";
-import { trackEvent } from "@/lib/analytics";
+import { normalizeWholesaleQuantity } from "@/lib/wholesaleLots";
+import { useSEO } from "@/lib/seo";
 
-export function LotUnavailable({ loading }) {
-  return (
-    <div className="glass rounded-2xl p-8 min-h-[260px] flex items-center gap-5" role="status">
-      {loading ? <Loader2 aria-hidden="true" className="animate-spin text-neutral-500" size={30} /> : <Package aria-hidden="true" className="text-neutral-500" size={30} />}
-      <div>
-        <div className="mono text-[10px] text-neutral-500 tracking-widest mb-2">{loading ? "CHECKING LIVE INVENTORY" : "LOT UNAVAILABLE"}</div>
-        <h1 className="text-2xl font-bold tracking-tight mb-3">{loading ? "Loading lot details." : "This wholesale lot is not currently posted."}</h1>
-        {!loading && <Link className="text-[13px] text-neutral-400 hover:text-white underline underline-offset-4" to="/wholesale">Back to wholesale stock</Link>}
-      </div>
-    </div>
-  );
-}
+export function LotUnavailable({ loading = false }) { return <div className="container-tight catalog-status" role="status"><h1>{loading ? "Loading wholesale lot…" : "Lot unavailable"}</h1><p>{loading ? "Checking posted inventory." : "This wholesale lot is not currently posted."}</p><Link to="/wholesale">Back to wholesale</Link></div>; }
 
-export function WholesaleLotDetail({ backTo = "/wholesale", lot }) {
-  const maximum = normalizeWholesaleQuantity(lot, lot.quantityAvailable);
-  const [quantity, setQuantity] = useState(1);
-  const isEcc = /\bECC\b/i.test(`${lot.title} ${lot.notes || ""}`);
-  const specifications = [
-    ["Brand", lot.brand],
-    ["Manufacturer part number", lot.mpn],
-    ["Generation", lot.generation],
-    ["Form factor", lot.formFactor],
-    ["Capacity", lot.capacityLabel],
-    ["Speed", lot.speedLabel],
-    ["Rank", lot.rank],
-    ["ECC", isEcc ? "Yes" : "Not specified"],
-    ["Condition", lot.condition],
-    ["Testing", lot.testStatus],
-    ["Ships from", lot.shipFrom],
-  ].filter(([, value]) => value);
-
-  useSEO({
-    title: `${lot.title} | Reflexity Wholesale`,
-    description: lot.notes || `${lot.title}. ${lot.quantityAvailable} units available from Toronto.`,
-  });
-
-  const chooseQuantity = (value) => {
-    setQuantity(normalizeWholesaleQuantity(lot, value));
-  };
-
-  const quoteUrl = buildWholesaleEmailUrl([{ lot, quantity }]);
-
-  return (
-    <>
-      <Link className="inline-flex items-center gap-1.5 text-[12px] text-neutral-400 hover:text-white mb-6" to={backTo}>
-        <ChevronLeft aria-hidden="true" size={14} /> Back to wholesale
-      </Link>
-
-      <div className="grid lg:grid-cols-[1.1fr_1fr] gap-10 lg:gap-14">
-        <div>
-          <div className="block w-full glass rounded-2xl overflow-hidden aspect-[5/4] mb-3">
-            {lot.imageUrl ? (
-              <img
-                alt={lot.imageAlt || lot.title}
-                className="w-full h-full object-cover"
-                decoding="async"
-                fetchPriority="high"
-                height="960"
-                loading="eager"
-                sizes="(min-width: 1024px) 52vw, 100vw"
-                src={imageUrl(lot.imageUrl, { width: 1200 })}
-                srcSet={imageSrcSet(lot.imageUrl, DETAIL_IMAGE_WIDTHS)}
-                width="1200"
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center"><Cpu aria-hidden="true" className="text-neutral-700" size={48} /></div>
-            )}
-          </div>
-        </div>
-
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <span className="mono text-[11px] text-neutral-500 tracking-widest">{lot.mpn}</span>
-          </div>
-          <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight mb-3">{lot.title}</h1>
-          <div className="text-[13px] text-neutral-500 mb-5">Wholesale lot · {lot.lotCode || "Live inventory"}</div>
-
-          <div className="flex flex-wrap gap-1.5 mb-6">
-            <span className="pill">{lot.generation}</span>
-            <span className="pill">{lot.formFactor}</span>
-            <span className="pill">{lot.capacityLabel}</span>
-            <span className="pill">{lot.speedLabel}</span>
-            {lot.rank && <span className="pill">{lot.rank}</span>}
-            {isEcc && <span className="pill pill-accent">ECC</span>}
-          </div>
-
-          <div className="flex items-end gap-3 mb-2">
-            <div className="text-4xl font-bold tracking-tight">
-              {lot.unitPriceCad ? formatStorePrice(lot.unitPriceCad) : "Request quote"}
-              {lot.unitPriceCad && <span className="text-sm font-medium text-neutral-500"> {STORE_CURRENCY_CODE}</span>}
-            </div>
-          </div>
-          <div className="flex items-center gap-3 mb-6">
-            <span className="pill pill-accent"><span className="dot dot-green" />{lot.quantityAvailable} available</span>
-          </div>
-
-          <div className="glass-soft rounded-xl p-4 mb-5" data-testid="wholesale-quantity-picker">
-            <div className="flex items-start justify-between gap-4 mb-3">
-              <div>
-                <label className="text-[13px] font-semibold" htmlFor="wholesale-quantity">Request how many you need</label>
-                <p className="text-[11px] text-neutral-500 mt-0.5">Each wholesale order is custom. Choose your total and inquire—we&apos;ll let you know what we can accommodate.</p>
-              </div>
-              <span className="mono text-[10px] text-neutral-500 whitespace-nowrap">{lot.quantityAvailable} IN STOCK</span>
-            </div>
-
-            <div className="flex items-stretch gap-2 mb-3">
-              <button
-                aria-label="Decrease quantity by 1"
-                className="glass h-11 w-11 rounded-lg inline-flex items-center justify-center disabled:opacity-35 disabled:cursor-not-allowed"
-                disabled={quantity <= 1}
-                onClick={() => chooseQuantity(quantity - 1)}
-                type="button"
-              >
-                <Minus aria-hidden="true" size={15} />
-              </button>
-              <input
-                className="glass h-11 min-w-0 w-24 rounded-lg px-3 text-center text-[15px] font-semibold focus:outline-none focus:ring-2 focus:ring-yellow-400/60"
-                id="wholesale-quantity"
-                inputMode="numeric"
-                max={maximum}
-                min="1"
-                onChange={(event) => chooseQuantity(event.target.value)}
-                step="1"
-                type="number"
-                value={quantity}
-              />
-              <button
-                aria-label="Increase quantity by 1"
-                className="glass h-11 w-11 rounded-lg inline-flex items-center justify-center disabled:opacity-35 disabled:cursor-not-allowed"
-                disabled={quantity >= maximum}
-                onClick={() => chooseQuantity(quantity + 1)}
-                type="button"
-              >
-                <Plus aria-hidden="true" size={15} />
-              </button>
-              <button className="glass h-11 rounded-lg px-3 mono text-[10px] font-semibold" disabled={quantity >= maximum} onClick={() => chooseQuantity(maximum)} type="button">
-                MAX
-              </button>
-            </div>
-
-            <a className="btn-primary w-full justify-center" data-testid="wholesale-email-request" href={quoteUrl} onClick={() => trackEvent("generate_lead", { lead_type: "wholesale_quote", lot_id: lot.lotCode || lot._id, quantity })} rel="noopener noreferrer" target="_blank">
-              <Mail aria-hidden="true" size={15} /> Request {quantity} {quantity === 1 ? "unit" : "units"} <ArrowRight aria-hidden="true" size={15} />
-            </a>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mb-4 text-[12px] text-neutral-600 dark:text-neutral-400">
-            {[lot.testStatus, "Custom terms for each order", `Ships from ${lot.shipFrom}`].map((item) => (
-              <span className="inline-flex items-center gap-1.5" key={item}><span className="text-emerald-600 dark:text-emerald-400">✓</span>{item}</span>
-            ))}
-          </div>
-
-          <div className="grid sm:grid-cols-2 gap-3 mb-4">
-            <div className="glass-soft rounded-xl p-4 flex items-start gap-3">
-              <Truck aria-hidden="true" className="text-neutral-300 mt-0.5 shrink-0" size={18} />
-              <div><div className="text-[13px] font-medium">Wholesale shipping</div><div className="text-[12px] text-neutral-500">Quote-confirmed · ESD-safe · tracked</div></div>
-            </div>
-            <div className="glass-soft rounded-xl p-4 flex items-start gap-3">
-              <Shield aria-hidden="true" className="text-neutral-300 mt-0.5 shrink-0" size={18} />
-              <div><div className="text-[13px] font-medium">Custom per order</div><div className="text-[12px] text-neutral-500">Inquire with your total quantity for details</div></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-16 border-t border-white/5 pt-10">
-        <div className="flex flex-wrap gap-1 mb-6"><span className="tab-pill" data-active="true">Specifications</span><span className="tab-pill">Lot notes</span></div>
-        <div className="glass rounded-2xl p-6 md:p-8">
-          <div className="grid lg:grid-cols-[1.2fr_.8fr] gap-8">
-            <div>
-              <h2 className="text-lg font-semibold tracking-tight mb-4">Specifications</h2>
-              <dl className="divide-y divide-white/5">
-                {specifications.map(([label, value]) => <div className="grid grid-cols-[minmax(120px,160px)_1fr] gap-4 py-2.5 text-[13.5px]" key={label}><dt className="text-neutral-500">{label}</dt><dd>{value}</dd></div>)}
-              </dl>
-            </div>
-            <div className="glass-soft rounded-xl p-5 h-fit">
-              <div className="mono text-[10px] text-neutral-500 tracking-widest mb-3">LOT NOTES</div>
-              <p className="text-[13.5px] text-neutral-300 leading-relaxed">{lot.notes || "Contact Reflexity with the exact part number and quantity for matching and delivery details."}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </>
-  );
+export function WholesaleLotDetail({ lot, backTo = "/wholesale" }) {
+  const maximum = normalizeWholesaleQuantity(lot, lot.quantityAvailable); const [quantity, setQuantity] = useState(1);
+  const specification = [lot.capacityLabel, lot.generation, lot.formFactor, lot.speedLabel, lot.rank].filter(Boolean).join(" ");
+  const quote = buildLeadPrefill({ intent: "buy", productType: "RAM", sourceType: "wholesale-lot", sourceId: lot.id, sourceCode: lot.lotCode || "", sku: lot.sku || "", itemTitle: lot.title || "", partNumber: lot.mpn || "", specification, quantity });
+  const rows = [["Part number", lot.mpn], ["Lot", lot.lotCode], ["Generation", lot.generation], ["Form factor", lot.formFactor], ["Capacity", lot.capacityLabel], ["Speed", lot.speedLabel], ["Condition", lot.condition], ["Testing", lot.testStatus], ["Available", lot.quantityAvailable ? `${lot.quantityAvailable}+ units` : "Confirm by quote"]].filter(([, value]) => value);
+  return <section className="container-tight inventory-detail"><Link className="back-link" to={backTo}><ChevronLeft size={15} />Back to wholesale</Link><div className="inventory-detail-grid"><div className="inventory-image detail-image">{lot.imageUrl ? <img src={imageUrl(lot.imageUrl, { width: 1200 })} srcSet={imageSrcSet(lot.imageUrl, DETAIL_IMAGE_WIDTHS)} sizes="(min-width: 1024px) 52vw, 100vw" alt={lot.imageAlt || lot.title} width="1200" height="960" loading="eager" fetchPriority="high" /> : <Cpu size={48} />}</div><div><p className="mono">{lot.mpn || lot.lotCode || "WHOLESALE LOT"}</p><h1>{lot.title}</h1><p className="detail-summary">{lot.notes || "Select the quantity you require, then submit the lot request through the quote desk."}</p><dl className="spec-table">{rows.map(([name, value]) => <div key={name}><dt>{name}</dt><dd>{value}</dd></div>)}</dl><div className="quantity-request"><label htmlFor="wholesale-quantity">Request quantity</label><div><button type="button" aria-label="Decrease quantity" onClick={() => setQuantity(normalizeWholesaleQuantity(lot, quantity - 1))} disabled={quantity <= 1}><Minus size={15} /></button><input id="wholesale-quantity" type="number" min="1" max={maximum} value={quantity} onChange={(event) => setQuantity(normalizeWholesaleQuantity(lot, event.target.value))} /><button type="button" aria-label="Increase quantity" onClick={() => setQuantity(normalizeWholesaleQuantity(lot, quantity + 1))} disabled={quantity >= maximum}><Plus size={15} /></button></div></div><Link className="btn-primary" to={quote}>Request {quantity} {quantity === 1 ? "unit" : "units"}</Link><p className="detail-note">Quantity is an inquiry only. Availability and all lot-specific commercial terms are confirmed in the quote.</p></div></div></section>;
 }
 
 export default function WholesaleLot() {
-  const { lotId } = useParams();
-  const [state, setState] = useState({ lot: null, loading: true });
-
+  const { lotId } = useParams(); const [state, setState] = useState({ lot: null, loading: true });
+  useSEO({ title: state.lot ? `${state.lot.title} | Wholesale inventory` : "Wholesale inventory" });
   useEffect(() => {
-    const controller = new AbortController();
-    let current = true;
-    wholesaleApi.list({ signal: controller.signal })
+    const controller = new AbortController(); let active = true;
+    setState({ lot: null, loading: true });
+    wholesaleApi.getById(lotId, { signal: controller.signal })
       .then(({ data }) => {
-        if (!current) return;
-        const lots = publishedWholesaleLots(Array.isArray(data?.lots) ? data.lots : []).filter((lot) => lot.visibility === "public");
-        setState({ lot: lots.find((lot) => lot.id === lotId) || null, loading: false });
+        if (!active) return;
+        setState({ lot: data?.lot || null, loading: false });
       })
       .catch((error) => {
-        if (current && error?.code !== "ERR_CANCELED") setState({ lot: null, loading: false });
-      });
-    return () => {
-      current = false;
-      controller.abort();
-    };
+        if (!active) return;
+        if (error?.code !== "ERR_CANCELED" && error?.name !== "AbortError") setState({ lot: null, loading: false });
+      })
+      .finally(() => { if (!active) return; setState((current) => current.loading ? { ...current, loading: false } : current); });
+    return () => { active = false; controller.abort(); };
   }, [lotId]);
-
-  return (
-    <>
-      <Header />
-      <main className="page pb-16" data-testid="wholesale-detail-page">
-        <div className="container-tight pt-8">{state.lot ? <WholesaleLotDetail lot={state.lot} /> : <LotUnavailable loading={state.loading} />}</div>
-      </main>
-      <Footer />
-    </>
-  );
+  return <><Header /><main className="page">{state.loading ? <LotUnavailable loading /> : state.lot ? <WholesaleLotDetail key={state.lot.id} lot={state.lot} /> : <LotUnavailable />}</main><Footer /></>;
 }

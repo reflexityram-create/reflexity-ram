@@ -2,7 +2,7 @@
   "name": "reflexity-ram-monorepo",
   "version": "1.0.0",
   "private": true,
-  "description": "Reflexity RAM — Production e-commerce platform monorepo",
+  "description": "Reflexity — wholesale B2B memory and IT hardware platform",
   "scripts": {
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd frontend && npm run dev",

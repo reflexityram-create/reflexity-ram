@@ -1,15 +1,15 @@
 export const RAM_CATEGORIES = Object.freeze({
   desktop: Object.freeze({
     line: "Desktop",
-    href: "/shop?line=Desktop",
+    href: "/inventory?line=Desktop",
   }),
   laptop: Object.freeze({
     line: "Laptop",
-    href: "/shop?line=Laptop",
+    href: "/inventory?line=Laptop",
   }),
   server: Object.freeze({
     line: "Server",
-    href: "/shop?line=Server",
+    href: "/inventory?line=Server",
   }),
 });
 
