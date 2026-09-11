@@ -48,6 +48,9 @@ const FILTER_VALUES = Object.freeze({
 });
 
 const SORT_FIELDS = new Set(['price', 'createdAt', 'name', 'speed', 'capacity']);
+const PUBLIC_SERVER_FILTER = Object.freeze({ isActive: true, line: 'Server' });
+
+const isPublicServerProduct = (product) => product?.line === 'Server';
 
 class ProductQueryError extends Error {
   constructor(message) {
@@ -98,7 +101,7 @@ function price(value, field) {
 }
 
 function parseProductQuery(query = {}) {
-  const filter = { isActive: true };
+  const filter = { ...PUBLIC_SERVER_FILTER };
   const generation = enumCsv(query.generation, 'generation');
   const formFactor = enumCsv(query.formFactor, 'formFactor');
   const capacity = capacityCsv(query.capacity);
@@ -141,6 +144,8 @@ function parseProductQuery(query = {}) {
 
 module.exports = {
   PUBLIC_PRODUCT_PROJECTION,
+  PUBLIC_SERVER_FILTER,
   ProductQueryError,
+  isPublicServerProduct,
   parseProductQuery,
 };

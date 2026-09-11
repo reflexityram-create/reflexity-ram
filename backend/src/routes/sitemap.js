@@ -9,7 +9,7 @@ const router = express.Router();
 router.get('/sitemap.xml', async (req, res) => {
   try {
     const [products, wholesaleCandidates] = await Promise.all([
-      Product.find({ isActive: true })
+      Product.find({ isActive: true, line: 'Server' })
       .select('slug updatedAt createdAt')
       .lean(),
       WholesaleLot.find({
@@ -34,7 +34,7 @@ router.get('/sitemap.xml', async (req, res) => {
     for (const product of products) {
       const lastmod = (product.updatedAt || product.createdAt || new Date()).toISOString().split('T')[0];
       xml += `  <url>\n`;
-      xml += `    <loc>${BASE_URL}/inventory/${product.slug}</loc>\n`;
+      xml += `    <loc>${BASE_URL}/shop/${encodeURIComponent(product.slug)}</loc>\n`;
       xml += `    <lastmod>${lastmod}</lastmod>\n`;
       xml += `    <changefreq>weekly</changefreq>\n`;
       xml += `    <priority>0.7</priority>\n`;

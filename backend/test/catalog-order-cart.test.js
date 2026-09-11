@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const http = require('node:http');
+const express = require('express');
 
 const {
   normalizeProductPagination,
@@ -20,10 +22,16 @@ const { escapeHtml } = require('../src/utils/htmlEscape');
 const { sanitizeHtml } = require('../src/utils/sanitizeHtml');
 const { CartMutationError, createCartMutation } = require('../src/utils/cartConcurrency');
 const Cart = require('../src/models/Cart');
+const Product = require('../src/models/Product');
+const cartRouter = require('../src/routes/cart');
+process.env.NODE_ENV ||= 'test';
+process.env.STRIPE_SECRET_KEY ||= 'sk_test_public_scope_unit_test';
+const stripeRouter = require('../src/routes/stripe');
 const {
   PUBLIC_PRODUCT_PROJECTION,
   ProductQueryError,
   parseProductQuery,
+  isPublicServerProduct,
 } = require('../src/utils/publicProducts');
 const { customerOrderResponse } = require('../src/utils/customerOrders');
 const { MongoRateLimitStore } = require('../src/utils/mongoRateLimitStore');
@@ -39,8 +47,28 @@ const product = (overrides = {}) => ({
   isActive: true,
   stock: 'in',
   stockQuantity: 50,
+  line: 'Server',
   ...overrides,
 });
+const productQuery = (items) => ({
+  lean: async () => items,
+  then: (resolve, reject) => Promise.resolve(items).then(resolve, reject),
+});
+
+async function jsonRequest(app, path, body, method = 'POST') {
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json', 'x-session-id': 'session_0123456789' },
+      body: JSON.stringify(body),
+    });
+    return { status: response.status, body: await response.json() };
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+}
 
 test('product pagination caps before calculating skip', () => {
   assert.deepEqual(normalizeProductPagination('2', '500'), {
@@ -76,6 +104,7 @@ test('public product filters reject malformed numeric and repeated values', () =
   }), {
     filter: {
       isActive: true,
+      line: 'Server',
       generation: { $in: ['DDR4', 'DDR5'] },
       capacity: { $in: [32, 64] },
       price: { $gte: 25, $lte: 200 },
@@ -84,6 +113,79 @@ test('public product filters reject malformed numeric and repeated values', () =
     sort: 'price',
     order: 'asc',
   });
+});
+
+test('public catalog scope accepts every Server module form factor and excludes consumer lines', () => {
+  assert.equal(isPublicServerProduct({ line: 'Server', formFactor: 'UDIMM' }), true);
+  assert.equal(isPublicServerProduct({ line: 'Server', formFactor: 'SO-DIMM' }), true);
+  assert.equal(isPublicServerProduct({ line: 'Desktop', formFactor: 'RDIMM' }), false);
+  assert.equal(isPublicServerProduct({ line: 'Laptop', formFactor: 'SO-DIMM' }), false);
+  assert.equal(parseProductQuery({ formFactor: 'SO-DIMM' }).filter.line, 'Server');
+});
+
+test('cart responses and checkout only expose purchasable Server items', async () => {
+  const originalProductFindOne = Product.findOne;
+  const originalProductFind = Product.find;
+  const originalCartFindOne = Cart.findOne;
+  Product.findOne = async (filter) => {
+    assert.equal(filter.line, 'Server');
+    return null;
+  };
+  Product.find = (filter) => {
+    assert.equal(filter.line, 'Server');
+    return productQuery([]);
+  };
+  Cart.findOne = async () => ({ items: [{ slug: 'consumer-ddr5', name: 'Consumer DDR5', qty: 1 }] });
+  try {
+    const cartApp = express();
+    cartApp.use(express.json());
+    cartApp.use('/api/cart', cartRouter);
+    assert.equal((await jsonRequest(cartApp, '/api/cart/add', { slug: 'consumer-ddr5', qty: 1 })).status, 404);
+    const stripeApp = express();
+    stripeApp.use(express.json());
+    stripeApp.use('/api/stripe', stripeRouter);
+    assert.equal((await jsonRequest(stripeApp, '/api/stripe/create-checkout-session', {})).status, 400);
+
+    const server = new Product(product({ _id: undefined, slug: 'server-sodimm', formFactor: 'SO-DIMM', price: 40 }));
+    Product.find = (filter) => {
+      assert.equal(filter.line, 'Server');
+      return productQuery([server]);
+    };
+    let checkoutPayload;
+    Product.findOne = async (filter) => {
+      assert.equal(filter.line, 'Server');
+      return server;
+    };
+    const staleCart = {
+      items: [{ slug: 'consumer-ddr5', name: 'Consumer DDR5', price: 99, qty: 1 }],
+      save: async () => undefined,
+    };
+    Cart.findOne = async () => staleCart;
+    const added = await jsonRequest(cartApp, '/api/cart/add', { slug: 'server-sodimm', qty: 1 });
+    assert.deepEqual(added.body.cart.items.map((item) => item.slug), ['server-sodimm']);
+    assert.deepEqual({ subtotal: added.body.cart.subtotal, itemCount: added.body.cart.itemCount }, { subtotal: 40, itemCount: 1 });
+    const updated = await jsonRequest(cartApp, '/api/cart/update', { slug: 'server-sodimm', qty: 2 }, 'PATCH');
+    assert.deepEqual({ items: updated.body.cart.items.map((item) => item.slug), subtotal: updated.body.cart.subtotal, itemCount: updated.body.cart.itemCount }, { items: ['server-sodimm'], subtotal: 80, itemCount: 2 });
+    const removed = await jsonRequest(cartApp, '/api/cart/remove/server-sodimm', undefined, 'DELETE');
+    assert.deepEqual(removed.body.cart, { items: [], subtotal: 0, itemCount: 0 });
+
+    staleCart.items.push({ slug: 'server-sodimm', name: 'Server SO-DIMM', qty: 2 });
+    stripeRouter.setCheckoutDependenciesForTest({
+      ensurePrice: async (productDoc) => {
+        assert.ok(productDoc instanceof Product);
+        return 'price_server_sodimm';
+      },
+      createSession: async (payload) => { checkoutPayload = payload; return { id: 'cs_mocked', url: 'https://stripe.test/session' }; },
+    });
+    const accepted = await jsonRequest(stripeApp, '/api/stripe/create-checkout-session', {});
+    assert.equal(accepted.status, 200);
+    assert.deepEqual(checkoutPayload.line_items, [{ price: 'price_server_sodimm', quantity: 2 }]);
+  } finally {
+    stripeRouter.setCheckoutDependenciesForTest();
+    Product.findOne = originalProductFindOne;
+    Product.find = originalProductFind;
+    Cart.findOne = originalCartFindOne;
+  }
 });
 
 test('public product projection excludes provider and media-management metadata', () => {
@@ -225,6 +327,20 @@ test('guest cart merge never adds inactive or out-of-stock guest items', () => {
   assert.deepEqual(items, []);
 });
 
+test('guest cart merge drops stale Desktop and Laptop lines while retaining Server modules', () => {
+  const items = mergeCartItems(
+    [{ slug: 'desktop', qty: 1 }, { slug: 'server', qty: 1 }],
+    [{ slug: 'laptop', qty: 1 }, { slug: 'server-sodimm', qty: 1 }],
+    [
+      product({ slug: 'desktop', line: 'Desktop' }),
+      product({ slug: 'laptop', line: 'Laptop' }),
+      product({ slug: 'server', line: 'Server', formFactor: 'RDIMM' }),
+      product({ slug: 'server-sodimm', line: 'Server', formFactor: 'SO-DIMM' }),
+    ],
+  );
+  assert.deepEqual(items.map((item) => item.slug), ['server', 'server-sodimm']);
+});
+
 test('guest cart merge preserves unavailable Mongoose subdocuments as plain items', () => {
   const unavailableItem = {
     slug: 'retired',
@@ -293,6 +409,7 @@ test('sitemap includes every indexable public storefront route', () => {
   const expectedPaths = [
     '/',
     '/inventory',
+    '/shop',
     '/guides',
     '/guides/ddr4-vs-ddr5',
     '/guides/ecc-rdimm-udimm-explained',

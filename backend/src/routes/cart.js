@@ -14,6 +14,19 @@ const sendCartError = (res, err, fallback) => {
   console.error(fallback, err);
   return res.status(500).json({ error: fallback.replace(/^Failed to /, 'Failed to ') });
 };
+const publicCartView = async (cart) => {
+  const slugs = [...new Set(cart.items.map((item) => item.slug).filter(Boolean))];
+  const products = slugs.length
+    ? await Product.find({ slug: { $in: slugs }, isActive: true, line: 'Server' }).lean()
+    : [];
+  const publicSlugs = new Set(products.map((product) => product.slug));
+  const items = cart.items.filter((item) => publicSlugs.has(item.slug));
+  return {
+    items,
+    subtotal: items.reduce((sum, item) => sum + item.price * item.qty, 0),
+    itemCount: items.reduce((sum, item) => sum + item.qty, 0),
+  };
+};
 
 // ─── GET /api/cart ─────────────────────────────────────────────────────────────
 router.get('/', optionalAuth, async (req, res) => {
@@ -26,7 +39,7 @@ router.get('/', optionalAuth, async (req, res) => {
     }
 
     const filter = userId ? { user: userId } : { sessionId };
-    const cart = await Cart.findOne(filter).populate('items.product', 'stock stockQuantity price name');
+    const cart = await Cart.findOne(filter).populate('items.product', 'stock stockQuantity price name line');
 
     if (!cart) {
       return res.json({ cart: { items: [], subtotal: 0, itemCount: 0 } });
@@ -34,7 +47,8 @@ router.get('/', optionalAuth, async (req, res) => {
 
     // Validate items against current product data
     let needsSave = false;
-    for (const item of cart.items) {
+    const items = cart.items.filter((item) => item.product?.line === 'Server');
+    for (const item of items) {
       if (item.product) {
         // Update price if changed
         if (item.price !== item.product.price) {
@@ -45,13 +59,13 @@ router.get('/', optionalAuth, async (req, res) => {
     }
     if (needsSave) await cart.save();
 
-    const subtotal = cart.items.reduce((sum, i) => sum + i.price * i.qty, 0);
-    const itemCount = cart.items.reduce((sum, i) => sum + i.qty, 0);
+    const subtotal = items.reduce((sum, i) => sum + i.price * i.qty, 0);
+    const itemCount = items.reduce((sum, i) => sum + i.qty, 0);
 
     res.json({
       cart: {
         _id: cart._id,
-        items: cart.items,
+        items,
         subtotal,
         itemCount,
         discount: cart.discount,
@@ -84,7 +98,7 @@ router.post(
       }
 
       // Validate product exists and is in stock
-      const product = await Product.findOne({ slug, isActive: true });
+      const product = await Product.findOne({ slug, isActive: true, line: 'Server' });
       if (!product) {
         return res.status(404).json({ error: 'Product not found' });
       }
@@ -109,12 +123,11 @@ router.post(
         }
       }, { create: true });
 
-      const subtotal = cart.items.reduce((sum, i) => sum + i.price * i.qty, 0);
-      const itemCount = cart.items.reduce((sum, i) => sum + i.qty, 0);
+      const publicCart = await publicCartView(cart);
 
       res.json({
         message: 'Added to cart',
-        cart: { items: cart.items, subtotal, itemCount },
+        cart: publicCart,
       });
     } catch (err) {
       sendCartError(res, err, 'Failed to add to cart');
@@ -146,7 +159,7 @@ router.patch(
         }
         const item = draft.items.find(i => i.slug === slug);
         if (!item) throw new CartMutationError(404, 'Item not in cart');
-        const product = await Product.findOne({ slug, isActive: true });
+        const product = await Product.findOne({ slug, isActive: true, line: 'Server' });
         if (!product) throw new CartMutationError(400, 'Product is no longer available');
         if (qty > product.stockQuantity) throw new CartMutationError(400, `Only ${product.stockQuantity} units available`);
         item.qty = qty;
@@ -156,12 +169,11 @@ router.patch(
         return res.status(404).json({ error: 'Cart not found' });
       }
 
-      const subtotal = cart.items.reduce((sum, i) => sum + i.price * i.qty, 0);
-      const itemCount = cart.items.reduce((sum, i) => sum + i.qty, 0);
+      const publicCart = await publicCartView(cart);
 
       res.json({
         message: 'Cart updated',
-        cart: { items: cart.items, subtotal, itemCount },
+        cart: publicCart,
       });
     } catch (err) {
       sendCartError(res, err, 'Failed to update cart');
@@ -183,12 +195,11 @@ router.delete('/remove/:slug', optionalAuth, async (req, res) => {
     });
     if (!cart) return res.status(404).json({ error: 'Cart not found' });
 
-    const subtotal = cart.items.reduce((sum, i) => sum + i.price * i.qty, 0);
-    const itemCount = cart.items.reduce((sum, i) => sum + i.qty, 0);
+    const publicCart = await publicCartView(cart);
 
     res.json({
       message: 'Item removed',
-      cart: { items: cart.items, subtotal, itemCount },
+      cart: publicCart,
     });
   } catch (err) {
     sendCartError(res, err, 'Failed to remove item');

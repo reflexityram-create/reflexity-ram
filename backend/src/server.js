@@ -33,7 +33,6 @@ const Review = require('./models/Review');
 const PageContent = require('./models/PageContent');
 const RateLimitEntry = require('./models/RateLimitEntry');
 const { MongoRateLimitStore } = require('./utils/mongoRateLimitStore');
-const { retiredRetailCommerce } = require('./middleware/retiredRetailCommerce');
 
 // Stripe routes are only loaded when a real key is configured.
 // This prevents a crash if STRIPE_SECRET_KEY is missing or empty.
@@ -161,7 +160,7 @@ app.use(cookieParser());
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/reviews', reviewRoutes);
-app.use('/api/cart', retiredRetailCommerce, cartRoutes);
+app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/admin/wholesale', adminWholesaleRoutes);
 app.use('/api/admin', adminRoutes);
@@ -171,9 +170,6 @@ app.use('/api/pages', pageRoutes);
 app.use('/api/leads', leadLimiter, createLeadRouter());
 app.use('/', sitemapRoutes);
 app.use('/', feedRoutes);
-// This remains ahead of Stripe configuration so stale public checkout clients
-// consistently receive the retired-commerce response in every environment.
-app.post('/api/stripe/create-checkout-session', retiredRetailCommerce);
 // The HTTP seed route is development-only. Production data seeding remains an
 // explicit operator script (`npm run seed`) and cannot be re-enabled merely by
 // adding a secret to the normal web process environment.

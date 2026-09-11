@@ -2,13 +2,13 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 const test = require('node:test');
 const express = require('express');
+const Product = require('../src/models/Product');
 
 const { createLeadRouter } = require('../src/routes/leads');
 const { buildLeadEmail, sendLeadEmail } = require('../src/utils/leads');
 const feedRouter = require('../src/routes/feed');
 const { VALID_SLUGS } = require('../src/routes/pages');
 const { STATIC_PAGES } = require('../src/config/sitemap');
-const { retiredRetailCommerce } = require('../src/middleware/retiredRetailCommerce');
 const { resolveGoogleUser, oauthStateCookie, readOauthStateCookie } = require('../src/routes/auth');
 const { createWholesaleRouter } = require('../src/routes/wholesale');
 
@@ -184,18 +184,34 @@ test('lead send bounds provider waits and preserves the idempotency key on retry
   ]);
 });
 
-test('retired consumer feeds return no-store HTTP 410 and sitemaps exclude shop paths', async () => {
+test('server-only consumer feeds and old shop URLs remain available alongside wholesale routes', async () => {
+  const originalFind = Product.find;
+  const calls = [];
+  Product.find = (filter) => {
+    calls.push(filter);
+    return { lean: async () => [{
+      sku: 'SERVER-UDIMM', slug: 'server-udimm', name: 'Server UDIMM', line: 'Server', price: 49,
+      generation: 'DDR4', formFactor: 'UDIMM', speedLabel: '3200 MT/s', condition: 'Used', images: [],
+    }] };
+  };
   const app = express();
   app.use(feedRouter);
-  for (const path of ['/feed.xml', '/feed.csv']) {
-    const response = await request(app, path);
-    assert.equal(response.status, 410, path);
-    assert.equal(response.headers.get('cache-control'), 'no-store');
-    assert.match(response.text, /quote-only/i);
+  try {
+    for (const path of ['/feed.xml', '/feed.csv']) {
+      const response = await request(app, path);
+      assert.equal(response.status, 200, path);
+      assert.match(response.text, /https:\/\/reflexityram\.com\/shop\/server-udimm/);
+    }
+  } finally {
+    Product.find = originalFind;
   }
+  assert.deepEqual(calls, [
+    { isActive: true, stock: { $ne: 'out' }, line: 'Server' },
+    { isActive: true, stock: { $ne: 'out' }, line: 'Server' },
+  ]);
   const paths = STATIC_PAGES.map(({ path }) => path);
   assert.ok(paths.includes('/inventory'));
-  assert.ok(!paths.some((path) => path === '/shop' || path.startsWith('/shop/')));
+  assert.ok(paths.includes('/shop'));
 });
 
 test('editable B2B legal slugs are available without removing legacy slugs', () => {
@@ -232,20 +248,11 @@ test('lead delivery is independently limited to eight requests per IP per hour',
   assert.match(source, /app\.use\('\/api\/leads', leadLimiter, createLeadRouter\(\)\)/);
 });
 
-test('retired cart and checkout middleware blocks stale consumer clients without touching downstream handlers', async () => {
-  for (const path of ['/api/cart', '/api/cart/items', '/api/stripe/create-checkout-session']) {
-    let downstreamCalled = false;
-    const app = express();
-    app.use(path, retiredRetailCommerce, (_req, res) => { downstreamCalled = true; res.status(204).end(); });
-    const response = await request(app, path, { stale: true });
-    assert.equal(response.status, 410, path);
-    assert.equal(response.headers.get('cache-control'), 'no-store');
-    assert.equal(downstreamCalled, false, path);
-  }
+test('server mounts the cart and Stripe routers without reviving the retired interceptor', async () => {
   const source = await require('node:fs/promises').readFile(require.resolve('../src/server'), 'utf8');
-  assert.match(source, /app\.use\('\/api\/cart', retiredRetailCommerce, cartRoutes\)/);
-  assert.match(source, /app\.post\('\/api\/stripe\/create-checkout-session', retiredRetailCommerce\)[\s\S]*if \(STRIPE_ENABLED && stripeRoutes\)/);
-  assert.doesNotMatch(source, /if \(STRIPE_ENABLED && stripeRoutes\) \{\s*app\.post\('\/api\/stripe\/create-checkout-session'/);
+  assert.match(source, /app\.use\('\/api\/cart', cartRoutes\)/);
+  assert.doesNotMatch(source, /app\.use\('\/api\/cart', retiredRetailCommerce/);
+  assert.doesNotMatch(source, /app\.post\('\/api\/stripe\/create-checkout-session', retiredRetailCommerce/);
   assert.match(source, /app\.use\('\/api\/orders', orderRoutes\)/);
   assert.match(source, /app\.use\('\/api\/stripe\/webhook', express\.raw/);
 });
