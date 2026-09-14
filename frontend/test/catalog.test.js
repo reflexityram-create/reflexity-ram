@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
+import { createServer } from "vite";
 import {
   fetchAllCatalogProducts,
   getCatalogCategoryLabel,
@@ -8,6 +13,18 @@ import {
   matchesCatalogLines,
   RAM_CATEGORIES,
 } from "../src/lib/catalog.js";
+
+let viteServer;
+
+async function loadShopModule() {
+  viteServer ??= await createServer({
+    root: fileURLToPath(new URL("..", import.meta.url)),
+    server: { middlewareMode: true },
+    appType: "custom",
+    logLevel: "error",
+  });
+  return viteServer.ssrLoadModule("/src/pages/Shop.jsx");
+}
 
 test("RAM category URLs use line as the top-level category authority", () => {
   assert.deepEqual(
@@ -105,6 +122,41 @@ test("the public server catalog is a full-width inventory grid without redundant
   assert.match(productCard, /p\.compareAt > p\.price/);
   assert.match(home, /AVAILABLE INVENTORY/);
   assert.doesNotMatch(home, /FEATURED STOCK|featured stock/i);
+});
+
+test("rendered shop inventory shows only Server cards with their CAD prices", async (t) => {
+  t.after(async () => viteServer?.close());
+  const { ShopInventory } = await loadShopModule();
+  const product = (overrides) => ({
+    slug: "server-fixture",
+    sku: "SERVER-16",
+    name: "Server fixture",
+    line: "Server",
+    generation: "DDR4",
+    formFactor: "RDIMM",
+    stock: "in",
+    stockLabel: "In stock",
+    capacityLabel: "16GB",
+    speedLabel: "3200 MT/s",
+    cas: "CL22",
+    ecc: true,
+    price: 150,
+    ...overrides,
+  });
+  const markup = renderToStaticMarkup(createElement(
+    MemoryRouter,
+    null,
+    createElement(ShopInventory, { products: [product(), product({
+      slug: "desktop-fixture", sku: "DESKTOP-16", name: "Desktop fixture", line: "Desktop", price: 999,
+    })] }),
+  ));
+
+  assert.match(markup, /Server fixture/);
+  assert.match(markup, /\$150\.00/);
+  assert.doesNotMatch(markup, /Desktop fixture|\$999\.00|ECC|Filters|Featured|Price:|Speed:|Capacity:|Filter by/);
+  const productSource = await readFile(new URL("../src/pages/Product.jsx", import.meta.url), "utf8");
+  assert.match(productSource, /p\.ecc.*ECC|ECC.*p\.ecc/);
+  assert.match(productSource, /Compatibility|product-compat-content/);
 });
 
 test("fetchAllCatalogProducts requests every backend page and orders ties consistently", async () => {

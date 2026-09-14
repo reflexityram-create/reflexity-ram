@@ -9,6 +9,18 @@ import { productsApi } from "@/lib/api";
 import { fetchAllCatalogProducts, isPublicServerRam } from "@/lib/catalog";
 import { useSEO } from "@/lib/seo";
 
+export function ShopInventory({ products }) {
+  const publicProducts = products.filter(isPublicServerRam);
+
+  return (
+    <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4" data-testid="shop-grid">
+      {publicProducts.map((p, i) => (
+        <ProductCard key={p.slug} p={p} index={i} priority={i < 3} />
+      ))}
+    </div>
+  );
+}
+
 export default function Shop() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -106,11 +118,7 @@ export default function Shop() {
               testId="shop-empty-state"
             />
           ) : (
-            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4" data-testid="shop-grid">
-              {publicProducts.map((p, i) => (
-                <ProductCard key={p.slug} p={p} index={i} priority={i < 3} />
-              ))}
-            </div>
+            <ShopInventory products={products} />
           )}
         </div>
       </main>
