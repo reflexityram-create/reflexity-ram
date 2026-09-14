@@ -9,7 +9,7 @@ import { useStock } from "@/lib/useStock";
 
 /**
  * Storefront home — "What are you building?".
- * Server memory is the only public catalog line. Featured stock sits below.
+ * Server memory is the only public catalog line. Available inventory sits below.
  */
 const LANES = [
   {
@@ -84,7 +84,7 @@ export default function Home() {
         <section>
           <div className="container-tight pt-16 pb-14">
             <div className="section-label mb-6">
-              <span className="num">02</span> FEATURED STOCK
+              <span className="num">02</span> AVAILABLE INVENTORY
             </div>
             {loading ? (
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
