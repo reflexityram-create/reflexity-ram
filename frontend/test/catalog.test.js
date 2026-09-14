@@ -67,8 +67,7 @@ test("the restored storefront applies the Server-only authority at every public 
   assert.match(categories, /const CATEGORIES = \[\s*\{[\s\S]*id: "server"/);
   assert.doesNotMatch(categories, /id: "desktop"|id: "laptop"/);
   assert.match(shop, /products\.filter\(isPublicServerRam\)/);
-  const shopActiveFilters = shop.match(/const activeCount =[\s\S]*?const FilterBody/)[0];
-  assert.doesNotMatch(shopActiveFilters, /\+ line\.length|\.\.\.line/);
+  assert.doesNotMatch(shop, /@\/lib\/shopFilters/);
   assert.match(product, /if \(!isPublicServerRam\(product\)\)/);
   assert.match(product, /\.filter\(isPublicServerRam\)/);
   assert.match(product, /setItems\(results\.filter\(Boolean\)\.filter\(isPublicServerRam\)\)/);
@@ -88,6 +87,24 @@ test("the restored navigation and account flow retain the original ITAD, commerc
   for (const route of ["/liquidators", "/cart", "/checkout", "/account", "/shop", "/wholesale", "/wholesale/:lotId"]) {
     assert.match(app, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
+});
+
+test("the public server catalog is a full-width inventory grid without redundant discovery controls", async () => {
+  const [shop, productCard, home] = await Promise.all([
+    readFile(new URL("../src/pages/Shop.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/ProductCard.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/pages/Home.jsx", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(shop, /const publicProducts = products\.filter\(isPublicServerRam\);/);
+  assert.match(shop, /publicProducts\.map\(\(p, i\) =>/);
+  assert.match(shop, /grid sm:grid-cols-2 xl:grid-cols-3 gap-4/);
+  assert.doesNotMatch(shop, /@\/lib\/shopFilters|productsApi\.filters|useSearchParams|<select|<input|<aside|shop-search-input|shop-sort-select|shop-filters-sidebar|shop-mobile-filter-btn|mobile-filters-overlay|filter-ecc-only/);
+  assert.doesNotMatch(productCard, /p\.ecc|>ECC</);
+  assert.match(productCard, /formatStorePrice\(p\.price\)/);
+  assert.match(productCard, /p\.compareAt > p\.price/);
+  assert.match(home, /AVAILABLE INVENTORY/);
+  assert.doesNotMatch(home, /FEATURED STOCK|featured stock/i);
 });
 
 test("fetchAllCatalogProducts requests every backend page and orders ties consistently", async () => {

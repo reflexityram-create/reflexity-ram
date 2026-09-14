@@ -75,9 +75,6 @@ export default function ProductCard({ p, index = 0, priority = false }) {
           <span className="pill text-[10px] py-0.5">{p.capacityLabel}</span>
           <span className="pill text-[10px] py-0.5">{p.speedLabel}</span>
           <span className="pill text-[10px] py-0.5">{p.cas}</span>
-          {p.ecc && (
-            <span className="pill pill-accent text-[10px] py-0.5">ECC</span>
-          )}
         </div>
 
         <div className="mt-auto flex items-end gap-3">
