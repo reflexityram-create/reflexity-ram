@@ -153,6 +153,7 @@ test("rendered shop inventory shows only Server cards with their CAD prices", as
 
   assert.match(markup, /Server fixture/);
   assert.match(markup, /\$150\.00/);
+  assert.match(markup, /CAD/);
   assert.doesNotMatch(markup, /Desktop fixture|\$999\.00|ECC|Filters|Featured|Price:|Speed:|Capacity:|Filter by/);
   const productSource = await readFile(new URL("../src/pages/Product.jsx", import.meta.url), "utf8");
   assert.match(productSource, /p\.ecc.*ECC|ECC.*p\.ecc/);
