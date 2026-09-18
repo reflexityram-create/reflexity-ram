@@ -17,7 +17,7 @@ const EMPTY_PRODUCT = {
   formFactor: 'UDIMM', capacity: 16, speed: 3200, cas: 'CL16', timings: '', voltage: '1.35V',
   ecc: false,
   condition: 'Used', warranty: '90 Days',
-  price: 0, stockQuantity: 0,
+  price: 0, shippingPrice: '', stockQuantity: 0,
   images: [],
 };
 
@@ -95,6 +95,8 @@ function normalizeProduct(p) {
     // Keep capacity/speed numeric-friendly for inputs
     capacity: p.capacity ?? EMPTY_PRODUCT.capacity,
     speed: p.speed ?? EMPTY_PRODUCT.speed,
+    // No override stored → blank field → the store's standard flat rate
+    shippingPrice: p.shippingPrice ?? '',
   };
 }
 // Auto-generate slug from product name (server also has a unique index).
@@ -164,6 +166,11 @@ function ProductModal({ product, onClose, onSave }) {
         condition: form.condition,
         warranty: form.warranty,
         price: Number(form.price),
+        // Blank means "use the store's standard flat rate" — sent as null so an
+        // existing override is cleared rather than left behind.
+        shippingPrice: form.shippingPrice === '' || form.shippingPrice === null
+          ? null
+          : Number(form.shippingPrice),
         stockQuantity: Number(form.stockQuantity),
         images: form.images,
       };
@@ -295,6 +302,18 @@ function ProductModal({ product, onClose, onSave }) {
                 </Field>
                 <Field label="Stock quantity" required>
                   <input type="number" className="input" value={form.stockQuantity} onChange={e => setField('stockQuantity', e.target.value)} required placeholder="10" />
+                </Field>
+                <Field label="Shipping override (CAD)">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="input"
+                    value={form.shippingPrice ?? ''}
+                    onChange={e => setField('shippingPrice', e.target.value)}
+                    placeholder="Blank = $14 flat rate"
+                    data-testid="product-shipping-price"
+                  />
                 </Field>
               </div>
             </div>

@@ -84,6 +84,10 @@ const productSchema = new mongoose.Schema({
     min: [0, 'Price cannot be negative'],
   },
   compareAt: { type: Number, min: 0 },
+  // Per-product shipping override in store currency. Unset = the store's
+  // standard flat rate (config/shipping.js). Set it only for lots that genuinely
+  // cost more to ship; a mixed cart is charged the highest rate it contains.
+  shippingPrice: { type: Number, min: [0, 'Shipping price cannot be negative'] },
   stock: {
     type: String,
     enum: ['in', 'low', 'out'],

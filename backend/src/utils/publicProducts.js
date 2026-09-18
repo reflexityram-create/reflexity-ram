@@ -24,6 +24,7 @@ const PUBLIC_PRODUCT_PROJECTION = Object.freeze({
   condition: 1,
   warranty: 1,
   price: 1,
+  shippingPrice: 1,
   compareAt: 1,
   stock: 1,
   stockLabel: 1,
