@@ -5,7 +5,12 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const { optionalAuth } = require('../middleware/auth');
 const { sendOrderConfirmationEmail } = require('../utils/email');
-const { toStripeShippingOptions, ALLOWED_SHIPPING_COUNTRIES, CURRENCY } = require('../config/shipping');
+const {
+  toStripeShippingOptions,
+  resolveCartShippingPrice,
+  ALLOWED_SHIPPING_COUNTRIES,
+  CURRENCY,
+} = require('../config/shipping');
 const { analyticsOrder } = require('../utils/analyticsOrder');
 const { decrementStockForOrder, shouldDecrementStockForFulfillment } = require('../utils/stock');
 const { ensureStripePrice } = require('../utils/stripeSync');
@@ -53,6 +58,9 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
 
     // ── Build line_items from DB-stored Stripe Price IDs ──────────────────────
     const lineItems = [];
+    // Products the session actually charges for. Their server-side shipping
+    // overrides — never anything the client sent — set the session's rate.
+    const cartProducts = [];
     for (const item of eligibleItems) {
       const product = productsBySlug.get(item.slug);
       if (product.stockQuantity <= 0 || product.stock === 'out') {
@@ -72,6 +80,7 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
       }
 
       lineItems.push({ price: priceId, quantity: item.qty });
+      cartProducts.push(product);
     }
 
     const frontendUrl = process.env.FRONTEND_URL || 'https://reflexityram.com';
@@ -83,7 +92,7 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
       // ── Shipping: Canada + US only. Stripe renders the country-appropriate
       // address form (Province/Postal code vs State/ZIP) automatically. ──────
       shipping_address_collection: { allowed_countries: ALLOWED_SHIPPING_COUNTRIES },
-      shipping_options: toStripeShippingOptions(),
+      shipping_options: toStripeShippingOptions(resolveCartShippingPrice(cartProducts)),
       phone_number_collection: { enabled: true },
       billing_address_collection: 'auto',
 

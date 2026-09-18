@@ -9,6 +9,27 @@ const SHIPPING_OPTIONS = {
 
 const getShippingOption = (id) => SHIPPING_OPTIONS[id] || null;
 
+// Some lots cost more to ship than the standard flat rate (heavier, bulkier, or
+// higher-value packaging). Those products carry a `shippingPrice` override; the
+// rest ship at the standard rate. A cart is charged the HIGHEST rate it
+// contains — never the sum — so adding a normal stick to an expensive lot can
+// never increase the buyer's shipping.
+// SECURITY: overrides come from the product documents on the server, never from
+// the client.
+const STANDARD_SHIPPING_PRICE = SHIPPING_OPTIONS.standard.price;
+
+const shippingPriceForProduct = (product) => {
+  const raw = product?.shippingPrice;
+  if (raw === undefined || raw === null || raw === '') return STANDARD_SHIPPING_PRICE;
+  const override = Number(raw);
+  return Number.isFinite(override) && override >= 0 ? override : STANDARD_SHIPPING_PRICE;
+};
+
+const resolveCartShippingPrice = (products = []) => {
+  if (!products.length) return STANDARD_SHIPPING_PRICE;
+  return products.reduce((highest, product) => Math.max(highest, shippingPriceForProduct(product)), 0);
+};
+
 // Store currency for Stripe (lowercase ISO). CAD is the storefront default;
 // deployments can still override it explicitly when required.
 const CURRENCY = (process.env.STRIPE_CURRENCY || 'cad').toLowerCase();
@@ -22,12 +43,17 @@ const ALLOWED_SHIPPING_COUNTRIES = ['CA', 'US'];
 // the app uses, so display prices and charged prices can never diverge.
 // tax_behavior 'exclusive': Stripe Tax adds tax on top of shipping where the
 // destination province taxes shipping (most Canadian provinces do).
-const toStripeShippingOptions = () =>
+// `price` overrides the standard rate for this session (see
+// resolveCartShippingPrice); omit it for the standard rate.
+const toStripeShippingOptions = (price) =>
   Object.values(SHIPPING_OPTIONS).map((opt) => ({
     shipping_rate_data: {
       type: 'fixed_amount',
       display_name: opt.label,
-      fixed_amount: { amount: Math.round(opt.price * 100), currency: CURRENCY },
+      fixed_amount: {
+        amount: Math.round((Number.isFinite(Number(price)) ? Number(price) : opt.price) * 100),
+        currency: CURRENCY,
+      },
       tax_behavior: 'exclusive',
       delivery_estimate: {
         minimum: { unit: 'business_day', value: opt.minDays },
@@ -39,7 +65,10 @@ const toStripeShippingOptions = () =>
 
 module.exports = {
   SHIPPING_OPTIONS,
+  STANDARD_SHIPPING_PRICE,
   getShippingOption,
+  shippingPriceForProduct,
+  resolveCartShippingPrice,
   CURRENCY,
   ALLOWED_SHIPPING_COUNTRIES,
   toStripeShippingOptions,

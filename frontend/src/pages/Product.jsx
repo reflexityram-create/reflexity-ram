@@ -33,7 +33,7 @@ import { ecommerceItem, trackEvent } from "@/lib/analytics";
 import {
   formatStorePrice,
   formatStorePriceWithCode,
-  STANDARD_SHIPPING_PRICE,
+  shippingPriceFor,
   STORE_CURRENCY_CODE,
 } from "@/lib/currency";
 
@@ -466,7 +466,7 @@ export default function Product() {
                   <div>
                     <div className="text-[13px] font-medium">🇨🇦 🇺🇸 Canada &amp; US shipping</div>
                     <div className="text-[12px] text-neutral-500">
-                      {formatStorePriceWithCode(STANDARD_SHIPPING_PRICE, 0)} flat rate · ESD-safe · tracked
+                      {formatStorePriceWithCode(shippingPriceFor(p), 0)} flat rate · ESD-safe · tracked
                     </div>
                   </div>
                 </div>

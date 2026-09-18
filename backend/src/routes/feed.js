@@ -1,11 +1,10 @@
 const express = require('express');
 const Product = require('../models/Product');
-const { SHIPPING_OPTIONS, CURRENCY } = require('../config/shipping');
+const { CURRENCY, shippingPriceForProduct } = require('../config/shipping');
 
 const router = express.Router();
 const BASE_URL = 'https://reflexityram.com';
 const STORE_CURRENCY = CURRENCY.toUpperCase();
-const STANDARD_SHIPPING_PRICE = SHIPPING_OPTIONS.standard.price;
 const publicFeedProducts = () => Product.find({ isActive: true, stock: { $ne: 'out' }, line: 'Server' }).lean();
 
 const xmlEscape = (value) => String(value ?? '')
@@ -42,7 +41,8 @@ router.get('/feed.xml', async (_req, res) => {
       if (product.brand) xml += `<g:brand>${xmlEscape(product.brand)}</g:brand>`;
       if (product.mpn) xml += `<g:mpn>${xmlEscape(product.mpn)}</g:mpn>`;
       xml += `<g:identifier_exists>${Boolean(product.brand && product.mpn)}</g:identifier_exists><g:product_type>Computer Memory</g:product_type>`;
-      for (const country of ['CA', 'US']) xml += `<g:shipping><g:country>${country}</g:country><g:service>Standard</g:service><g:price>${STANDARD_SHIPPING_PRICE} ${STORE_CURRENCY}</g:price></g:shipping>`;
+      const shippingPrice = shippingPriceForProduct(product);
+      for (const country of ['CA', 'US']) xml += `<g:shipping><g:country>${country}</g:country><g:service>Standard</g:service><g:price>${shippingPrice} ${STORE_CURRENCY}</g:price></g:shipping>`;
       xml += '</item>\n';
     }
     res.type('application/xml').set('Cache-Control', 'public, max-age=3600').send(`${xml}</channel></rss>`);

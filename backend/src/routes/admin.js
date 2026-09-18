@@ -149,6 +149,7 @@ router.post(
     body('warranty').trim().notEmpty().withMessage('Warranty required'),
     body('isActive').optional().isBoolean(),
     body('price').isFloat({ min: 0.01 }).withMessage('Price must be greater than 0'),
+    body('shippingPrice').optional({ nullable: true }).isFloat({ min: 0 }).withMessage('Shipping price cannot be negative'),
     body('stockQuantity').isInt({ min: 0 }).withMessage('Stock quantity must be non-negative'),
     body('description').optional().trim().isLength({ max: 5000 }),
     body('brand').optional().trim().isLength({ max: 100 }),
@@ -162,7 +163,7 @@ router.post(
         'slug', 'sku', 'name', 'line', 'generation', 'formFactor', 'capacity',
         'capacityLabel', 'kit', 'speed', 'speedLabel', 'cas', 'timings', 'voltage',
         'ecc', 'rank', 'profile', 'heatspreader', 'rgb', 'condition', 'warranty',
-        'price', 'stockQuantity', 'images', 'description', 'brand', 'mpn',
+        'price', 'shippingPrice', 'stockQuantity', 'images', 'description', 'brand', 'mpn',
         'metaTitle', 'metaDescription',
       ];
       // Force new products to be active
@@ -205,7 +206,7 @@ router.patch(
         'name', 'line', 'generation', 'formFactor', 'capacity', 'capacityLabel',
         'kit', 'speed', 'speedLabel', 'cas', 'timings', 'voltage', 'ecc', 'rank',
         'profile', 'heatspreader', 'rgb', 'condition', 'warranty', 'price',
-        'stockQuantity', 'images', 'description', 'brand', 'mpn',
+        'shippingPrice', 'stockQuantity', 'images', 'description', 'brand', 'mpn',
         'metaTitle', 'metaDescription', 'isActive',
       ];
       // Validate line if provided
@@ -218,6 +219,20 @@ router.patch(
       }
       if (req.body.isActive !== undefined && typeof req.body.isActive !== 'boolean') {
         return res.status(400).json({ error: 'isActive must be boolean' });
+      }
+      // Shipping override: a number >= 0 sets a per-product rate; null or ''
+      // clears it so the product falls back to the store's standard flat rate.
+      if (req.body.shippingPrice !== undefined) {
+        const raw = req.body.shippingPrice;
+        if (raw === null || raw === '') {
+          req.body.shippingPrice = null;
+        } else {
+          const value = Number(raw);
+          if (!Number.isFinite(value) || value < 0) {
+            return res.status(400).json({ error: 'Shipping price cannot be negative' });
+          }
+          req.body.shippingPrice = value;
+        }
       }
       const updates = {};
       for (const key of allowed) {
