@@ -22,6 +22,9 @@ function statusOptions(order) {
   // but never present refunded as an admin transition.
   return [current, ...allowed.filter((status) => status !== current && status !== 'refunded')];
 }
+// The status filter's options. Kept in the same order as NEXT_STATUS and
+// matching the values the admin orders API accepts.
+const STATUS_OPTIONS = Object.keys(NEXT_STATUS);
 const STATUS_PILLS = {
   pending: 'pill-amber',
   processing: 'pill-blue',
