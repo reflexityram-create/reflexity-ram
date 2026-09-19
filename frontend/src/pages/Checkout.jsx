@@ -117,7 +117,7 @@ export default function Checkout() {
                   </div>
                   <div className="flex items-start gap-2">
                     <Truck size={14} className="shrink-0 mt-0.5" />
-                    <span>Shipping to Canada and the United States</span>
+                    <span>Shipping to Canada and the United States. Ships in 1–3 business days; delivery estimated within 3–6 business days after dispatch.</span>
                   </div>
                 </div>
               </div>

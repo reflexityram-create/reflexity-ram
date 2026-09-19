@@ -1,10 +1,10 @@
 // ─── Shipping options — single source of truth ─────────────────────────────────
 // SECURITY: Shipping prices must NEVER be accepted from the client.
 // The frontend sends only the option `id`; the server looks up the price here.
-// Keep frontend/src/pages/Checkout.jsx SHIPPING_OPTIONS labels in sync for display.
+// Keep the delivery wording in the storefront and saved shipping policy in sync.
 
 const SHIPPING_OPTIONS = {
-  standard: { id: 'standard', label: 'Flat-Rate Shipping (ships in 1–3 business days)', price: 14, minDays: 1, maxDays: 3 },
+  standard: { id: 'standard', label: 'Flat-Rate Shipping (delivery 3–6 business days after dispatch)', price: 14, minDays: 3, maxDays: 6 },
 };
 
 const getShippingOption = (id) => SHIPPING_OPTIONS[id] || null;
