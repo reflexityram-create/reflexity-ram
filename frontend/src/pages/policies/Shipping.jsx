@@ -10,6 +10,8 @@ const DEFAULT_HTML = `<p>How we pack, process, and dispatch orders.</p>
 <p>Orders are typically processed and shipped within 1–3 business days of purchase.</p>
 <p>Memory modules are packaged appropriately to help protect them during transit. Packaging may include anti-static bags, original manufacturer packaging, original manufacturer boxes, or other suitable protective materials at our discretion.</p>
 <p>Processing times may occasionally be longer during holidays, severe weather events, carrier disruptions, or periods of unusually high order volume.</p>
+<h2>Estimated delivery</h2>
+<p>Standard delivery is estimated within 3–6 business days after dispatch. This is in addition to the 1–3 business day processing time. Business days exclude weekends and public holidays. Delivery estimates are not guaranteed.</p>
 <h2>Tracking information</h2>
 <p>Tracking information will be provided after dispatch when available through the selected carrier.</p>
 <h2>Delays or delivery issues</h2>

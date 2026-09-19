@@ -110,6 +110,9 @@ export default function OrderSuccess() {
               {order.trackingNumber && (
                 <div className="mt-4 pt-4 border-t border-white/5 text-[13px] text-neutral-400">
                   Tracking: <span className="mono text-white">{order.trackingNumber}</span>
+                  {order.status === 'shipped' && (
+                    <p className="mt-2">Estimated delivery: 3–6 business days after dispatch.</p>
+                  )}
                 </div>
               )}
             </div>
