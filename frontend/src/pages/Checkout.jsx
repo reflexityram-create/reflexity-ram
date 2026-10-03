@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Lock, Loader2, ShieldCheck, Truck, ArrowRight } from 'lucide-react';
+import { Lock, Loader2, ShieldCheck, Truck, ArrowRight, CreditCard } from 'lucide-react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
@@ -9,6 +9,7 @@ import { stripeApi } from '@/lib/api';
 import { useSEO } from '@/lib/seo';
 import { imageUrl } from '@/lib/imageUrl';
 import { formatStorePrice, STORE_CURRENCY_NAME } from '@/lib/currency';
+import { ACCEPTED_PAYMENTS_SENTENCE } from '@/lib/payments';
 import { ecommerceItem, readGaIdentifiers, trackEvent } from '@/lib/analytics';
 
 // Checkout is handled by Stripe's hosted Checkout page:
@@ -115,6 +116,10 @@ export default function Checkout() {
                   <div className="flex items-start gap-2">
                     <ShieldCheck size={14} className="shrink-0 mt-0.5" />
                     <span>Payment, address, and tax handled securely by Stripe</span>
+                  </div>
+                  <div className="flex items-start gap-2" data-testid="checkout-payments">
+                    <CreditCard size={14} className="shrink-0 mt-0.5" />
+                    <span>{ACCEPTED_PAYMENTS_SENTENCE}</span>
                   </div>
                   <div className="flex items-start gap-2">
                     <Truck size={14} className="shrink-0 mt-0.5" />

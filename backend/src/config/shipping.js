@@ -9,6 +9,11 @@ const SHIPPING_OPTIONS = {
 
 const getShippingOption = (id) => SHIPPING_OPTIONS[id] || null;
 
+// Business days between payment and dispatch. Keep in sync with the saved
+// shipping policy ("processed and shipped within 1–3 business days") and with
+// the Google Merchant Center shipping service.
+const HANDLING_DAYS = { min: 1, max: 3 };
+
 // Some lots cost more to ship than the standard flat rate (heavier, bulkier, or
 // higher-value packaging). Those products carry a `shippingPrice` override; the
 // rest ship at the standard rate. A cart is charged the HIGHEST rate it
@@ -65,6 +70,7 @@ const toStripeShippingOptions = (price) =>
 
 module.exports = {
   SHIPPING_OPTIONS,
+  HANDLING_DAYS,
   STANDARD_SHIPPING_PRICE,
   getShippingOption,
   shippingPriceForProduct,

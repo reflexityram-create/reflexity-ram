@@ -208,6 +208,41 @@ test("product edge metadata uses the exact live API contract and escapes values"
   assert.doesNotMatch(html, /<title>Home title<\/title>/);
 });
 
+test("product edge structured data carries the real shipping and return commitments", async () => {
+  const jsonLd = async (product) => {
+    const response = await renderProductPage(productContext(product.slug), {
+      fetchImpl: async () => Response.json({ product }),
+    });
+    const html = await response.text();
+    const match = html.match(/<script type="application\/ld\+json" data-edge-product>([\s\S]*?)<\/script>/);
+    assert.ok(match, "product JSON-LD present");
+    return JSON.parse(match[1]);
+  };
+
+  const standard = await jsonLd({
+    name: "SK hynix 16GB DDR4-3200", slug: "sk-hynix-16gb", line: "Server", formFactor: "RDIMM", mpn: "HMA82GR7DJR8N-XN",
+    brand: "SK hynix", price: 135, condition: "Refurbished — Tested", stock: "in", description: "Tested server memory module.",
+  });
+  assert.equal(standard.mpn, "HMA82GR7DJR8N-XN");
+  assert.equal(standard.offers.itemCondition, "https://schema.org/RefurbishedCondition");
+  assert.equal(standard.offers.seller.name, "Reflexity RAM");
+  const shipping = standard.offers.shippingDetails;
+  assert.equal(shipping["@type"], "OfferShippingDetails");
+  assert.deepEqual(shipping.shippingRate, { "@type": "MonetaryAmount", value: 14, currency: "CAD" });
+  assert.deepEqual(shipping.shippingDestination.map((region) => region.addressCountry), ["CA", "US"]);
+  assert.deepEqual([shipping.deliveryTime.handlingTime.minValue, shipping.deliveryTime.handlingTime.maxValue], [1, 3]);
+  assert.deepEqual([shipping.deliveryTime.transitTime.minValue, shipping.deliveryTime.transitTime.maxValue], [3, 6]);
+  const returns = standard.offers.hasMerchantReturnPolicy;
+  assert.equal(returns.merchantReturnDays, 30);
+  assert.equal(returns.returnPolicyCategory, "https://schema.org/MerchantReturnFiniteReturnWindow");
+  assert.equal(returns.merchantReturnLink, "https://reflexityram.com/returns");
+
+  const overridden = await jsonLd({ name: "Heavy lot", slug: "heavy-lot", line: "Server", price: 900, shippingPrice: 25, condition: "Used", description: "Lot of tested modules." });
+  assert.equal(overridden.offers.shippingDetails.shippingRate.value, 25);
+  assert.equal(overridden.offers.itemCondition, "https://schema.org/UsedCondition");
+  assert.equal(overridden.mpn, undefined);
+});
+
 test("product edge hides non-Server inventory but retains Server UDIMM metadata", async () => {
   const hidden = await renderProductPage(productContext("desktop-module"), {
     fetchImpl: async () => Response.json({

@@ -1,0 +1,10 @@
+{
+  "entries": [
+    {
+      "id": "GHSA-vfj7-8cjw-p6xm",
+      "package": "braces",
+      "expires": "2026-11-03",
+      "reason": "braces <= 3.0.3 can exhaust the stack on deeply nested brace patterns and no patched release exists (3.0.3 is the latest). It is only reached through build and dev tooling (nodemon/chokidar in the backend, tailwindcss/fast-glob/micromatch in the frontend build), which only ever feed it our own file globs, never request data. Re-check when braces publishes a fix; the entry stops working on the expiry date."
+    }
+  ]
+}
