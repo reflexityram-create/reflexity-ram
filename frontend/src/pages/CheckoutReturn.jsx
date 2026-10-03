@@ -38,7 +38,9 @@ export default function CheckoutReturn() {
         if (cancelled) return;
 
         if (data.status === 'complete' && data.orderNumber) {
-          trackPurchaseOnce(data);
+          // When the server reports the purchase itself (GA4 Measurement Protocol), reporting
+          // it here too would double-count; the browser path is only the fallback.
+          if (!data.serverPurchaseTracking) trackPurchaseOnce(data);
           clearCartLocal();
           const emailParam = data.email ? `?email=${encodeURIComponent(data.email)}` : '';
           navigate(`/order/${data.orderNumber}${emailParam}`, { replace: true });

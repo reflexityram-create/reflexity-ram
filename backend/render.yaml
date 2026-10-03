@@ -38,6 +38,13 @@ services:
         sync: false
       - key: STRIPE_CURRENCY
         value: cad
+      # Server-side GA4 purchase reporting (Measurement Protocol). Without the
+      # secret the browser reports purchases instead. Create the secret in GA4:
+      # Admin > Data streams > the web stream > Measurement Protocol API secrets.
+      - key: GA4_MEASUREMENT_ID
+        value: G-LHK5KZSYG6
+      - key: GA4_API_SECRET
+        sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET

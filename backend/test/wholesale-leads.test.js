@@ -210,7 +210,9 @@ test('server-only consumer feeds and old shop URLs remain available alongside wh
     { isActive: true, stock: { $ne: 'out' }, line: 'Server' },
   ]);
   const paths = STATIC_PAGES.map(({ path }) => path);
-  assert.ok(paths.includes('/inventory'));
+  // The old /inventory URL keeps working as a permanent redirect to /shop, so only the
+  // destination belongs in the sitemap (see the redirect guard in catalog-order-cart.test.js).
+  assert.ok(!paths.includes('/inventory'));
   assert.ok(paths.includes('/shop'));
 });
 

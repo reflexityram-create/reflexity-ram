@@ -12,6 +12,8 @@ const {
   CURRENCY,
 } = require('../config/shipping');
 const { analyticsOrder } = require('../utils/analyticsOrder');
+const { isServerPurchaseTrackingEnabled, sanitizeAnalyticsIds } = require('../utils/ga4');
+const { reportPaidOrderToGa4 } = require('../utils/purchaseAnalytics');
 const { decrementStockForOrder, shouldDecrementStockForFulfillment } = require('../utils/stock');
 const { ensureStripePrice } = require('../utils/stripeSync');
 const { isDisposableEmail } = require('../utils/disposableEmail');
@@ -86,6 +88,9 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
     }
 
     const frontendUrl = process.env.FRONTEND_URL || 'https://reflexityram.com';
+    // GA identifiers let the server attribute the purchase to the buyer's browsing
+    // session. They are optional, untrusted, and validated before use.
+    const gaIds = sanitizeAnalyticsIds(req.body?.analytics);
 
     const session = await checkoutSessionCreator({
       mode: 'payment',
@@ -112,6 +117,8 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
       metadata: {
         userId: userId ? userId.toString() : 'guest',
         cartSessionId: sessionId || '',
+        ...(gaIds.clientId ? { gaClientId: gaIds.clientId } : {}),
+        ...(gaIds.sessionId ? { gaSessionId: gaIds.sessionId } : {}),
       },
 
       success_url: `${frontendUrl}/order/success?session_id={CHECKOUT_SESSION_ID}`,
@@ -140,6 +147,9 @@ const ensureCriticalFulfillmentEffects = async (order) => {
   if (shouldDecrementStockForFulfillment(order)) {
     await decrementStockForOrder(order);
   }
+
+  // Retry the GA4 purchase if an earlier attempt failed (no-op once reported).
+  await reportPaidOrderToGa4(order, { currency: CURRENCY });
 
   return order;
 };
@@ -216,6 +226,10 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
 
   const pi = session.payment_intent;
   const userId = session.metadata?.userId !== 'guest' ? session.metadata?.userId : undefined;
+  const gaIds = sanitizeAnalyticsIds({
+    clientId: session.metadata?.gaClientId,
+    sessionId: session.metadata?.gaSessionId,
+  });
 
   let order;
   try {
@@ -234,6 +248,8 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
       stripeCheckoutSessionId: session.id,
       stripePaymentIntentId: typeof pi === 'string' ? pi : pi?.id,
       stripeChargeId: typeof pi === 'object' ? pi?.latest_charge || undefined : undefined,
+      analyticsClientId: gaIds.clientId,
+      analyticsSessionId: gaIds.sessionId,
       paymentStatus: 'paid',
       status: 'processing',
       // Guest emails aren't seen until Stripe hands them back post-payment, so a
@@ -285,6 +301,9 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
     }
   }
 
+  // GA4 purchase (server-side, fail-open, runs after every critical effect above).
+  await reportPaidOrderToGa4(order, { currency: CURRENCY });
+
   console.log(`✅ Fulfilled checkout session ${session.id} → order ${order.orderNumber}`);
   return order;
 };
@@ -310,6 +329,8 @@ router.get('/session-status', async (req, res) => {
       orderNumber: order.orderNumber,
       email: order.guestEmail || undefined,
       ...analyticsOrder(order, CURRENCY),
+      // When true the server reports the purchase to GA4, so the browser must not.
+      serverPurchaseTracking: isServerPurchaseTrackingEnabled(),
     });
   } catch (err) {
     console.error('Session status error:', err);
