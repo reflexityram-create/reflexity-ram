@@ -3,7 +3,9 @@
 // a Google product category, spec details and every extra photo.
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const http = require('node:http');
+const path = require('node:path');
 const express = require('express');
 
 process.env.NODE_ENV ||= 'test';
@@ -11,6 +13,7 @@ process.env.NODE_ENV ||= 'test';
 const Product = require('../src/models/Product');
 const feedRouter = require('../src/routes/feed');
 const { HANDLING_DAYS, SHIPPING_OPTIONS } = require('../src/config/shipping');
+const { AI_LABELED_FEED_IMAGES, labeledFeedImagePath } = require('../src/config/feedImages');
 
 const CLOUDINARY = 'https://res.cloudinary.com/demo/image/upload/v1700000000/reflexity-ram/products/module.jpg';
 
@@ -126,4 +129,93 @@ test('spec values are XML-escaped and the CSV feed uses the same delivery image'
   assert.match(xml, /<g:attribute_value>PC4 &lt;3200&gt; &amp; &quot;fast&quot;<\/g:attribute_value>/);
   const csv = await feedItems([product()], '/feed.csv');
   assert.match(csv, /e_trim:12\/c_fit,w_1100,h_800\/c_pad,w_1200,h_900,b_white\/f_jpg,q_auto:good\/v1700000000/);
+});
+
+// ---- AI-generated pictures must keep Google's IPTC label (DigitalSourceType trainedAlgorithmicMedia) ----
+
+const FEED_IMAGE_DIR = path.join(__dirname, '..', '..', 'frontend', 'public');
+const AI_ASSET = 'product-1787350684119-9h9uobzbd'; // the Lenovo 16GB picture, AI-generated
+const AI_URL = `https://res.cloudinary.com/demo/image/upload/v1787350684/reflexity-ram/products/${AI_ASSET}.jpg`;
+
+// Reads a JPEG's size and embedded XMP the way a crawler would: by walking the segments.
+function inspectJpeg(buffer) {
+  assert.equal(buffer.readUInt16BE(0), 0xffd8, 'not a JPEG');
+  let offset = 2;
+  const result = { width: 0, height: 0, xmp: '' };
+  while (offset < buffer.length - 4 && buffer[offset] === 0xff) {
+    const marker = buffer[offset + 1];
+    if (marker === 0xda) break;
+    const length = buffer.readUInt16BE(offset + 2);
+    const body = buffer.subarray(offset + 4, offset + 2 + length);
+    if ([0xc0, 0xc1, 0xc2].includes(marker)) {
+      result.height = body.readUInt16BE(1);
+      result.width = body.readUInt16BE(3);
+    }
+    const header = 'http://ns.adobe.com/xap/1.0/\0';
+    if (marker === 0xe1 && body.subarray(0, header.length).toString('latin1') === header) result.xmp = body.subarray(header.length).toString('utf8');
+    offset += 2 + length;
+  }
+  return result;
+}
+const withoutXmp = (buffer) => {
+  const out = [buffer.subarray(0, 2)];
+  let offset = 2;
+  while (offset < buffer.length - 4 && buffer[offset] === 0xff && buffer[offset + 1] !== 0xda) {
+    const length = buffer.readUInt16BE(offset + 2);
+    const segment = buffer.subarray(offset, offset + 2 + length);
+    const isXmp = buffer[offset + 1] === 0xe1 && segment.subarray(4, 33).toString('latin1').startsWith('http://ns.adobe.com/xap/1.0/');
+    if (!isXmp) out.push(segment);
+    offset += 2 + length;
+  }
+  out.push(buffer.subarray(offset));
+  return Buffer.concat(out);
+};
+
+test('every labeled feed image exists, is 1200x900 and carries the IPTC AI-generated label', () => {
+  const entries = Object.entries(AI_LABELED_FEED_IMAGES);
+  assert.ok(entries.length >= 3);
+  for (const [asset, publicPath] of entries) {
+    assert.match(asset, /^product-\d+-[a-z0-9]+$/);
+    assert.match(publicPath, /^\/feed-images\/[a-z0-9-]+\.jpg$/);
+    const file = path.join(FEED_IMAGE_DIR, publicPath);
+    assert.ok(fs.existsSync(file), `${publicPath} is missing from frontend/public`);
+    const info = inspectJpeg(fs.readFileSync(file));
+    assert.deepEqual([info.width, info.height], [1200, 900], publicPath);
+    assert.match(info.xmp, /<Iptc4xmpExt:DigitalSourceType>http:\/\/cv\.iptc\.org\/newscodes\/digitalsourcetype\/trainedAlgorithmicMedia<\/Iptc4xmpExt:DigitalSourceType>/, publicPath);
+  }
+});
+
+test('the label check itself fails on an image whose XMP was stripped (negative control)', () => {
+  const [, publicPath] = Object.entries(AI_LABELED_FEED_IMAGES)[0];
+  const original = fs.readFileSync(path.join(FEED_IMAGE_DIR, publicPath));
+  assert.match(inspectJpeg(original).xmp, /trainedAlgorithmicMedia/);
+  const stripped = withoutXmp(original);
+  assert.ok(stripped.length < original.length);
+  assert.equal(inspectJpeg(stripped).xmp, '');
+  assert.deepEqual([inspectJpeg(stripped).width, inspectJpeg(stripped).height], [1200, 900]);
+});
+
+test('the feed serves the labeled copy for a known AI picture, in the XML and the CSV', async () => {
+  const items = [product({ images: [{ url: AI_URL }] })];
+  const xml = await feedItems(items);
+  assert.equal(xml.match(/<g:image_link>(.*?)<\/g:image_link>/)[1], 'https://reflexityram.com/feed-images/rfx-lenovo-16gb-ddr4-3200-ecc-rdim.jpg');
+  const csv = await feedItems(items, '/feed.csv');
+  assert.match(csv, /https:\/\/reflexityram\.com\/feed-images\/rfx-lenovo-16gb-ddr4-3200-ecc-rdim\.jpg/);
+  assert.equal(csv.includes('res.cloudinary.com'), false);
+});
+
+test('a real photo never gets the AI copy: the override is keyed by the picture, not by the SKU', async () => {
+  // Same product (same SKU), but its first picture is now a different, newly uploaded asset.
+  const realUrl = 'https://res.cloudinary.com/demo/image/upload/v1790000000/reflexity-ram/products/product-1790000000000-realphoto1.jpg';
+  assert.equal(labeledFeedImagePath(realUrl), null);
+  const xml = await feedItems([product({ images: [{ url: realUrl }] })]);
+  const link = xml.match(/<g:image_link>(.*?)<\/g:image_link>/)[1];
+  assert.equal(link.includes('feed-images'), false);
+  assert.match(link, /e_trim:12\/c_fit,w_1100,h_800\/c_pad,w_1200,h_900/);
+  assert.match(link, /product-1790000000000-realphoto1\.jpg$/);
+});
+
+test('the labeled-image lookup tolerates junk input', () => {
+  for (const value of [undefined, null, '', 42, 'not a url', 'https://example.test/product-1-x']) assert.equal(labeledFeedImagePath(value), null);
+  assert.equal(labeledFeedImagePath(`${AI_URL}?v=2`), AI_LABELED_FEED_IMAGES[AI_ASSET]);
 });

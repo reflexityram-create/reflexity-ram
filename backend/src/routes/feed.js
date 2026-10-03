@@ -1,6 +1,7 @@
 const express = require('express');
 const Product = require('../models/Product');
 const { CURRENCY, HANDLING_DAYS, SHIPPING_OPTIONS, shippingPriceForProduct } = require('../config/shipping');
+const { labeledFeedImagePath } = require('../config/feedImages');
 
 const router = express.Router();
 const BASE_URL = 'https://reflexityram.com';
@@ -30,6 +31,12 @@ const feedImageUrl = (url) => {
   if (!/^https:\/\/res\.cloudinary\.com\//.test(value) || at < 0 || value.includes(FEED_IMAGE_TRANSFORM)) return value;
   return `${value.slice(0, at + marker.length)}${FEED_IMAGE_TRANSFORM}/${value.slice(at + marker.length)}`;
 };
+// The first picture: the labeled copy when it is a known AI-generated one, else the trimmed Cloudinary delivery.
+const mainImageUrl = (product) => {
+  const url = product.images?.[0]?.url;
+  const labeled = labeledFeedImagePath(url);
+  return labeled ? `${BASE_URL}${labeled}` : feedImageUrl(url);
+};
 const additionalImages = (product) => (product.images || []).slice(1, 1 + MAX_ADDITIONAL_IMAGES).map((image) => image?.url).filter(Boolean);
 const productDetails = (product) => [
   ['Capacity', product.capacityLabel],
@@ -57,7 +64,7 @@ router.get('/feed.xml', async (_req, res) => {
     let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0"><channel>\n';
     xml += `<title>Reflexity RAM</title><link>${BASE_URL}</link><description>Tested server memory modules</description>\n`;
     for (const product of products) {
-      const imageUrl = feedImageUrl(product.images?.[0]?.url);
+      const imageUrl = mainImageUrl(product);
       const price = product.compareAt > product.price ? product.compareAt : product.price;
       xml += '<item>\n';
       xml += `<g:id>${xmlEscape(product.sku)}</g:id><title><![CDATA[${cdata(product.name)}]]></title>`;
@@ -92,7 +99,7 @@ router.get('/feed.csv', async (_req, res) => {
     const header = 'id,title,description,link,image_link,price,condition,availability,brand,mpn,identifier_exists,product_type';
     const rows = products.map((product) => [
       product.sku, csv(product.name), csv(description(product)), `${BASE_URL}/shop/${encodeURIComponent(product.slug)}`,
-      feedImageUrl(product.images?.[0]?.url), `${product.price} ${STORE_CURRENCY}`, condition(product.condition), 'in_stock',
+      mainImageUrl(product), `${product.price} ${STORE_CURRENCY}`, condition(product.condition), 'in_stock',
       product.brand || '', product.mpn || '', Boolean(product.brand && product.mpn), 'Computer Memory',
     ].join(','));
     res.type('text/csv').set('Cache-Control', 'public, max-age=3600').send(`${header}\n${rows.join('\n')}`);
