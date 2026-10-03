@@ -25,6 +25,9 @@
 /og-image.jpg
   Cache-Control: public, max-age=86400
 
+/feed-images/*
+  Cache-Control: public, max-age=86400
+
 # Only the custom domain is canonical. Keep every *.pages.dev alias (the production alias
 # and each branch preview) out of search results so they cannot compete as duplicates.
 https://:project.pages.dev/*

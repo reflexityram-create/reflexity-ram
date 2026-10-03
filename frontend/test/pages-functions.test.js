@@ -131,7 +131,7 @@ test("Pages route manifest invokes Functions for public crawlable routes", async
   assert.deepEqual(routes, {
     version: 1,
     include: ["/*"],
-    exclude: ["/assets/*", "/.well-known/*", "/LICENSE.txt", "/analytics-bootstrap.js", "/error-bootstrap.js", "/favicon.svg", "/font-bootstrap.js", "/og-image.jpg", "/og-image.svg", "/robots.txt", "/security.txt", "/theme-bootstrap.js"],
+    exclude: ["/assets/*", "/.well-known/*", "/LICENSE.txt", "/analytics-bootstrap.js", "/error-bootstrap.js", "/favicon.svg", "/feed-images/*", "/font-bootstrap.js", "/og-image.jpg", "/og-image.svg", "/robots.txt", "/security.txt", "/theme-bootstrap.js"],
   });
 });
 
@@ -206,6 +206,14 @@ test("product edge metadata uses the exact live API contract and escapes values"
   assert.match(html, /"priceCurrency":"CAD"/);
   assert.doesNotMatch(html, /<div id="root"><\/div>/);
   assert.doesNotMatch(html, /<title>Home title<\/title>/);
+});
+
+test("the labeled Google feed images are served as plain static files, bypassing Functions", async () => {
+  const { readFileSync } = await import("node:fs");
+  const routes = JSON.parse(readFileSync(new URL("../public/_routes.json", import.meta.url), "utf8"));
+  assert.ok(routes.exclude.includes("/feed-images/*"));
+  const headers = readFileSync(new URL("../public/_headers", import.meta.url), "utf8");
+  assert.match(headers, /\/feed-images\/\*\n  Cache-Control: public, max-age=86400/);
 });
 
 test("product edge structured data carries the real shipping and return commitments", async () => {
