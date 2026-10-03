@@ -20,6 +20,8 @@ const { isFullyRefundedCharge } = require('../utils/refunds');
 const router = express.Router();
 let checkoutPriceEnsurer = ensureStripePrice;
 let checkoutSessionCreator = (payload) => stripe.checkout.sessions.create(payload);
+let checkoutSessionRetriever = (sessionId, options) => stripe.checkout.sessions.retrieve(sessionId, options);
+let stockDecrementer = decrementStockForOrder;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CHECKOUT SESSIONS (primary checkout flow)
@@ -88,6 +90,7 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
     const session = await checkoutSessionCreator({
       mode: 'payment',
       line_items: lineItems,
+      allow_promotion_codes: true,
 
       // ── Shipping: Canada + US only. Stripe renders the country-appropriate
       // address form (Province/Postal code vs State/ZIP) automatically. ──────
@@ -147,7 +150,7 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
   const existing = await Order.findOne({ stripeCheckoutSessionId: checkoutSessionId });
   if (existing) return ensureCriticalFulfillmentEffects(existing);
 
-  const session = await stripe.checkout.sessions.retrieve(checkoutSessionId, {
+  const session = await checkoutSessionRetriever(checkoutSessionId, {
     expand: ['line_items.data.price.product', 'payment_intent'],
   });
 
@@ -206,6 +209,7 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
   const subtotal = (session.amount_subtotal || 0) / 100;
   const tax = (session.total_details?.amount_tax || 0) / 100;
   const shippingCost = (session.total_details?.amount_shipping || 0) / 100;
+  const discount = (session.total_details?.amount_discount || 0) / 100;
   const total = (session.amount_total || 0) / 100;
   const shippingMethodLabel =
     session.shipping_cost?.shipping_rate?.display_name || 'Standard Shipping';
@@ -225,6 +229,7 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
       shippingCost,
       subtotal,
       tax,
+      discount,
       total,
       stripeCheckoutSessionId: session.id,
       stripePaymentIntentId: typeof pi === 'string' ? pi : pi?.id,
@@ -250,7 +255,7 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
   }
 
   // Exactly-once side effects (stock helper is itself idempotent via order flag)
-  await decrementStockForOrder(order);
+  await stockDecrementer(order);
 
   // Clear the cart that produced this session
   const cartFilter = userId
@@ -419,9 +424,16 @@ router.post('/webhook', async (req, res) => {
 });
 
 if (process.env.NODE_ENV === 'test') {
-  router.setCheckoutDependenciesForTest = ({ ensurePrice = ensureStripePrice, createSession } = {}) => {
+  router.setCheckoutDependenciesForTest = ({
+    ensurePrice = ensureStripePrice,
+    createSession,
+    retrieveSession,
+    decrementStock = decrementStockForOrder,
+  } = {}) => {
     checkoutPriceEnsurer = ensurePrice;
     checkoutSessionCreator = createSession || ((payload) => stripe.checkout.sessions.create(payload));
+    checkoutSessionRetriever = retrieveSession || ((sessionId, options) => stripe.checkout.sessions.retrieve(sessionId, options));
+    stockDecrementer = decrementStock;
   };
 }
 
