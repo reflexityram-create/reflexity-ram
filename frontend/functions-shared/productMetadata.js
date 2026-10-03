@@ -6,6 +6,51 @@ const PRODUCT_FETCH_BUDGET_MS = 2500;
 const MAX_HTML_BYTES = 128 * 1024;
 const VALID_SLUG = /^[a-z0-9][a-z0-9-]{0,199}$/;
 
+// Storefront commitments mirrored in the structured data below. Keep in sync with the saved
+// Shipping and Returns policies (src/pages/policies), backend/src/config/shipping.js and the
+// Google Merchant Center shipping and return settings.
+const STANDARD_SHIPPING_PRICE = 14;
+const SHIPPING_COUNTRIES = ["CA", "US"];
+const HANDLING_DAYS = { min: 1, max: 3 };
+const TRANSIT_DAYS = { min: 3, max: 6 };
+const RETURN_WINDOW_DAYS = 30;
+
+function shippingRateFor(product) {
+  const raw = product?.shippingPrice;
+  if (raw === undefined || raw === null || raw === "") return STANDARD_SHIPPING_PRICE;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : STANDARD_SHIPPING_PRICE;
+}
+
+function days(range) {
+  return { "@type": "QuantitativeValue", minValue: range.min, maxValue: range.max, unitCode: "DAY" };
+}
+
+function offerShippingDetails(product) {
+  return {
+    "@type": "OfferShippingDetails",
+    shippingRate: { "@type": "MonetaryAmount", value: shippingRateFor(product), currency: "CAD" },
+    shippingDestination: SHIPPING_COUNTRIES.map((addressCountry) => ({ "@type": "DefinedRegion", addressCountry })),
+    deliveryTime: { "@type": "ShippingDeliveryTime", handlingTime: days(HANDLING_DAYS), transitTime: days(TRANSIT_DAYS) },
+  };
+}
+
+const MERCHANT_RETURN_POLICY = {
+  "@type": "MerchantReturnPolicy",
+  applicableCountry: SHIPPING_COUNTRIES,
+  returnPolicyCategory: "https://schema.org/MerchantReturnFiniteReturnWindow",
+  merchantReturnDays: RETURN_WINDOW_DAYS,
+  returnMethod: "https://schema.org/ReturnByMail",
+  returnFees: "https://schema.org/ReturnShippingFees",
+  merchantReturnLink: `${STOREFRONT_ORIGIN}/returns`,
+};
+
+function itemConditionFor(condition) {
+  if (condition === "New") return "https://schema.org/NewCondition";
+  if (condition === "Open Box — Tested" || condition === "Refurbished — Tested") return "https://schema.org/RefurbishedCondition";
+  return "https://schema.org/UsedCondition";
+}
+
 function normalizeText(value, maxLength) {
   if (typeof value !== "string") return "";
   const plain = value
@@ -131,6 +176,7 @@ export function injectProductMetadata(html, product, requestedSlug) {
     description: metadata.description,
     image: [metadata.imageUrl],
     sku: sku || undefined,
+    mpn: normalizeText(product.mpn, 80) || undefined,
     brand: product.brand ? { "@type": "Brand", name: normalizeText(product.brand, 60) } : undefined,
     offers: {
       "@type": "Offer",
@@ -138,7 +184,10 @@ export function injectProductMetadata(html, product, requestedSlug) {
       priceCurrency: "CAD",
       price: Number(product.price || 0),
       availability,
-      itemCondition: product.condition === "New" ? "https://schema.org/NewCondition" : "https://schema.org/UsedCondition",
+      itemCondition: itemConditionFor(product.condition),
+      seller: { "@type": "Organization", name: "Reflexity RAM", url: STOREFRONT_ORIGIN },
+      shippingDetails: offerShippingDetails(product),
+      hasMerchantReturnPolicy: MERCHANT_RETURN_POLICY,
     },
   };
   output = insertBeforeHeadClose(output, `<script type="application/ld+json" data-edge-product>${safeJson(schema)}</script>`);

@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import ReflexityMark from "@/components/ReflexityMark";
 import { trackEvent } from "@/lib/analytics";
+import { ACCEPTED_PAYMENTS_SENTENCE } from "@/lib/payments";
 
 export default function Footer() {
   return (
@@ -22,6 +23,9 @@ export default function Footer() {
           </p>
           <p className="text-[12px] text-neutral-500">
             Server RAM · DDR4 · DDR5
+          </p>
+          <p className="text-[12px] text-neutral-500 mt-3" data-testid="footer-payments">
+            Secure checkout by Stripe. {ACCEPTED_PAYMENTS_SENTENCE}
           </p>
         </div>
 
