@@ -35,6 +35,42 @@ export function trackEvent(eventName, parameters = {}) {
   return true;
 }
 
+const GA_MEASUREMENT_ID = "G-LHK5KZSYG6";
+
+// The server reports the purchase to GA4 (Measurement Protocol), and only the browser knows
+// which GA client/session the buyer belongs to. Resolves {} immediately off the production
+// host, and after `timeoutMs` when gtag.js never answers (blocked), so it can never hold
+// checkout up for longer than that.
+export function readGaIdentifiers({ measurementId = GA_MEASUREMENT_ID, timeoutMs = 600 } = {}) {
+  return new Promise((resolve) => {
+    if (!shouldTrackLocation(globalThis.location) || typeof globalThis.gtag !== "function") {
+      resolve({});
+      return;
+    }
+    const ids = {};
+    let pending = 2;
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(ids);
+    };
+    const timer = setTimeout(finish, timeoutMs);
+    const read = (key, field) => globalThis.gtag("get", measurementId, key, (value) => {
+      if (value !== undefined && value !== null && value !== "") ids[field] = String(value);
+      pending -= 1;
+      if (pending === 0) finish();
+    });
+    try {
+      read("client_id", "clientId");
+      read("session_id", "sessionId");
+    } catch {
+      finish();
+    }
+  });
+}
+
 export function ecommerceItem(product, quantity = 1) {
   return {
     item_id: product?.sku || product?.slug,

@@ -9,7 +9,7 @@ import { stripeApi } from '@/lib/api';
 import { useSEO } from '@/lib/seo';
 import { imageUrl } from '@/lib/imageUrl';
 import { formatStorePrice, STORE_CURRENCY_NAME } from '@/lib/currency';
-import { ecommerceItem, trackEvent } from '@/lib/analytics';
+import { ecommerceItem, readGaIdentifiers, trackEvent } from '@/lib/analytics';
 
 // Checkout is handled by Stripe's hosted Checkout page:
 // - Address collection restricted to Canada + United States, with the
@@ -30,7 +30,8 @@ export default function Checkout() {
   const startCheckout = async () => {
     setRedirecting(true);
     try {
-      const { data } = await stripeApi.createCheckoutSession();
+      // Never blocks checkout: resolves {} when analytics is unavailable or blocked.
+      const { data } = await stripeApi.createCheckoutSession(await readGaIdentifiers());
       trackEvent('checkout_redirect', {
         currency: 'CAD',
         value: Number(subtotal || 0),

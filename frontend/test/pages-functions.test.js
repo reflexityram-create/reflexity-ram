@@ -131,7 +131,7 @@ test("Pages route manifest invokes Functions for public crawlable routes", async
   assert.deepEqual(routes, {
     version: 1,
     include: ["/*"],
-    exclude: ["/assets/*", "/.well-known/*", "/LICENSE.txt", "/analytics-bootstrap.js", "/error-bootstrap.js", "/favicon.svg", "/font-bootstrap.js", "/og-image.svg", "/robots.txt", "/security.txt", "/theme-bootstrap.js"],
+    exclude: ["/assets/*", "/.well-known/*", "/LICENSE.txt", "/analytics-bootstrap.js", "/error-bootstrap.js", "/favicon.svg", "/font-bootstrap.js", "/og-image.jpg", "/og-image.svg", "/robots.txt", "/security.txt", "/theme-bootstrap.js"],
   });
 });
 
@@ -383,4 +383,140 @@ test("product edge returns quickly and defers a slow metadata fetch", async () =
   assert.equal(response.headers.get("x-reflexity-seo"), "spa-timeout-fallback");
   assert.equal(deferred.length, 1);
   await Promise.all(deferred);
+});
+
+// ── Shop product list, structured data, social image, and pages.dev noindex ──────────────────────
+
+const edgeContext = (path, { method = "GET", waitUntil } = {}) => ({
+  request: new Request(`https://reflexityram.com${path}`, { method }),
+  next: async () => new Response(PRODUCT_SHELL, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }),
+  waitUntil,
+});
+const productsFetch = (products, calls = []) => async (url, init) => {
+  calls.push({ url: String(url), init });
+  return new Response(JSON.stringify({ products }), { status: 200, headers: { "Content-Type": "application/json" } });
+};
+const quietLogger = { warn: () => {}, error: () => {}, log: () => {} };
+
+test("/shop static HTML lists the live products and carries ItemList structured data", async () => {
+  const calls = [];
+  const response = await renderStaticPage(edgeContext("/shop"), {
+    fetchImpl: productsFetch([
+      { slug: "samsung-64gb", name: "Samsung 64GB DDR4 <ECC> LRDIMM", price: 585, stock: "in", generation: "DDR4", formFactor: "LRDIMM", capacityLabel: "64GB" },
+      { slug: "sk-hynix-16gb", name: "SK hynix 16GB", price: 135, stock: "out" },
+      { slug: "Bad Slug!", name: "Dropped: invalid slug", price: 1, stock: "in" },
+      { slug: "no-name", name: "   ", price: 1, stock: "in" },
+    ], calls),
+    logger: quietLogger,
+  });
+  const html = await response.text();
+  assert.equal(response.headers.get("x-reflexity-seo"), "static-edge");
+  assert.equal(calls.length, 1);
+  assert.equal(new URL(calls[0].url).pathname, "/api/products");
+
+  assert.match(html, /<ul data-edge-products>/);
+  assert.match(html, /<a href="\/shop\/samsung-64gb">Samsung 64GB DDR4 &lt;ECC&gt; LRDIMM<\/a> — DDR4 · LRDIMM · 64GB — CA\$585\.00 — In stock/);
+  assert.match(html, /<a href="\/shop\/sk-hynix-16gb">SK hynix 16GB<\/a> — CA\$135\.00 — Out of stock/);
+  assert.doesNotMatch(html, /CA"35\.00/, "a $1 in injected text must never be read as a replace() capture reference");
+  assert.doesNotMatch(html, /Dropped: invalid slug|no-name/);
+
+  const schema = JSON.parse(/<script type="application\/ld\+json" data-edge-schema>(.*?)<\/script>/s.exec(html)[1]);
+  assert.equal(schema["@type"], "ItemList");
+  assert.equal(schema.numberOfItems, 2);
+  assert.deepEqual(schema.itemListElement.map((item) => [item.position, item.url]), [
+    [1, "https://reflexityram.com/shop/samsung-64gb"],
+    [2, "https://reflexityram.com/shop/sk-hynix-16gb"],
+  ]);
+  assert.doesNotMatch(html, /<script[^>]*ld\+json[^>]*>[^<]*<ECC>/, "JSON-LD must never emit a raw <");
+});
+
+test("/shop falls back to the plain static shell when the product API fails or is slow", async () => {
+  const failing = await renderStaticPage(edgeContext("/shop"), {
+    fetchImpl: async () => new Response("down", { status: 503 }),
+    logger: quietLogger,
+  });
+  const failingHtml = await failing.text();
+  assert.equal(failing.status, 200);
+  assert.equal(failing.headers.get("x-reflexity-seo"), "static-edge");
+  assert.doesNotMatch(failingHtml, /data-edge-products|ld\+json/);
+  assert.match(failingHtml, /<h1>Shop tested Server RAM<\/h1>/);
+
+  let deferred = 0;
+  const started = Date.now();
+  const slow = await renderStaticPage(edgeContext("/shop", { waitUntil: () => { deferred += 1; } }), {
+    fetchImpl: () => new Promise(() => {}),
+    listFetchBudgetMs: 25,
+    logger: quietLogger,
+  });
+  assert.ok(Date.now() - started < 1500, "a hung product API must not hold the page up");
+  assert.doesNotMatch(await slow.text(), /data-edge-products/);
+  assert.equal(deferred, 1, "the slow fetch is handed to waitUntil so the edge cache warms");
+});
+
+test("only GET /shop fetches products, and other pages never do", async () => {
+  const calls = [];
+  const fetchImpl = productsFetch([{ slug: "a", name: "A", price: 1, stock: "in" }], calls);
+  await renderStaticPage(edgeContext("/shop", { method: "HEAD" }), { fetchImpl, logger: quietLogger });
+  await renderStaticPage(edgeContext("/guides"), { fetchImpl, logger: quietLogger });
+  await renderStaticPage(edgeContext("/"), { fetchImpl, logger: quietLogger });
+  assert.equal(calls.length, 0);
+  await renderStaticPage(edgeContext("/shop"), { logger: quietLogger });
+  assert.equal(calls.length, 0, "no fetchImpl means no network");
+});
+
+test("home page declares Organization and WebSite structured data; every static page has an absolute social image", async () => {
+  const home = await (await renderStaticPage(edgeContext("/"), { logger: quietLogger })).text();
+  const types = [...home.matchAll(/<script type="application\/ld\+json" data-edge-schema>(.*?)<\/script>/gs)].map((match) => JSON.parse(match[1])["@type"]);
+  assert.deepEqual(types, ["Organization", "WebSite"]);
+
+  for (const path of ["/", "/shop", "/guides/ddr4-vs-ddr5", "/support", "/liquidators", "/business-info"]) {
+    const html = await (await renderStaticPage(edgeContext(path), { logger: quietLogger })).text();
+    assert.match(html, /<meta property="og:image" content="https:\/\/reflexityram\.com\/og-image\.jpg" \/>/, path);
+    assert.match(html, /<meta name="twitter:image" content="https:\/\/reflexityram\.com\/og-image\.jpg" \/>/, path);
+  }
+});
+
+test("the shipped social image is a real 1200x630 JPEG and the shell references it absolutely", async () => {
+  const image = await readFile(new URL("../public/og-image.jpg", import.meta.url));
+  assert.deepEqual([...image.subarray(0, 3)], [0xff, 0xd8, 0xff], "og-image.jpg must be a JPEG");
+  assert.ok(image.length < 300 * 1024, "keep it under WhatsApp's thumbnail ceiling");
+  // Baseline JPEG: the SOF0 segment stores height then width.
+  const sof = image.indexOf(Buffer.from([0xff, 0xc0]));
+  assert.ok(sof > 0);
+  assert.deepEqual([image.readUInt16BE(sof + 5), image.readUInt16BE(sof + 7)], [630, 1200]);
+
+  const shell = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  assert.match(shell, /og:image" content="https:\/\/reflexityram\.com\/og-image\.jpg"/);
+  assert.match(shell, /twitter:image" content="https:\/\/reflexityram\.com\/og-image\.jpg"/);
+});
+
+test("pages.dev aliases are marked noindex without touching the custom domain rules", async () => {
+  const headers = await readFile(new URL("../public/_headers", import.meta.url), "utf8");
+  assert.match(headers, /^https:\/\/:project\.pages\.dev\/\*\n {2}X-Robots-Tag: noindex$/m);
+  // The catch-all block must not carry the directive, or reflexityram.com itself would be deindexed.
+  const catchAll = headers.split(/\n(?=\S)/).find((block) => block.startsWith("/*"));
+  assert.doesNotMatch(catchAll, /X-Robots-Tag/);
+});
+
+test("product edge text containing $ sequences is injected verbatim (String.replace pitfalls)", async () => {
+  // "$1", "$&" and "$$" are special in a String.replace replacement string; product titles and
+  // descriptions mention prices, so they must be inserted literally.
+  const slug = "rfx-dollar-product";
+  const response = await renderProductPage(productContext(slug), {
+    fetchImpl: async () => Response.json({
+      product: {
+        name: "Kit costs $1 less than $2",
+        slug,
+        line: "Server",
+        formFactor: "UDIMM",
+        description: "Only $135 each — save $1 on a pair, $& more, $$ total",
+        price: 135,
+        images: [],
+      },
+    }),
+  });
+  const html = await response.text();
+  assert.match(html, /<title>Kit costs \$1 less than \$2<\/title>/);
+  assert.match(html, /content="Only \$135 each — save \$1 on a pair, \$&amp; more, \$\$ total"/);
+  assert.match(html, /<h1>Kit costs \$1 less than \$2<\/h1>/);
 });

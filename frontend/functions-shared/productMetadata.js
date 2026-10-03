@@ -44,20 +44,20 @@ function upsertMeta(html, attribute, key, content) {
     `<meta\\b[^>]*\\b${attribute}=(['"])${escapeRegExp(key)}\\1[^>]*>`,
     "i",
   );
-  return pattern.test(html) ? html.replace(pattern, tag) : insertBeforeHeadClose(html, tag);
+  return pattern.test(html) ? html.replace(pattern, () => tag) : insertBeforeHeadClose(html, tag);
 }
 
 function upsertTitle(html, title) {
   const tag = `<title>${escapeHtml(title)}</title>`;
   return /<title\b[^>]*>[\s\S]*?<\/title>/i.test(html)
-    ? html.replace(/<title\b[^>]*>[\s\S]*?<\/title>/i, tag)
+    ? html.replace(/<title\b[^>]*>[\s\S]*?<\/title>/i, () => tag)
     : insertBeforeHeadClose(html, tag);
 }
 
 function upsertCanonical(html, canonicalUrl) {
   const tag = `<link rel="canonical" href="${escapeHtml(canonicalUrl)}" />`;
   const pattern = /<link\b(?=[^>]*\brel=(['"])canonical\1)[^>]*>/i;
-  return pattern.test(html) ? html.replace(pattern, tag) : insertBeforeHeadClose(html, tag);
+  return pattern.test(html) ? html.replace(pattern, () => tag) : insertBeforeHeadClose(html, tag);
 }
 
 function safeImageUrl(product) {
@@ -65,15 +65,15 @@ function safeImageUrl(product) {
     typeof image === "string" ? image : image?.url,
   );
   const value = typeof candidate === "string" ? candidate : candidate?.url;
-  if (!value) return `${STOREFRONT_ORIGIN}/og-image.svg`;
+  if (!value) return `${STOREFRONT_ORIGIN}/og-image.jpg`;
 
   try {
     const url = new URL(value, STOREFRONT_ORIGIN);
     return url.protocol === "https:"
       ? url.toString()
-      : `${STOREFRONT_ORIGIN}/og-image.svg`;
+      : `${STOREFRONT_ORIGIN}/og-image.jpg`;
   } catch {
-    return `${STOREFRONT_ORIGIN}/og-image.svg`;
+    return `${STOREFRONT_ORIGIN}/og-image.jpg`;
   }
 }
 
@@ -144,7 +144,7 @@ export function injectProductMetadata(html, product, requestedSlug) {
   output = insertBeforeHeadClose(output, `<script type="application/ld+json" data-edge-product>${safeJson(schema)}</script>`);
   const details = [generation, formFactor, normalizeText(product.capacityLabel, 40), normalizeText(product.speedLabel, 40)].filter(Boolean).join(" · ");
   const body = `<div id="root"><main data-edge-content="product"><nav><a href="/">Reflexity RAM</a> · <a href="/shop">Shop tested RAM</a> · <a href="/guides">Compatibility guides</a></nav><article><h1>${escapeHtml(name)}</h1><p>${escapeHtml(metadata.description)}</p>${details ? `<p>${escapeHtml(details)}</p>` : ""}${sku ? `<p>SKU: ${escapeHtml(sku)}</p>` : ""}<p><a href="${escapeHtml(metadata.canonicalUrl)}">View product details</a> · <a href="/support">Ask about compatibility</a></p></article></main></div>`;
-  return output.replace(/<div\s+id=(['"])root\1\s*><\/div>/i, body);
+  return output.replace(/<div\s+id=(['"])root\1\s*><\/div>/i, () => body);
 }
 
 function injectNotFoundMetadata(html) {

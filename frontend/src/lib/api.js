@@ -125,7 +125,12 @@ export const ordersApi = {
 
 // ─── Stripe API ───────────────────────────────────────────────────────────────
 export const stripeApi = {
-  createCheckoutSession: () => api.post('/stripe/create-checkout-session'),
+  // `analytics` ({ clientId, sessionId }) is optional; the server validates it and uses it
+  // only to attribute the purchase it reports to GA4.
+  createCheckoutSession: (analytics) => api.post(
+    '/stripe/create-checkout-session',
+    analytics && Object.keys(analytics).length > 0 ? { analytics } : undefined,
+  ),
   sessionStatus: (sessionId) =>
     api.get('/stripe/session-status', { params: { session_id: sessionId } }),
 };

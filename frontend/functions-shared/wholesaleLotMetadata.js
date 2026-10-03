@@ -7,11 +7,11 @@ const FETCH_BUDGET_MS = 2500;
 const escapeHtml = (value) => String(value || "").replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("'", "&#39;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 const safeJson = (value) => JSON.stringify(value).replaceAll("<", "\\u003c");
 const insertHead = (html, tag) => html.replace(/([ \t]*)<\/head>/i, (_match, indent) => `${indent}${tag}\n${indent}</head>`);
-const replaceTitle = (html, title) => /<title\b[^>]*>[\s\S]*?<\/title>/i.test(html) ? html.replace(/<title\b[^>]*>[\s\S]*?<\/title>/i, `<title>${escapeHtml(title)}</title>`) : insertHead(html, `<title>${escapeHtml(title)}</title>`);
+const replaceTitle = (html, title) => /<title\b[^>]*>[\s\S]*?<\/title>/i.test(html) ? html.replace(/<title\b[^>]*>[\s\S]*?<\/title>/i, () => `<title>${escapeHtml(title)}</title>`) : insertHead(html, `<title>${escapeHtml(title)}</title>`);
 const replaceMeta = (html, attribute, name, content) => {
   const tag = `<meta ${attribute}="${name}" content="${escapeHtml(content)}" />`;
   const pattern = new RegExp(`<meta\\b[^>]*\\b${attribute}=(['"])${name}\\1[^>]*>`, "i");
-  return pattern.test(html) ? html.replace(pattern, tag) : insertHead(html, tag);
+  return pattern.test(html) ? html.replace(pattern, () => tag) : insertHead(html, tag);
 };
 
 function withHeaders(response, body, source, status = response.status) {
@@ -47,15 +47,15 @@ function injectLot(html, lot, id) {
   const canonical = `${ORIGIN}/wholesale/${encodeURIComponent(id)}`;
   const details = [lot.brand, lot.mpn, lot.generation, lot.formFactor, lot.capacityLabel, lot.speedLabel].filter(Boolean).join(" · ");
   const description = `Wholesale availability for ${title}${details ? ` (${details})` : ""}. Request a quote for current quantity and lot terms.`.slice(0, 190);
-  const image = typeof lot.imageUrl === "string" && lot.imageUrl.startsWith("https:") ? lot.imageUrl : `${ORIGIN}/og-image.svg`;
+  const image = typeof lot.imageUrl === "string" && lot.imageUrl.startsWith("https:") ? lot.imageUrl : `${ORIGIN}/og-image.jpg`;
   let output = replaceTitle(html, `${title} — Wholesale Lot | Reflexity`);
   for (const [attribute, name, content] of [["name", "description", description], ["property", "og:title", title], ["property", "og:description", description], ["property", "og:type", "product"], ["property", "og:url", canonical], ["property", "og:image", image], ["name", "twitter:title", title], ["name", "twitter:description", description], ["name", "twitter:image", image]]) output = replaceMeta(output, attribute, name, content);
-  output = output.replace(/<link\b(?=[^>]*\brel=(['"])canonical\1)[^>]*>/i, `<link rel="canonical" href="${canonical}" />`);
+  output = output.replace(/<link\b(?=[^>]*\brel=(['"])canonical\1)[^>]*>/i, () => `<link rel="canonical" href="${canonical}" />`);
   if (!/rel=(['"])canonical\1/i.test(output)) output = insertHead(output, `<link rel="canonical" href="${canonical}" />`);
   const schema = { "@context": "https://schema.org", "@type": "Product", name: title, description, image: [image], sku: lot.lotCode || undefined, brand: lot.brand ? { "@type": "Brand", name: String(lot.brand).slice(0, 80) } : undefined };
   output = insertHead(output, `<script type="application/ld+json" data-edge-wholesale-lot>${safeJson(schema)}</script>`);
   const body = `<div id="root"><main data-edge-content="wholesale-lot"><nav><a href="/">Reflexity RAM</a> · <a href="/wholesale">Wholesale</a> · <a href="/support">Support</a></nav><article><h1>${escapeHtml(title)}</h1><p>${escapeHtml(description)}</p>${details ? `<p>${escapeHtml(details)}</p>` : ""}<p><a href="/support">Request availability and bulk pricing</a> · <a href="/liquidators">Sell hardware to Reflexity</a></p></article></main></div>`;
-  return output.replace(/<div\s+id=(['"])root\1\s*><\/div>/i, body);
+  return output.replace(/<div\s+id=(['"])root\1\s*><\/div>/i, () => body);
 }
 
 export async function renderWholesaleLotPage(context, { fetchImpl = fetch, fetchBudgetMs = FETCH_BUDGET_MS } = {}) {

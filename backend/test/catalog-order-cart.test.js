@@ -408,7 +408,6 @@ test('sitemap includes every indexable public storefront route', () => {
   const paths = new Set(STATIC_PAGES.map(({ path }) => path));
   const expectedPaths = [
     '/',
-    '/inventory',
     '/shop',
     '/guides',
     '/guides/ddr4-vs-ddr5',
@@ -416,9 +415,9 @@ test('sitemap includes every indexable public storefront route', () => {
     '/guides/how-to-identify-ram',
     '/guides/how-much-ram-do-i-need',
     '/wholesale',
-    '/sell-to-us',
-    '/contact',
-    '/about',
+    '/liquidators',
+    '/support',
+    '/business-info',
     '/shipping',
     '/international',
     '/returns',
@@ -432,6 +431,19 @@ test('sitemap includes every indexable public storefront route', () => {
     assert.equal(paths.has(path), true, `${path} must be present in the sitemap`);
   }
   assert.equal(paths.size, expectedPaths.length, 'sitemap paths must remain complete and unique');
+});
+
+test('no sitemap URL is a permanent redirect', async () => {
+  // Search Console flags redirecting sitemap URLs ("Page with redirect"); the storefront's
+  // own redirect table is the source of truth for which paths no longer serve content.
+  const { legacyRedirect } = await import('../../frontend/functions-shared/legacyRedirects.js');
+  for (const { path } of STATIC_PAGES) {
+    assert.equal(
+      legacyRedirect(new Request(`https://reflexityram.com${path}`)),
+      null,
+      `${path} is redirected by the storefront, so it must not be listed in the sitemap`,
+    );
+  }
 });
 
 test('admin order transitions are one-way and paid orders cannot be manually cancelled', () => {

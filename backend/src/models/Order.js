@@ -66,6 +66,12 @@ const orderSchema = new mongoose.Schema({
   total: { type: Number, required: true },
   // Guard flag: stock is decremented exactly once per order (see utils/stock.js)
   stockDecremented: { type: Boolean, default: false },
+  // Server-side GA4 purchase reporting (see utils/ga4.js, utils/purchaseAnalytics.js).
+  // Client/session ids come from the buyer's browser at checkout; the sent-at stamp
+  // is the exactly-once claim. select:false keeps them out of every default query.
+  analyticsClientId: { type: String, select: false },
+  analyticsSessionId: { type: String, select: false },
+  analyticsPurchaseSentAt: { type: Date, default: null, select: false },
   // Admins can archive orders to declutter the list without deleting the
   // financial record. Archived orders are hidden from the default view.
   archived: { type: Boolean, default: false },
