@@ -124,7 +124,9 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
 
       success_url: `${frontendUrl}/order/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${frontendUrl}/cart`,
-      expires_at: Math.floor(Date.now() / 1000) + 30 * 60, // 30 minutes
+      // No expires_at: Stripe's default keeps the session open for 24 hours, its
+      // maximum. Stock is only taken at fulfillment, so an open session holds
+      // nothing; a 30-minute window cut off a real buyer mid bank verification.
     });
 
     res.json({ url: session.url, sessionId: session.id });
