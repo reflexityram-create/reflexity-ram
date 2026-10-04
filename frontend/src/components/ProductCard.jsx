@@ -58,7 +58,7 @@ export default function ProductCard({ p, index = 0, priority = false }) {
         {/* Shipping coverage badge — positive framing, bottom-left */}
         <div className="absolute bottom-3 left-3">
           <span className="pill text-[10px] py-1 px-2 bg-black/50 backdrop-blur-sm">
-            🇨🇦 🇺🇸 CA &amp; US
+            🇨🇦 Ships in Canada
           </span>
         </div>
       </div>

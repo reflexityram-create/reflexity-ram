@@ -76,14 +76,16 @@ test('every shipping line states handling and transit days that match the saved 
 
   const xml = await feedItems([product()]);
   const lines = xml.match(/<g:shipping>[\s\S]*?<\/g:shipping>/g);
-  assert.equal(lines.length, 2);
+  // Website checkout ships to Canada only (US orders paused 2026-10-04), so the
+  // feed must not promise US shipping Google would then show to US shoppers.
+  assert.equal(lines.length, 1);
   for (const line of lines) {
     assert.match(line, /<g:min_handling_time>1<\/g:min_handling_time><g:max_handling_time>3<\/g:max_handling_time>/);
     assert.match(line, /<g:min_transit_time>3<\/g:min_transit_time><g:max_transit_time>6<\/g:max_transit_time>/);
     assert.match(line, /<g:price>14 CAD<\/g:price>/);
   }
   assert.match(lines[0], /<g:country>CA<\/g:country>/);
-  assert.match(lines[1], /<g:country>US<\/g:country>/);
+  assert.doesNotMatch(xml, /<g:country>US<\/g:country>/);
 });
 
 test('the feed image is a trimmed, padded 1200x900 delivery of the Cloudinary original', async () => {

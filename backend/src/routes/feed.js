@@ -1,6 +1,8 @@
 const express = require('express');
 const Product = require('../models/Product');
-const { CURRENCY, HANDLING_DAYS, SHIPPING_OPTIONS, shippingPriceForProduct } = require('../config/shipping');
+const {
+  ALLOWED_SHIPPING_COUNTRIES, CURRENCY, HANDLING_DAYS, SHIPPING_OPTIONS, shippingPriceForProduct,
+} = require('../config/shipping');
 const { labeledFeedImagePath } = require('../config/feedImages');
 
 const router = express.Router();
@@ -83,7 +85,7 @@ router.get('/feed.xml', async (_req, res) => {
         xml += `<g:product_detail><g:section_name>Specifications</g:section_name><g:attribute_name>${xmlEscape(name)}</g:attribute_name><g:attribute_value>${xmlEscape(value)}</g:attribute_value></g:product_detail>`;
       }
       const shippingPrice = shippingPriceForProduct(product);
-      for (const country of ['CA', 'US']) xml += shippingXml(country, shippingPrice);
+      for (const country of ALLOWED_SHIPPING_COUNTRIES) xml += shippingXml(country, shippingPrice);
       xml += '</item>\n';
     }
     res.type('application/xml').set('Cache-Control', 'public, max-age=3600').send(`${xml}</channel></rss>`);

@@ -10,7 +10,7 @@ const VALID_SLUG = /^[a-z0-9][a-z0-9-]{0,199}$/;
 // Shipping and Returns policies (src/pages/policies), backend/src/config/shipping.js and the
 // Google Merchant Center shipping and return settings.
 const STANDARD_SHIPPING_PRICE = 14;
-const SHIPPING_COUNTRIES = ["CA", "US"];
+const SHIPPING_COUNTRIES = ["CA"];
 const HANDLING_DAYS = { min: 1, max: 3 };
 const TRANSIT_DAYS = { min: 3, max: 6 };
 const RETURN_WINDOW_DAYS = 30;

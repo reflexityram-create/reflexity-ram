@@ -106,7 +106,7 @@ const PAGES = {
   },
   "/international": {
     title: "International RAM Orders — Reflexity RAM",
-    description: "How to request custom shipping for Reflexity RAM orders outside Canada and the United States.",
+    description: "How to request custom shipping for Reflexity RAM orders outside Canada, including the United States.",
     heading: "International RAM orders",
     links: [["Contact support", "/support"], ["Shop tested RAM", "/shop"]],
   },

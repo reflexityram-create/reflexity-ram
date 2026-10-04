@@ -33,7 +33,7 @@ export default function BusinessInfo() {
         {
           heading: "Order fulfilment",
           body: [
-            "Orders ship from Toronto. Standard website checkout is available for Canada and the United States at the shipping rate shown during checkout.",
+            "Orders ship from Toronto. Standard website checkout is available for Canada at the shipping rate shown during checkout. Orders to the United States and other countries are quoted by email.",
             "Product condition, stock status, warranty coverage, and key specifications are shown on each product page. Used memory may have normal cosmetic wear that does not affect operation.",
           ],
         },

@@ -70,7 +70,7 @@ export default function Product() {
   useSEO({
     title: p?.metaTitle || p?.name,
     description: p
-      ? p.metaDescription || `${p.name} — ${p.generation} ${p.formFactor} · ${p.speedLabel} · ${p.cas} · ${p.condition}. Tested RAM with ${p.warranty} warranty, shipping from Toronto across Canada and the US.`
+      ? p.metaDescription || `${p.name} — ${p.generation} ${p.formFactor} · ${p.speedLabel} · ${p.cas} · ${p.condition}. Tested RAM with ${p.warranty} warranty, shipping from Toronto across Canada.`
       : null,
   });
 
@@ -464,7 +464,7 @@ export default function Product() {
                 <div className="glass-soft rounded-xl p-4 flex items-start gap-3">
                   <Truck size={18} className="text-neutral-300 mt-0.5 shrink-0" />
                   <div>
-                    <div className="text-[13px] font-medium">🇨🇦 🇺🇸 Canada &amp; US shipping</div>
+                    <div className="text-[13px] font-medium">🇨🇦 Canada-wide shipping</div>
                     <div className="text-[12px] text-neutral-500">
                       {formatStorePriceWithCode(shippingPriceFor(p), 0)} flat rate · ESD-safe · tracked
                     </div>
@@ -485,7 +485,7 @@ export default function Product() {
               <div className="glass-soft rounded-xl p-4 flex items-start gap-3 mb-6">
                 <Globe size={18} className="text-neutral-300 mt-0.5 shrink-0" />
                 <div>
-                  <div className="text-[13px] font-medium">🌍 Shipping outside Canada &amp; US?</div>
+                  <div className="text-[13px] font-medium">🌍 Shipping outside Canada, including the US?</div>
                   <div className="text-[12px] text-neutral-500">
                     We ship worldwide as custom orders.{" "}
                     <Link to="/international" className="text-emerald-400 hover:text-emerald-300 underline">

@@ -13,9 +13,8 @@ import { ACCEPTED_PAYMENTS_SENTENCE } from '@/lib/payments';
 import { ecommerceItem, readGaIdentifiers, trackEvent } from '@/lib/analytics';
 
 // Checkout is handled by Stripe's hosted Checkout page:
-// - Address collection restricted to Canada + United States, with the
-//   country-appropriate form (Province/Postal code vs State/ZIP) rendered
-//   by Stripe automatically
+// - Address collection restricted to Canada (Province/Postal code form
+//   rendered by Stripe)
 // - Phone number collection enabled
 // - Stripe Tax applies Canadian provincial tax (HST/GST/PST); US orders are
 //   untaxed until US registrations are added in the Stripe dashboard
@@ -123,7 +122,7 @@ export default function Checkout() {
                   </div>
                   <div className="flex items-start gap-2">
                     <Truck size={14} className="shrink-0 mt-0.5" />
-                    <span>Shipping to Canada and the United States. Ships in 1–3 business days; delivery estimated within 3–6 business days after dispatch.</span>
+                    <span>Shipping within Canada. Ships in 1–3 business days; delivery estimated within 3–6 business days after dispatch.</span>
                   </div>
                 </div>
               </div>
