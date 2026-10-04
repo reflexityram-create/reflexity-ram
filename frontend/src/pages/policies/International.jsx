@@ -9,8 +9,8 @@ const DEFAULT_HTML = `<p>We ship Reflexity RAM worldwide — international order
 <p>1. Email us at reflexityram@gmail.com with the product(s) you want and your country.</p>
 <p>2. We'll reply to arrange the details, including a shipping quote and your contact number so we can stay in touch.</p>
 <p>3. Once everything's confirmed, we pack and ship directly to you with tracking.</p>
-<h2>Canada & US customers</h2>
-<p>If you're in Canada or the United States, there's nothing extra to do — just check out normally on the site with our $14 CAD flat-rate shipping (a few listings ship at a higher flat rate, shown on the product page and at checkout).</p>
+<h2>Customers in Canada</h2>
+<p>If you're in Canada, there's nothing extra to do — just check out normally on the site with our $14 CAD flat-rate shipping (a few listings ship at a higher flat rate, shown on the product page and at checkout). Orders to the United States are handled like other international orders: email us for a quote.</p>
 <h2>Questions</h2>
 <p>Reach us anytime at reflexityram@gmail.com and we'll be happy to help.</p>`;
 

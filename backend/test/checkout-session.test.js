@@ -30,7 +30,7 @@ async function request(app, path) {
 
 // A buyer who has to approve the payment in their banking app can take longer
 // than half an hour; a 30-minute window cancelled one mid-verification.
-test('checkout sessions stay open for Stripe\'s full 24-hour default', async () => {
+test('checkout sessions stay open for Stripe\'s 24-hour default and ship to Canada only', async () => {
   const originalFind = Product.find;
   const originalCartFindOne = Cart.findOne;
   try {
@@ -52,6 +52,9 @@ test('checkout sessions stay open for Stripe\'s full 24-hour default', async () 
 
     assert.equal(response.status, 200);
     assert.equal('expires_at' in payload, false, 'no custom expiry, so Stripe applies its 24-hour default');
+    // US orders were paused 2026-10-04 (duties-paid customs labels for every parcel);
+    // US buyers email for a quote instead, so Stripe must refuse a US address.
+    assert.deepEqual(payload.shipping_address_collection, { allowed_countries: ['CA'] });
   } finally {
     stripeRouter.setCheckoutDependenciesForTest();
     Product.find = originalFind;

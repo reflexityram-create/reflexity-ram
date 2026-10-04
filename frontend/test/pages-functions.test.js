@@ -237,7 +237,7 @@ test("product edge structured data carries the real shipping and return commitme
   const shipping = standard.offers.shippingDetails;
   assert.equal(shipping["@type"], "OfferShippingDetails");
   assert.deepEqual(shipping.shippingRate, { "@type": "MonetaryAmount", value: 14, currency: "CAD" });
-  assert.deepEqual(shipping.shippingDestination.map((region) => region.addressCountry), ["CA", "US"]);
+  assert.deepEqual(shipping.shippingDestination.map((region) => region.addressCountry), ["CA"]);
   assert.deepEqual([shipping.deliveryTime.handlingTime.minValue, shipping.deliveryTime.handlingTime.maxValue], [1, 3]);
   assert.deepEqual([shipping.deliveryTime.transitTime.minValue, shipping.deliveryTime.transitTime.maxValue], [3, 6]);
   const returns = standard.offers.hasMerchantReturnPolicy;

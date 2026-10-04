@@ -39,10 +39,12 @@ const resolveCartShippingPrice = (products = []) => {
 // deployments can still override it explicitly when required.
 const CURRENCY = (process.env.STRIPE_CURRENCY || 'cad').toLowerCase();
 
-// Countries we ship to — enforced by Stripe's hosted checkout, which also
-// renders the correct address form per country (Province/Postal code for CA,
-// State/ZIP for US) automatically.
-const ALLOWED_SHIPPING_COUNTRIES = ['CA', 'US'];
+// Countries website checkout ships to, enforced by Stripe's hosted checkout.
+// US orders were paused 2026-10-04: every US parcel now needs a duties-paid
+// customs label, and the US had no add-to-carts in 90 days. US buyers email
+// for a quote, like other international orders. Re-adding 'US' here also needs
+// the policy pages, the edge JSON-LD and the Merchant Center settings.
+const ALLOWED_SHIPPING_COUNTRIES = ['CA'];
 
 // Build Stripe Checkout `shipping_options` from the same table the rest of
 // the app uses, so display prices and charged prices can never diverge.

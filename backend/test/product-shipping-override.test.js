@@ -163,7 +163,7 @@ test('the Google feed advertises each product at its own shipping rate', async (
     assert.equal(items.length, 2);
     assert.match(items[0], /<g:price>14 CAD<\/g:price><\/g:shipping>/);
     assert.match(items[1], /<g:price>25 CAD<\/g:price><\/g:shipping>/);
-    assert.equal((items[1].match(/25 CAD<\/g:price><\/g:shipping>/g) || []).length, 2); // CA + US
+    assert.equal((items[1].match(/25 CAD<\/g:price><\/g:shipping>/g) || []).length, 1); // CA only
   } finally {
     Product.find = originalFind;
   }

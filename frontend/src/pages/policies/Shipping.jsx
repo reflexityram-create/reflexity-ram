@@ -4,8 +4,8 @@ import EditablePolicyPage from "@/components/EditablePolicyPage";
 // the Edit button (persisted server-side); this stays as the fallback.
 const DEFAULT_HTML = `<p>How we pack, process, and dispatch orders.</p>
 <h2>Shipping locations</h2>
-<p>We ship standard orders to customers in Canada and the United States, with a $14 CAD flat shipping rate shown at checkout. A small number of listings ship at a higher flat rate, which is shown on the product page and at checkout before you pay.</p>
-<p>We also ship internationally as custom orders. If you're located outside Canada or the United States, email us at reflexityram@gmail.com with the product(s) you'd like and your country, and we'll arrange a shipping quote and the details directly. See our International Orders page for how this works.</p>
+<p>We ship standard orders to customers in Canada, with a $14 CAD flat shipping rate shown at checkout. A small number of listings ship at a higher flat rate, which is shown on the product page and at checkout before you pay.</p>
+<p>We also ship internationally as custom orders. If you're located outside Canada, including the United States, email us at reflexityram@gmail.com with the product(s) you'd like and your country, and we'll arrange a shipping quote and the details directly. See our International Orders page for how this works.</p>
 <h2>Processing & packaging</h2>
 <p>Orders are typically processed and shipped within 1–3 business days of purchase.</p>
 <p>Memory modules are packaged appropriately to help protect them during transit. Packaging may include anti-static bags, original manufacturer packaging, original manufacturer boxes, or other suitable protective materials at our discretion.</p>
