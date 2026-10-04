@@ -52,6 +52,9 @@ const ALLOWED_SHIPPING_COUNTRIES = ['CA'];
 // destination province taxes shipping (most Canadian provinces do).
 // `price` overrides the standard rate for this session (see
 // resolveCartShippingPrice); omit it for the standard rate.
+// No `delivery_estimate`: the label already states the delivery time, and
+// Stripe would print the estimate a second time after it ("... after
+// dispatch) (3-6 business days)").
 const toStripeShippingOptions = (price) =>
   Object.values(SHIPPING_OPTIONS).map((opt) => ({
     shipping_rate_data: {
@@ -62,10 +65,6 @@ const toStripeShippingOptions = (price) =>
         currency: CURRENCY,
       },
       tax_behavior: 'exclusive',
-      delivery_estimate: {
-        minimum: { unit: 'business_day', value: opt.minDays },
-        maximum: { unit: 'business_day', value: opt.maxDays },
-      },
       metadata: { optionId: opt.id },
     },
   }));
