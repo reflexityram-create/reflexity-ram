@@ -164,10 +164,11 @@ test('cart responses and checkout only expose purchasable Server items', async (
     const added = await jsonRequest(cartApp, '/api/cart/add', { slug: 'server-sodimm', qty: 1 });
     assert.deepEqual(added.body.cart.items.map((item) => item.slug), ['server-sodimm']);
     assert.deepEqual({ subtotal: added.body.cart.subtotal, itemCount: added.body.cart.itemCount }, { subtotal: 40, itemCount: 1 });
+    assert.equal(added.body.cart.shipping, 14, 'the standard flat rate Stripe will charge');
     const updated = await jsonRequest(cartApp, '/api/cart/update', { slug: 'server-sodimm', qty: 2 }, 'PATCH');
     assert.deepEqual({ items: updated.body.cart.items.map((item) => item.slug), subtotal: updated.body.cart.subtotal, itemCount: updated.body.cart.itemCount }, { items: ['server-sodimm'], subtotal: 80, itemCount: 2 });
     const removed = await jsonRequest(cartApp, '/api/cart/remove/server-sodimm', undefined, 'DELETE');
-    assert.deepEqual(removed.body.cart, { items: [], subtotal: 0, itemCount: 0 });
+    assert.deepEqual(removed.body.cart, { items: [], subtotal: 0, itemCount: 0, shipping: 0 });
 
     staleCart.items.push({ slug: 'server-sodimm', name: 'Server SO-DIMM', qty: 2 });
     stripeRouter.setCheckoutDependenciesForTest({
@@ -184,6 +185,32 @@ test('cart responses and checkout only expose purchasable Server items', async (
     stripeRouter.setCheckoutDependenciesForTest();
     Product.findOne = originalProductFindOne;
     Product.find = originalProductFind;
+    Cart.findOne = originalCartFindOne;
+  }
+});
+
+test('the cart the checkout page loads carries the flat shipping rate Stripe will charge', async () => {
+  const originalCartFindOne = Cart.findOne;
+  const cartWith = (products) => ({
+    _id: 'cart-id',
+    items: products.map((productDoc, i) => ({ slug: `module-${i}`, name: 'Server module', price: productDoc.price, qty: 1, product: productDoc })),
+    save: async () => undefined,
+  });
+  const app = express();
+  app.use(express.json());
+  app.use('/api/cart', cartRouter);
+  try {
+    for (const [products, expected] of [
+      [[{ price: 135, line: 'Server' }], 14],
+      [[{ price: 135, line: 'Server' }, { price: 170, line: 'Server', shippingPrice: 25 }], 25],
+      [[], 0],
+    ]) {
+      Cart.findOne = () => ({ populate: async () => cartWith(products) });
+      const response = await jsonRequest(app, '/api/cart', undefined, 'GET');
+      assert.equal(response.status, 200);
+      assert.equal(response.body.cart.shipping, expected);
+    }
+  } finally {
     Cart.findOne = originalCartFindOne;
   }
 });

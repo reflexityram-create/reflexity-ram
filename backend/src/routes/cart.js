@@ -6,6 +6,7 @@ const { validate } = require('../middleware/validate');
 const { optionalAuth } = require('../middleware/auth');
 const { validGuestSessionId } = require('../utils/guestSession');
 const { CartMutationError, mutateCartWithRetry } = require('../utils/cartConcurrency');
+const { resolveCartShippingPrice } = require('../config/shipping');
 
 const router = express.Router();
 const guestSessionIdFrom = (req) => validGuestSessionId(req.headers['x-session-id'] || req.cookies?.cartSessionId);
@@ -25,6 +26,8 @@ const publicCartView = async (cart) => {
     items,
     subtotal: items.reduce((sum, item) => sum + item.price * item.qty, 0),
     itemCount: items.reduce((sum, item) => sum + item.qty, 0),
+    // The flat rate Stripe Checkout will charge for this cart (same function).
+    shipping: items.length ? resolveCartShippingPrice(products) : 0,
   };
 };
 
@@ -39,7 +42,7 @@ router.get('/', optionalAuth, async (req, res) => {
     }
 
     const filter = userId ? { user: userId } : { sessionId };
-    const cart = await Cart.findOne(filter).populate('items.product', 'stock stockQuantity price name line');
+    const cart = await Cart.findOne(filter).populate('items.product', 'stock stockQuantity price name line shippingPrice');
 
     if (!cart) {
       return res.json({ cart: { items: [], subtotal: 0, itemCount: 0 } });
@@ -61,6 +64,8 @@ router.get('/', optionalAuth, async (req, res) => {
 
     const subtotal = items.reduce((sum, i) => sum + i.price * i.qty, 0);
     const itemCount = items.reduce((sum, i) => sum + i.qty, 0);
+    // The flat rate Stripe Checkout will charge for this cart (same function).
+    const shipping = items.length ? resolveCartShippingPrice(items.map((i) => i.product).filter(Boolean)) : 0;
 
     res.json({
       cart: {
@@ -68,6 +73,7 @@ router.get('/', optionalAuth, async (req, res) => {
         items,
         subtotal,
         itemCount,
+        shipping,
         discount: cart.discount,
         couponCode: cart.couponCode,
       },
