@@ -72,6 +72,16 @@ const orderSchema = new mongoose.Schema({
   analyticsClientId: { type: String, select: false },
   analyticsSessionId: { type: String, select: false },
   analyticsPurchaseSentAt: { type: Date, default: null, select: false },
+  // The one "how was your order?" email (see utils/reviewRequests.js).
+  // claimedAt is the exactly-once claim; Resend holds the email until
+  // scheduledFor, and emailId lets a full refund cancel it before then.
+  reviewRequest: {
+    claimedAt: { type: Date },
+    scheduledFor: { type: Date },
+    emailId: { type: String },
+    cancelledAt: { type: Date },
+    lastError: { type: String },
+  },
   // Admins can archive orders to declutter the list without deleting the
   // financial record. Archived orders are hidden from the default view.
   archived: { type: Boolean, default: false },

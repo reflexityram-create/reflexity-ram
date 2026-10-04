@@ -30,6 +30,7 @@ const User = require('./models/User');
 const Cart = require('./models/Cart');
 const Order = require('./models/Order');
 const Review = require('./models/Review');
+const ReviewEmailOptOut = require('./models/ReviewEmailOptOut');
 const PageContent = require('./models/PageContent');
 const RateLimitEntry = require('./models/RateLimitEntry');
 const { MongoRateLimitStore } = require('./utils/mongoRateLimitStore');
@@ -212,6 +213,7 @@ const startupModels = [
   Cart,
   Order,
   Review,
+  ReviewEmailOptOut,
   PageContent,
   RateLimitEntry,
   WholesaleLot,

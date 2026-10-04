@@ -201,9 +201,60 @@ const sendShippingNotificationEmail = async ({ email, firstName, order }) => {
   return data;
 };
 
+const SUPPORT_EMAIL = 'reflexityram@gmail.com';
+
+/**
+ * Send (or schedule, with `scheduledAt`) the post-delivery review request.
+ * Resend holds a scheduled email for up to 30 days and returns its id, which
+ * cancelScheduledEmail() needs if the order is refunded before it goes out.
+ */
+const sendReviewRequestEmail = async ({ email, firstName, order, reviewUrl, unsubscribeUrl, scheduledAt }) => {
+  const itemsHtml = order.items.map(item => `
+    <li style="margin:0 0 6px;color:#f5f5f7;font-size:13px;">${escapeHtml(item.name)}</li>
+  `).join('');
+
+  const { data, error } = await getResend().emails.send({
+    from: FROM_EMAIL,
+    to: email,
+    replyTo: SUPPORT_EMAIL,
+    subject: `How's your order? — ${order.orderNumber}`,
+    ...(scheduledAt ? { scheduledAt: new Date(scheduledAt).toISOString() } : {}),
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+      <body style="margin:0;padding:0;background:#0a0a0c;font-family:'Figtree',system-ui,sans-serif;color:#f5f5f7;">
+        <div style="max-width:560px;margin:40px auto;padding:0 20px;">
+          <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:40px;">
+            <div style="margin-bottom:32px;"><span style="font-size:20px;font-weight:700;letter-spacing:-0.5px;">Reflexity RAM</span></div>
+            <h1 style="font-size:22px;font-weight:700;margin:0 0 12px;letter-spacing:-0.5px;">How did it go?</h1>
+            <p style="color:#a0a0aa;margin:0 0 20px;line-height:1.6;">Hi ${escapeHtml(firstName || 'there')}, your order <span style="font-family:monospace;color:#f5f5f7;">${escapeHtml(order.orderNumber)}</span> should have arrived by now. Once you've had a chance to install it, would you leave a quick review? It helps other buyers pick the right memory. Every review is published, good or bad.</p>
+            <ul style="margin:0 0 28px;padding-left:18px;">${itemsHtml}</ul>
+            <a href="${escapeHtml(reviewUrl)}" style="display:inline-block;background:#f5f5f7;color:#050505;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:600;font-size:14px;">Leave a review</a>
+            <p style="color:#a0a0aa;font-size:13px;margin:28px 0 0;line-height:1.6;">Something not right with the order? Reply to this email or write to <a href="mailto:${SUPPORT_EMAIL}" style="color:#8a8a92;">${SUPPORT_EMAIL}</a> and we'll sort it out.</p>
+            <p style="color:#5a5a64;font-size:11px;margin:32px 0 0;line-height:1.6;">Reflexity RAM · Toronto, Ontario, Canada · <a href="${escapeHtml(FRONTEND_URL)}" style="color:#8a8a92;">reflexityram.com</a><br>We send one review email per order because you bought from us. <a href="${escapeHtml(unsubscribeUrl)}" style="color:#8a8a92;">Unsubscribe from review emails</a>.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+  });
+
+  if (error) { console.error('Resend error detail:', JSON.stringify(error)); throw new Error(`Email send failed: ${error.message || JSON.stringify(error)}`); }
+  return data;
+};
+
+const cancelScheduledEmail = async (id) => {
+  const { data, error } = await getResend().emails.cancel(id);
+  if (error) throw new Error(`Email cancel failed: ${error.message || JSON.stringify(error)}`);
+  return data;
+};
+
 module.exports = {
   sendVerificationEmail,
   sendPasswordResetEmail,
   sendOrderConfirmationEmail,
   sendShippingNotificationEmail,
+  sendReviewRequestEmail,
+  cancelScheduledEmail,
 };

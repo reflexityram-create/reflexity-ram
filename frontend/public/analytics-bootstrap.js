@@ -1,6 +1,6 @@
 // Keep localhost, preview deployments, and provider QA out of the production
 // property. Only the canonical customer host is allowed to load or emit GA4.
-const privatePath = /^\/(admin|auth|account|reset-password|verify-email|wholesale-lab|wholesale-admin-lab)(\/|$)/;
+const privatePath = /^\/(admin|auth|account|reset-password|verify-email|review|wholesale-lab|wholesale-admin-lab)(\/|$)/;
 const internalKeys = new Set(["qa", "verify", "deploy", "release", "diagnose", "demo", "image-hotfix"]);
 const internalVisit = [...new URLSearchParams(window.location.search).keys()]
   .some((key) => internalKeys.has(key.toLowerCase()));

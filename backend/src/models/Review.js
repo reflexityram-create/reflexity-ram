@@ -3,7 +3,10 @@ const mongoose = require('mongoose');
 const reviewSchema = new mongoose.Schema({
   product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
   order: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true },
-  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  // Empty for reviews of guest-checkout orders, which arrive through the
+  // emailed review link instead of a signed-in account.
+  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  source: { type: String, enum: ['account', 'email-link'], default: 'account' },
   displayName: { type: String, required: true, trim: true, maxlength: 80 },
   rating: { type: Number, required: true, min: 1, max: 5 },
   title: { type: String, trim: true, maxlength: 120 },

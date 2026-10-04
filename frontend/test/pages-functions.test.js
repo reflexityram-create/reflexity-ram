@@ -304,7 +304,7 @@ test("static edge rejects unknown routes while retaining restored client routes"
     assert.equal(response.headers.get("x-reflexity-seo"), "static-not-found", path);
     assert.match(await response.text(), /name="robots" content="noindex, nofollow"/, path);
   }
-  for (const path of ["/cart", "/checkout", "/order/success", "/order/ORD-123", "/account", "/verify-email", "/admin/orders", "/auth/callback", "/guides/how-to-identify-ram"]) {
+  for (const path of ["/cart", "/checkout", "/order/success", "/order/ORD-123", "/review", "/account", "/verify-email", "/admin/orders", "/auth/callback", "/guides/how-to-identify-ram"]) {
     const response = await renderStaticPage(pageContext(path));
     assert.equal(response.status, 200, path);
     assert.notEqual(response.headers.get("x-reflexity-seo"), "static-not-found", path);

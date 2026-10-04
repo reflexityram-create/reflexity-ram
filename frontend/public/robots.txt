@@ -3,5 +3,6 @@ Allow: /
 Disallow: /admin
 Disallow: /account
 Disallow: /checkout
+Disallow: /review
 
 Sitemap: https://reflexityram.com/sitemap.xml

@@ -726,6 +726,7 @@ function ReviewsSection({ product, data, onUpdated, embedded = false }) {
           ) : (
             <p className="text-[13px] leading-relaxed mt-2" style={{ color: "var(--fg-muted)" }}>
               <Link to="/account" className="underline">Sign in</Link> with the account used for your order to leave a verified review.
+              Checked out as a guest? We email you a review link about 10 days after your order ships.
             </p>
           )}
         </div>

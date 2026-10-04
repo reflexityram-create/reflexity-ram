@@ -7,6 +7,7 @@ const User = require('../models/User');
 const { validate } = require('../middleware/validate');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { sendShippingNotificationEmail } = require('../utils/email');
+const { scheduleReviewRequest } = require('../utils/reviewRequests');
 const { ensureStripePrice, syncStripeProductDetails } = require('../utils/stripeSync');
 const { cancelOrderAndRestoreStock } = require('../utils/stock');
 const { ORDER_STATUSES, canTransitionOrder } = require('../utils/orderTransitions');
@@ -455,11 +456,57 @@ router.patch(
             console.error('Shipping notification email failed:', emailErr.message);
           }
         }
+        // Queue the "how was your order?" email for after delivery.
+        try {
+          const request = await scheduleReviewRequest(order);
+          if (request.status === 'skipped') {
+            console.log(`Review email not queued for ${order.orderNumber}: ${request.reason}`);
+          } else {
+            console.log(`Review email ${request.status} for ${order.orderNumber}: ${request.scheduledFor.toISOString()}`);
+          }
+        } catch (reviewErr) {
+          console.error('Review request email failed:', reviewErr.message);
+        }
       }
 
-      res.json({ order });
+      const fresh = status === 'shipped'
+        ? await Order.findById(order._id).populate('user', 'firstName lastName email')
+        : null;
+      res.json({ order: fresh || order });
     } catch (err) {
       res.status(500).json({ error: 'Failed to update order status' });
+    }
+  }
+);
+
+const REVIEW_REQUEST_SKIPPED = {
+  'not-reviewable': 'Only paid orders that have shipped can get a review email.',
+  'no-email': 'This order has no email address.',
+  'opted-out': 'This customer unsubscribed from review emails.',
+  'already-requested': 'A review email was already sent or scheduled for this order.',
+};
+
+// POST /api/admin/orders/:id/review-request — send the review email now
+// (for orders shipped before review emails existed, or a failed attempt).
+router.post(
+  '/orders/:id/review-request',
+  [param('id').custom((v) => isValidObjectId(v)).withMessage('Invalid order ID')],
+  validate,
+  async (req, res) => {
+    try {
+      const order = await Order.findById(req.params.id).populate('user', 'firstName lastName email');
+      if (!order) return res.status(404).json({ error: 'Order not found' });
+      const request = await scheduleReviewRequest(order, { sendAt: new Date() });
+      if (request.status === 'skipped') {
+        return res.status(409).json({ error: REVIEW_REQUEST_SKIPPED[request.reason] });
+      }
+      const updated = await Order.findById(order._id)
+        .populate('user', 'firstName lastName email phone')
+        .lean();
+      res.json({ order: updated, reviewRequest: request });
+    } catch (err) {
+      console.error('Review request email failed:', err.message);
+      res.status(502).json({ error: 'The review email could not be sent. Try again in a minute.' });
     }
   }
 );
