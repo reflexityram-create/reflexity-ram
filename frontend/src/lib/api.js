@@ -105,6 +105,14 @@ export const reviewsApi = {
   create: (slug, data) => api.post(`/reviews/product/${slug}`, data),
 };
 
+// Emailed review links work without an account, so guest buyers can review.
+// The token goes in the request body so it never appears in a URL.
+export const reviewLinkApi = {
+  lookup: (token) => publicApi.post('/reviews/request/lookup', { token }),
+  submit: (token, data) => publicApi.post('/reviews/request/reviews', { token, ...data }),
+  unsubscribe: (token) => publicApi.post('/reviews/request/unsubscribe', { token }),
+};
+
 // ─── Cart API ─────────────────────────────────────────────────────────────────
 export const cartApi = {
   get: () => api.get('/cart'),
@@ -162,6 +170,7 @@ export const adminApi = {
   getOrder: (id, config = {}) => api.get(`/admin/orders/${id}`, config),
   updateOrderStatus: (id, data) => api.patch(`/admin/orders/${id}/status`, data),
   archiveOrder: (id, archived) => api.patch(`/admin/orders/${id}/archive`, { archived }),
+  sendReviewRequest: (id) => api.post(`/admin/orders/${id}/review-request`),
 
   // Users
   listUsers: (params) => api.get('/admin/users', { params }),

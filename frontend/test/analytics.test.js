@@ -14,6 +14,8 @@ test("analytics only tracks canonical public storefront traffic", () => {
   assert.equal(shouldTrackLocation(new URL("https://reflexityram.com/admin/orders")), false);
   assert.equal(shouldTrackLocation(new URL("https://reflexityram.com/shop?qa=1")), false);
   assert.equal(shouldTrackLocation(new URL("https://reflexityram.com/shop?utm_source=google")), true);
+  // The review page holds a private review link; it never reports to GA4.
+  assert.equal(shouldTrackLocation(new URL("https://reflexityram.com/review#t=r1.token")), false);
 });
 
 test("analytics emits valid events and normalized ecommerce items", () => {

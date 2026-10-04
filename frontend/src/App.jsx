@@ -20,6 +20,7 @@ const Product = lazy(() => import("@/pages/Product"));
 const Cart = lazy(() => import("@/pages/Cart"));
 const Checkout = lazy(() => import("@/pages/Checkout"));
 const OrderSuccess = lazy(() => import("@/pages/OrderSuccess"));
+const ReviewOrder = lazy(() => import("@/pages/ReviewOrder"));
 const CheckoutReturn = lazy(() => import("@/pages/CheckoutReturn"));
 const Account = lazy(() => import("@/pages/Account"));
 const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
@@ -139,6 +140,7 @@ export default function App() {
           <Route path="/checkout" element={<Checkout />} />
           <Route path="/order/success" element={<CheckoutReturn />} />
           <Route path="/order/:orderNumber" element={<OrderSuccess />} />
+          <Route path="/review" element={<ReviewOrder />} />
           <Route path="/account" element={<Account />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/verify-email" element={<VerifyEmail />} />

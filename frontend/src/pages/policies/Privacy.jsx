@@ -6,19 +6,53 @@ export default function Privacy() {
       num="03"
       label="Policy"
       title="Privacy"
-      intro="Short and honest. We collect what we need to ship your order, and nothing else."
+      intro="Short and honest. We collect what we need to fill your order and run the store, and we never sell it."
       testId="privacy-page"
       sections={[
         {
           heading: "What we collect",
           body: [
-            { list: ["Name, shipping address, email, and phone number for fulfilment", "Order details and billing zip for payment processing", "Basic analytics (page views, referral source) — no personal profiling"] },
+            { list: [
+              "Name, shipping address, email, and phone number for fulfilment",
+              "Order details and billing zip for payment processing",
+              "Basic analytics (page views, referral source) — no personal profiling",
+              "Reviews you choose to post: your star rating, title, review text, and first name",
+            ] },
           ],
         },
         {
-          heading: "What we don't do",
+          heading: "Emails we send",
           body: [
-            "We do not sell, rent, or share customer data with third parties.",
+            "We email you about your order: a confirmation, a shipping notice, and, about 10 days after it ships, one email asking how the order went, with a link to review what you bought. The review link works without an account.",
+            "Every review email has an unsubscribe link. Unsubscribing stops review emails only; order and shipping emails still arrive.",
+          ],
+        },
+        {
+          heading: "Reviews",
+          body: [
+            "When you post a review, we publish your star rating, title, review text, first name, the date, and a \"Verified purchase\" label on the product page. We never publish your last name, email address, or order details.",
+            "Reviews are published as written, including low ratings. Email us to correct or remove a review you posted.",
+          ],
+        },
+        {
+          heading: "Google Customer Reviews",
+          body: [
+            "After checkout, the order confirmation page may show a Google Customer Reviews box asking whether Google can email you a short survey about your purchase. To show that box, we pass Google your email address, order number, delivery country, and estimated delivery date.",
+            "Google only emails you the survey if you agree. Your answers are handled under Google's privacy policy at policies.google.com/privacy.",
+          ],
+        },
+        {
+          heading: "Who we share it with",
+          body: [
+            "We do not sell or rent customer data. We share it only with the services that run the store, and only what each one needs:",
+            { list: [
+              "Stripe — processes your payment. We never see or store full card numbers.",
+              "The shipping carrier — delivers your order.",
+              "Resend — sends our order and review emails.",
+              "Google Analytics — measures site traffic.",
+              "Google Customer Reviews — as described above.",
+              "Cloudflare, Render, and MongoDB Atlas — host the website and store order records.",
+            ] },
             "We do not run cross-site behavioral advertising.",
           ],
         },
@@ -31,13 +65,14 @@ export default function Privacy() {
         {
           heading: "Your rights",
           body: [
-            "Email reflexityram@gmail.com to request access, correction, or deletion of your personal data. We respond within 30 days.",
+            "Email reflexityram@gmail.com to request access, correction, or deletion of your personal data, including reviews you've posted. We respond within 30 days.",
           ],
         },
         {
           heading: "Updates to this policy",
           body: [
             "If we change anything material, we'll update this page and notify recent customers by email.",
+            "Last updated: October 4, 2026.",
           ],
         },
       ]}

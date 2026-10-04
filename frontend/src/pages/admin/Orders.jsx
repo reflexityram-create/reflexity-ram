@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Loader2, Search, ChevronLeft, ChevronRight, X, Package, Truck } from 'lucide-react';
+import { Loader2, Search, ChevronLeft, ChevronRight, X, Package, Truck, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import AppLayout from '@/components/AppLayout';
 import { adminApi } from '@/lib/api';
@@ -33,6 +33,58 @@ const STATUS_PILLS = {
   cancelled: 'text-neutral-500',
   refunded: 'text-neutral-500',
 };
+
+const formatDateTime = (value) => new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+
+// The "how was your order?" email: queued automatically when the order is
+// marked shipped; the button covers older orders and failed attempts.
+function ReviewEmailPanel({ order, onUpdated }) {
+  const [sending, setSending] = useState(false);
+  const request = order.reviewRequest || {};
+  const reviewable = order.paymentStatus === 'paid' && ['shipped', 'delivered'].includes(order.status);
+  const email = order.user?.email || order.guestEmail;
+
+  let summary;
+  if (request.cancelledAt) summary = `Cancelled ${formatDateTime(request.cancelledAt)} (order refunded).`;
+  else if (request.scheduledFor) {
+    summary = new Date(request.scheduledFor) > new Date()
+      ? `Scheduled for ${formatDateTime(request.scheduledFor)}.`
+      : `Sent ${formatDateTime(request.scheduledFor)}.`;
+  } else if (request.claimedAt) summary = 'Sending…';
+  else if (request.lastError) summary = `Last attempt failed: ${request.lastError}`;
+  else if (reviewable) summary = 'Not sent. Orders shipped before review emails existed have none.';
+  else summary = 'Goes out 10 days after the order is marked shipped.';
+  const canSend = reviewable && !request.claimedAt && Boolean(email);
+
+  const send = async () => {
+    if (!window.confirm(`Email ${email} a review request for this order now?`)) return;
+    setSending(true);
+    try {
+      const { data } = await adminApi.sendReviewRequest(order._id);
+      onUpdated(data.order);
+      toast.success('Review email sent');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Review email failed');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="glass rounded-xl p-4 text-[13px]" data-testid="review-email-panel">
+      <div className="text-neutral-500 text-[11px] uppercase tracking-widest mb-2 flex items-center gap-1.5">
+        <Star size={11} /> Review email
+      </div>
+      <div className="text-neutral-300">{summary}</div>
+      {canSend && (
+        <button type="button" onClick={send} disabled={sending} className="btn-ghost mt-3 flex items-center gap-2">
+          {sending && <Loader2 size={13} className="animate-spin" />}
+          Send review email now
+        </button>
+      )}
+    </div>
+  );
+}
 
 function OrderDetailModal({ orderId, onClose }) {
   const [order, setOrder] = useState(null);
@@ -163,6 +215,8 @@ function OrderDetailModal({ orderId, onClose }) {
                 </div>
               )}
             </div>
+
+            <ReviewEmailPanel order={order} onUpdated={setOrder} />
 
             {/* Update status */}
             <form onSubmit={handleStatusUpdate} className="glass rounded-xl p-4 space-y-3">

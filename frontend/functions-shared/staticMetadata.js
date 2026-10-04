@@ -276,7 +276,7 @@ function responseWithHeaders(response, body, source, status = response.status) {
 
 const CLIENT_ROUTE_PATTERNS = [
   /^\/shop\/[^/]+$/, /^\/wholesale\/[^/]+$/,
-  /^\/(?:cart|checkout|order\/success|account|reset-password|verify-email|auth\/callback)$/, /^\/order\/[^/]+$/,
+  /^\/(?:cart|checkout|order\/success|account|reset-password|verify-email|auth\/callback|review)$/, /^\/order\/[^/]+$/,
   /^\/(?:shipping|returns|warranty|privacy|terms|support|faq|international|business-info)$/,
   /^\/admin(?:\/(?:products|wholesale|orders|users|security))?$/,
 ];

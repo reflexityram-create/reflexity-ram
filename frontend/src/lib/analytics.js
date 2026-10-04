@@ -5,6 +5,7 @@ const PRIVATE_PATH_PREFIXES = [
   "/account",
   "/reset-password",
   "/verify-email",
+  "/review",
   "/wholesale-lab",
   "/wholesale-admin-lab",
 ];

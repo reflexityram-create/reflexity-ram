@@ -18,6 +18,7 @@ const { decrementStockForOrder, shouldDecrementStockForFulfillment } = require('
 const { ensureStripePrice } = require('../utils/stripeSync');
 const { isDisposableEmail } = require('../utils/disposableEmail');
 const { isFullyRefundedCharge } = require('../utils/refunds');
+const { cancelReviewRequest } = require('../utils/reviewRequests');
 
 const router = express.Router();
 let checkoutPriceEnsurer = ensureStripePrice;
@@ -413,6 +414,14 @@ router.post('/webhook', async (req, res) => {
             });
             await order.save();
             console.log(`💸 Full refund processed for order ${order.orderNumber}`);
+            // Don't ask a refunded buyer how the order went.
+            try {
+              if (await cancelReviewRequest(order)) {
+                console.log(`Cancelled the scheduled review email for order ${order.orderNumber}`);
+              }
+            } catch (reviewErr) {
+              console.error('Review email cancel failed:', reviewErr.message);
+            }
           } else {
             // A charge.refunded event also fires for partial refunds. Preserve
             // the order/payment state and leave inventory alone because the
