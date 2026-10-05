@@ -174,6 +174,12 @@ export default function OrderSuccess() {
                       <span className="text-neutral-400">Shipping</span>
                       <span className="mono">{order.shippingCost === 0 ? 'Free' : `$${order.shippingCost?.toFixed(2)}`}</span>
                     </div>
+                    {order.tax > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-neutral-400">Tax</span>
+                        <span className="mono">${order.tax.toFixed(2)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between font-bold">
                       <span>Total</span>
                       <span className="mono">${order.total?.toFixed(2)}</span>

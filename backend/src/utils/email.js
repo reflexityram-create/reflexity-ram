@@ -148,6 +148,10 @@ const sendOrderConfirmationEmail = async ({ email, firstName, order }) => {
                 <span style="color:#a0a0aa;font-size:13px;">Shipping</span>
                 <span style="font-family:monospace;font-size:13px;">${order.shippingCost === 0 ? 'Free' : '$' + order.shippingCost.toFixed(2) + ' ' + DISPLAY_CURRENCY}</span>
               </div>
+              ${order.tax > 0 ? `<div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+                <span style="color:#a0a0aa;font-size:13px;">Tax</span>
+                <span style="font-family:monospace;font-size:13px;">$${order.tax.toFixed(2)} ${DISPLAY_CURRENCY}</span>
+              </div>` : ''}
               <div style="display:flex;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);">
                 <span style="font-weight:700;font-size:15px;">Total</span>
                 <span style="font-family:monospace;font-weight:700;font-size:15px;">$${order.total.toFixed(2)} ${DISPLAY_CURRENCY}</span>

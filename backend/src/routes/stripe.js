@@ -307,7 +307,9 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
           orderNumber: order.orderNumber,
           items: order.items,
           subtotal: order.subtotal,
+          discount: order.discount,
           shippingCost: order.shippingCost,
+          tax: order.tax,
           total: order.total,
         },
       });

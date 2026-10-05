@@ -134,3 +134,12 @@ test('guest order proof is cleaned before API use and survives only in the brows
   assert.match(api, /headers: email \? \{ 'x-order-email': email \} : \{\}/);
   assert.doesNotMatch(api, /params: email \? \{ email \}/);
 });
+
+// The summary listed Subtotal, Shipping and Total only, so for a taxed order the
+// rows never added up (585 + 14 shown, 676.87 charged).
+test('the order page lists the tax, so its summary adds up to the total', async () => {
+  const orderSuccess = await read('../src/pages/OrderSuccess.jsx');
+  const summary = orderSuccess.slice(orderSuccess.indexOf('>Subtotal<'), orderSuccess.indexOf('<span>Total</span>'));
+  assert.match(summary, /order\.tax > 0 && \(/);
+  assert.match(summary, />Tax</);
+});
