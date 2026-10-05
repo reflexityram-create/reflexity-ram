@@ -224,3 +224,12 @@ test('sealed listings say "Factory sealed, unopened" instead of "Individually te
   assert.match(product, /if \(\/sealed\/i\.test\(p\.name \|\| ""\)\) return "Factory sealed, unopened";/);
   assert.match(product, /\[conditionBadge\(p\), `\$\{p\.warranty\} warranty`/);
 });
+
+// Checkout ships abroad now, so the product page and the International page's search text stop saying "custom orders".
+test('the product page and International metadata describe checkout abroad', async () => {
+  const [product, metadata, international] = await Promise.all([read('../src/pages/Product.jsx'), read('../functions-shared/staticMetadata.js'), read('../src/pages/policies/International.jsx')]);
+  assert.match(product, /Many countries check out here at Canada Post's price, tracked\. US orders by quote\./);
+  assert.doesNotMatch(product, /We ship worldwide as custom orders/);
+  assert.match(metadata, /Ship Reflexity RAM abroad with Canada Post: tracked, at Canada Post's price at checkout\. US orders by quote\./);
+  assert.match(international, /<h2>Checking out from outside Canada<\/h2>/);
+});

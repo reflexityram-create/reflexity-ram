@@ -488,9 +488,9 @@ export default function Product() {
               <div className="glass-soft rounded-xl p-4 flex items-start gap-3 mb-6">
                 <Globe size={18} className="text-neutral-300 mt-0.5 shrink-0" />
                 <div>
-                  <div className="text-[13px] font-medium">🌍 Shipping outside Canada, including the US?</div>
+                  <div className="text-[13px] font-medium">🌍 Shipping outside Canada?</div>
                   <div className="text-[12px] text-neutral-500">
-                    We ship worldwide as custom orders.{" "}
+                    Many countries check out here at Canada Post's price, tracked. US orders by quote.{" "}
                     <Link to="/international" className="text-emerald-400 hover:text-emerald-300 underline">
                       Read more →
                     </Link>

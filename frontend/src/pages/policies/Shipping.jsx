@@ -5,7 +5,7 @@ import EditablePolicyPage from "@/components/EditablePolicyPage";
 const DEFAULT_HTML = `<p>How we pack, process, and dispatch orders.</p>
 <h2>Shipping locations</h2>
 <p>We ship standard orders to customers in Canada with Canada Post, tracked. Shipping is a flat $14 CAD for 1–2 sticks and $25 CAD for 3 or more sticks, shown at checkout. A small number of listings ship at their own flat rate, which is shown on the product page and at checkout before you pay.</p>
-<p>We also ship internationally as custom orders. If you're located outside Canada, including the United States, email us at reflexityram@gmail.com with the product(s) you'd like and your country, and we'll arrange a shipping quote and the details directly. See our International Orders page for how this works.</p>
+<p>We also ship to many countries outside Canada with Canada Post, tracked. Choose "Another country" at checkout to see Canada Post's current price and delivery time for your parcel. Import taxes and duties are not included; if your country charges them, they are collected when the parcel arrives. For the United States, or a country not listed at checkout, email us at reflexityram@gmail.com with the product(s) you'd like and your country, and we'll send a shipping quote. See our International Orders page for details.</p>
 <h2>Processing & packaging</h2>
 <p>Orders are typically processed and shipped within 1–3 business days of purchase.</p>
 <p>Memory modules are packaged appropriately to help protect them during transit. Packaging may include anti-static bags, original manufacturer packaging, original manufacturer boxes, or other suitable protective materials at our discretion.</p>
