@@ -61,3 +61,42 @@ test('checkout sessions stay open for Stripe\'s 24-hour default and ship to Cana
     Cart.findOne = originalCartFindOne;
   }
 });
+
+// Without branding_settings Stripe's page reads "Pay reflexityram-real" (the
+// account's sign-up placeholder name) with Stripe's default blue button.
+test('checkout sessions show the Reflexity RAM name, icon and yellow button on Stripe\'s page', async () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const originalFind = Product.find;
+  const originalCartFindOne = Cart.findOne;
+  try {
+    Product.find = () => productQuery([{
+      _id: 'product-id', slug: 'ddr4-16gb', name: '16GB DDR4', price: 135,
+      stock: 'in', stockQuantity: 10, isActive: true, line: 'Server',
+    }]);
+    Cart.findOne = async () => ({ items: [{ slug: 'ddr4-16gb', qty: 1 }] });
+    let payload;
+    stripeRouter.setCheckoutDependenciesForTest({
+      ensurePrice: async () => 'price_ddr4_16gb',
+      createSession: async (sent) => { payload = sent; return { id: 'cs_brand', url: 'https://stripe.test/brand' }; },
+    });
+
+    const app = express();
+    app.use(express.json());
+    app.use('/api/stripe', stripeRouter);
+    const response = await request(app, '/api/stripe/create-checkout-session');
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.branding_settings?.display_name, 'Reflexity RAM');
+    assert.equal(payload.branding_settings.button_color, '#ffcf24');
+    const iconUrl = new URL(payload.branding_settings.icon.url);
+    assert.equal(iconUrl.origin, 'https://reflexityram.com');
+    // Stripe accepts any URL without fetching it, so check the file really ships with the site.
+    const iconFile = path.join(__dirname, '../../frontend/public', iconUrl.pathname);
+    assert.ok(fs.existsSync(iconFile), `${iconUrl.pathname} must exist in frontend/public`);
+  } finally {
+    stripeRouter.setCheckoutDependenciesForTest();
+    Product.find = originalFind;
+    Cart.findOne = originalCartFindOne;
+  }
+});
