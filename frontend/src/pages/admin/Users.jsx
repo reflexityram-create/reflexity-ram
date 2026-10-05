@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Loader2, Search, ChevronLeft, ChevronRight, Shield, ShieldOff } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronRight, Shield, ShieldOff } from 'lucide-react';
 import { toast } from 'sonner';
 import AppLayout from '@/components/AppLayout';
 import { adminApi } from '@/lib/api';
@@ -9,14 +9,13 @@ export default function AdminUsers() {
   const [users, setUsers] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, total: 0, pages: 1 });
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [updatingId, setUpdatingId] = useState(null);
   const { user: currentUser } = useAuthStore();
 
-  const load = (p = page, q = search) => {
+  const load = (p = page) => {
     setLoading(true);
-    adminApi.listUsers({ page: p, limit: 20, search: q || undefined })
+    adminApi.listUsers({ page: p, limit: 20 })
       .then(({ data }) => {
         setUsers(data.users);
         setPagination(data.pagination);
@@ -26,12 +25,6 @@ export default function AdminUsers() {
   };
 
   useEffect(() => { load(); }, [page]);
-
-  const handleSearch = (e) => {
-    e.preventDefault();
-    setPage(1);
-    load(1, search);
-  };
 
   const toggleRole = async (u) => {
     if (u._id === currentUser?._id) {
@@ -75,19 +68,6 @@ export default function AdminUsers() {
           <h1 className="text-2xl font-bold tracking-tight">Users</h1>
           <p className="text-neutral-500 text-[13px] mt-0.5">{pagination.total} total users</p>
         </div>
-
-        <form onSubmit={handleSearch} className="flex gap-2 mb-6">
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
-            <input
-              className="input pl-9 w-64"
-              placeholder="Search by name or email…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-          </div>
-          <button type="submit" className="btn-secondary">Search</button>
-        </form>
 
         <div className="glass rounded-2xl overflow-hidden">
           <div className="overflow-x-auto">

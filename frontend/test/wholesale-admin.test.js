@@ -4,49 +4,46 @@ import test from 'node:test';
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 
-test('retail and wholesale are separate, theme-safe workspaces under Products', async () => {
-  const [app, layout, workspaceNav, workspaceCss, retail, wholesale] = await Promise.all([
+// The owner asked for one Products page: retail products and wholesale lots
+// together, with no separate "Wholesale lots" entry or explainer banner.
+test('retail products and wholesale lots share one admin Products page', async () => {
+  const [app, layout, retail, wholesale] = await Promise.all([
     read('../src/App.jsx'),
     read('../src/components/AppLayout.jsx'),
-    read('../src/components/ProductWorkspaceNav.jsx'),
-    read('../src/components/ProductWorkspaceNav.css'),
     read('../src/pages/admin/Products.jsx'),
     read('../src/pages/admin/WholesaleAdmin.jsx'),
   ]);
 
-  assert.match(app, /const AdminWholesale = lazy\(\(\) => import\("@\/pages\/admin\/WholesaleAdmin"\)\)/);
-  assert.match(app, /path="\/admin\/wholesale" element=\{<AdminWholesale \/>\}/);
-  assert.match(layout, /label: 'Retail products'[\s\S]*?group: 'Products'/);
-  assert.match(layout, /label: 'Wholesale lots'[\s\S]*?group: 'Products'/);
-  assert.match(workspaceNav, /to: '\/admin\/products'/);
-  assert.match(workspaceNav, /to: '\/admin\/wholesale'/);
-  assert.match(workspaceNav, /Retail and wholesale, clearly separated/);
-  assert.match(workspaceNav, /Manage all listings/);
-  assert.doesNotMatch(workspaceNav, /text-white|border-white|bg-white/);
-  assert.match(workspaceCss, /color: var\(--fg-strong\)/);
-  assert.match(workspaceCss, /background: var\(--bg-elev\)/);
-  assert.match(workspaceCss, /@media \(max-width: 580px\)[\s\S]*?grid-template-columns: 1fr/);
-  assert.match(retail, /<ProductWorkspaceNav showWholesaleActions \/>/);
-  assert.match(wholesale, /<ProductWorkspaceNav \/>/);
-  assert.match(wholesale, /<AppLayout requireAdmin>/);
+  assert.doesNotMatch(app, /const AdminWholesale = lazy/);
+  assert.match(app, /path="\/admin\/wholesale" element=\{<Navigate to="\/admin\/products#wholesale" replace \/>\}/);
+  assert.match(layout, /\{ to: '\/admin\/products', label: 'Products', icon: Package \}/);
+  assert.doesNotMatch(layout, /label: 'Retail products'|label: 'Wholesale lots'|to: '\/admin\/wholesale'/);
+  assert.match(retail, /import \{ WholesaleLotsSection \} from '@\/pages\/admin\/WholesaleAdmin'/);
+  assert.match(retail, /<h1 className="text-2xl font-bold tracking-tight">Products<\/h1>/);
+  assert.match(retail, /<WholesaleLotsSection \/>/);
+  assert.match(wholesale, /export function WholesaleLotsSection\(\)/);
+  assert.doesNotMatch(wholesale, /<AppLayout|ProductWorkspaceNav/);
+  assert.match(wholesale, /className="wholesale-admin p-5 sm:p-8" id="wholesale"/);
+  await assert.rejects(read('../src/components/ProductWorkspaceNav.jsx'), { code: 'ENOENT' });
 });
 
-test('Products and public wholesale offer direct add entries to the same protected editor', async () => {
-  const [workspaceNav, retail, publicPage, admin] = await Promise.all([
-    read('../src/components/ProductWorkspaceNav.jsx'),
+test('the lot editor opens from its own links, apart from the retail editor', async () => {
+  const [retail, publicPage, admin] = await Promise.all([
     read('../src/pages/admin/Products.jsx'),
     read('../src/pages/Wholesale.jsx'),
     read('../src/pages/admin/WholesaleAdmin.jsx'),
   ]);
 
-  assert.match(retail, /<ProductWorkspaceNav showWholesaleActions \/>/);
-  assert.match(workspaceNav, /showWholesaleActions/);
-  assert.match(workspaceNav, /to="\/admin\/wholesale"[\s\S]*?Manage all/);
-  assert.match(workspaceNav, /to="\/admin\/wholesale\?new=1"[\s\S]*?Add wholesale listing/);
+  // Both editors live on one page, so they must not share ?new / ?edit.
+  assert.match(retail, /searchParams\.get\('new'\) === '1'/);
+  assert.match(admin, /searchParams\.get\('newLot'\) === '1'/);
+  assert.match(admin, /searchParams\.get\('editLot'\)/);
+  assert.match(admin, /setSearchParams\(\{ newLot: '1' \}\)/);
+  assert.match(admin, /setSearchParams\(\{ editLot: lot\.id \}\)/);
+  assert.doesNotMatch(admin, /searchParams\.get\('(new|edit)'\)/);
   assert.match(publicPage, /user\?\.role === "admin" \? \(/);
-  assert.match(publicPage, /to="\/admin\/wholesale\?new=1"/);
-  assert.match(admin, /searchParams\.get\('new'\) === '1'/);
-  assert.match(admin, /searchParams\.get\('edit'\)/);
+  assert.match(publicPage, /to="\/admin\/products#wholesale"/);
+  assert.match(publicPage, /to="\/admin\/products\?newLot=1#wholesale"/);
   assert.match(admin, /setEditorLot\(\{ \.\.\.EMPTY_LOT \}\)/);
   assert.match(admin, /\{editorLot &&[\s\S]*?<LotEditor[\s\S]*?initialLot=\{editorLot\}/);
   assert.match(admin, /onClick=\{openNew\}[\s\S]*?Add wholesale listing/);
@@ -85,7 +82,7 @@ test('the technical workspace sees every status and uses revisioned soft transit
   assert.match(admin, /onError=\{announceError\}[\s\S]*?onStatus=\{announceStatus\}/);
   assert.match(admin, /const accepted = await onUpload\(uploaded\);[\s\S]*?accepted !== false[\s\S]*?onStatus/);
   assert.match(admin, /if \(!aliveRef\.current\) \{[\s\S]*?deleteAsset\(uploaded\.publicId\);[\s\S]*?return false;[\s\S]*?return true;/);
-  const editor = admin.slice(admin.indexOf('function LotEditor('), admin.indexOf('export default function WholesaleAdmin'));
+  const editor = admin.slice(admin.indexOf('function LotEditor('), admin.indexOf('export function WholesaleLotsSection'));
   assert.equal((editor.match(/toast\.error\(/g) || []).length, 1, 'only announceError may own an editor error toast');
   assert.equal((editor.match(/toast\.success\(/g) || []).length, 1, 'only announceStatus may own an editor success toast');
   assert.doesNotMatch(admin, /<div className="wholesale-admin"><LotEditor/);

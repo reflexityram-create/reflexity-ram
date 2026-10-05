@@ -15,13 +15,10 @@ import {
   RefreshCw,
   RotateCcw,
   Save,
-  Search,
   Upload,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import AppLayout from '@/components/AppLayout';
-import ProductWorkspaceNav from '@/components/ProductWorkspaceNav';
 import { adminApi } from '@/lib/api';
 import './wholesale-admin.css';
 
@@ -507,19 +504,20 @@ function LotEditor({ initialLot, onClose, onPersisted, onSaved, onStale }) {
   );
 }
 
-export default function WholesaleAdmin() {
+// Wholesale lots, shown under the retail table on the admin Products page.
+// Its own ?newLot / ?editLot links keep it from opening the retail editor.
+export function WholesaleLotsSection() {
   const [lots, setLots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState('');
-  const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [actingId, setActingId] = useState(null);
   const [editorLot, setEditorLot] = useState(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const requestSequence = useRef(0);
-  const newRequested = searchParams.get('new') === '1';
-  const editRequested = searchParams.get('edit') || '';
+  const newRequested = searchParams.get('newLot') === '1';
+  const editRequested = searchParams.get('editLot') || '';
 
   async function loadLots({ quiet = false } = {}) {
     const sequence = ++requestSequence.current;
@@ -587,21 +585,15 @@ export default function WholesaleAdmin() {
   }), [lots]);
 
   const visibleLots = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    return lots.filter((lot) => {
-      if (statusFilter !== 'all' && lot.status !== statusFilter) return false;
-      if (!needle) return true;
-      return [lot.title, lot.mpn, lot.lotCode, lot.brand, lot.generation, lot.formFactor]
-        .some((value) => String(value || '').toLowerCase().includes(needle));
-    });
-  }, [lots, search, statusFilter]);
+    return lots.filter((lot) => statusFilter === 'all' || lot.status === statusFilter);
+  }, [lots, statusFilter]);
 
   function openNew() {
-    setSearchParams({ new: '1' });
+    setSearchParams({ newLot: '1' });
   }
 
   function openEdit(lot) {
-    setSearchParams({ edit: lot.id });
+    setSearchParams({ editLot: lot.id });
   }
 
   function closeEditor() {
@@ -647,12 +639,11 @@ export default function WholesaleAdmin() {
   }
 
   return (
-    <AppLayout requireAdmin>
-      <div className="wholesale-admin min-h-full p-5 sm:p-8">
+    <>
+      <div className="wholesale-admin p-5 sm:p-8" id="wholesale">
         <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="wa-accent-text mb-2 text-[10px] font-bold uppercase tracking-[0.15em]">Products / Wholesale</p>
-            <h1 className="text-2xl font-bold tracking-tight">Wholesale stock</h1>
+            <h2 className="text-xl font-bold tracking-tight">Wholesale lots</h2>
             <p className="wa-muted mt-1 max-w-2xl text-[12px] leading-5">All special lots in one place. Draft privately, publish exact stock, and archive without touching the retail catalog.</p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -660,8 +651,6 @@ export default function WholesaleAdmin() {
             <button className="btn-primary flex items-center gap-2" data-wholesale-editor-trigger onClick={openNew} type="button"><Plus size={14} /> Add wholesale listing</button>
           </div>
         </header>
-
-        <ProductWorkspaceNav />
 
         <section aria-label="Wholesale inventory summary" className="mb-6 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {[
@@ -684,10 +673,6 @@ export default function WholesaleAdmin() {
               <p className="wa-faint mt-0.5 text-[10px]">Draft, live, and archived records stay visible here.</p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
-              <div className="relative min-w-56">
-                <Search className="wa-faint absolute left-3 top-1/2 -translate-y-1/2" size={13} />
-                <input aria-label="Search wholesale listings" className="input pl-9" onChange={(event) => setSearch(event.target.value)} placeholder="Search title, MPN, lot code…" value={search} />
-              </div>
               <select aria-label="Filter wholesale listings by status" className="input sm:w-36" onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}>
                 <option value="all">All statuses</option>
                 <option value="draft">Drafts</option>
@@ -725,7 +710,7 @@ export default function WholesaleAdmin() {
                     <td className="p-12 text-center" colSpan="7">
                       <Boxes className="wa-faint mx-auto" size={28} />
                       <strong className="wa-strong mt-3 block text-[14px]">{lots.length ? 'No listings match this view' : 'No wholesale listings yet'}</strong>
-                      <span className="wa-faint mt-1 block text-[11px]">{lots.length ? 'Change the search or status filter.' : 'Add special stock when it is ready. Nothing has been pre-filled.'}</span>
+                      <span className="wa-faint mt-1 block text-[11px]">{lots.length ? 'Change the status filter.' : 'Add special stock when it is ready. Nothing has been pre-filled.'}</span>
                       {!lots.length && <button className="btn-primary mx-auto mt-4 flex items-center gap-2" data-wholesale-editor-trigger onClick={openNew} type="button"><Plus size={13} /> Add first listing</button>}
                     </td>
                   </tr>
@@ -775,6 +760,6 @@ export default function WholesaleAdmin() {
       </div>
 
       {editorLot && <LotEditor initialLot={editorLot} key={editorLot.id || 'new'} onClose={closeEditor} onPersisted={persisted} onSaved={saved} onStale={stale} />}
-    </AppLayout>
+    </>
   );
 }

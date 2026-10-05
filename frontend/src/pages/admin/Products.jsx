@@ -1,12 +1,12 @@
 import { useEffect, useState, useRef } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import {
   Plus, Pencil, Trash2, Upload, X, Check, Loader2,
-  Search, ChevronLeft, ChevronRight, ImageIcon
+  ChevronLeft, ChevronRight, ImageIcon
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppLayout from '@/components/AppLayout';
-import ProductWorkspaceNav from '@/components/ProductWorkspaceNav';
+import { WholesaleLotsSection } from '@/pages/admin/WholesaleAdmin';
 import { adminApi } from '@/lib/api';
 import { formatStorePrice } from '@/lib/currency';
 import { imageUrl } from '@/lib/imageUrl';
@@ -336,13 +336,13 @@ export default function AdminProducts() {
   const [products, setProducts] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, total: 0, pages: 1 });
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [modalProduct, setModalProduct] = useState(null); // null = closed, {} = new, {...} = edit
   const [modalOpen, setModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
   const requestedStock = searchParams.get('stock');
   const stockFilter = ['in', 'low', 'out'].includes(requestedStock) ? requestedStock : '';
 
@@ -369,12 +369,11 @@ export default function AdminProducts() {
     }
   }, [searchParams]);
 
-  const load = (p = page, q = search, stock = stockFilter) => {
+  const load = (p = page, stock = stockFilter) => {
     setLoading(true);
     adminApi.listProducts({
       page: p,
       limit: 15,
-      search: q || undefined,
       stock: stock || undefined,
     })
       .then(({ data }) => {
@@ -387,11 +386,10 @@ export default function AdminProducts() {
 
   useEffect(() => { load(); }, [page, stockFilter]);
 
-  const handleSearch = (e) => {
-    e.preventDefault();
-    setPage(1);
-    load(1, search, stockFilter);
-  };
+  // /admin/products#wholesale (the public wholesale page's "Manage" link) opens at the lots.
+  useEffect(() => {
+    if (location.hash === '#wholesale') document.getElementById('wholesale')?.scrollIntoView();
+  }, [location.hash]);
 
   const handleSave = (product) => {
     setModalOpen(false);
@@ -419,9 +417,8 @@ export default function AdminProducts() {
       <div className="p-8">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-amber-300">Products / Retail</p>
-            <h1 className="text-2xl font-bold tracking-tight">Retail products</h1>
-            <p className="text-neutral-500 text-[13px] mt-0.5">{pagination.total} total products</p>
+            <h1 className="text-2xl font-bold tracking-tight">Products</h1>
+            <p className="text-neutral-500 text-[13px] mt-0.5">{pagination.total} retail products · wholesale lots below</p>
           </div>
           <button
             onClick={() => { setModalProduct({}); setModalOpen(true); }}
@@ -432,8 +429,6 @@ export default function AdminProducts() {
           </button>
         </div>
 
-        <ProductWorkspaceNav showWholesaleActions />
-
         {stockFilter && (
           <div className="mb-4 flex items-center gap-2 text-[12px] text-amber-300">
             Showing {stockFilter} stock products
@@ -442,20 +437,6 @@ export default function AdminProducts() {
             </Link>
           </div>
         )}
-
-        {/* Search */}
-        <form onSubmit={handleSearch} className="flex gap-2 mb-6">
-          <div className="relative flex-1 max-w-sm">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
-            <input
-              className="input pl-9"
-              placeholder="Search products…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-          </div>
-          <button type="submit" className="btn-secondary">Search</button>
-        </form>
 
         {/* Table */}
         <div className="glass rounded-2xl overflow-hidden">
@@ -587,6 +568,8 @@ export default function AdminProducts() {
           )}
         </div>
       </div>
+
+      <WholesaleLotsSection />
 
       {modalOpen && (
         <ProductModal

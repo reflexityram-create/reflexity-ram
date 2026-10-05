@@ -190,7 +190,8 @@ test("the official wholesale shell reads only the fail-closed public API", async
   assert.match(local, /badgeLabel="LOCAL DEMO"/);
   assert.match(page, /aria-label=\{`View wholesale lot \$\{lot\.title\}`\}/);
   assert.match(page, /user\?\.role === "admin"/);
-  assert.match(page, /to="\/admin\/wholesale\?new=1"/);
+  // Wholesale lots are managed on the admin Products page since the owner merged the two.
+  assert.match(page, /to="\/admin\/products\?newLot=1#wholesale"/);
   assert.match(css, /\.ws-coming \{[^}]*border-radius: 14px/s);
   assert.match(css, /\.ws-contact-link \{[^}]*width: 100%/s);
   assert.match(css, /\.ws-coming-top > span \{ color: #7a5f00; \}/);

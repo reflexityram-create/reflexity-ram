@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Loader2, Search, ChevronLeft, ChevronRight, X, Package, Truck, Star } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronRight, X, Package, Truck, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import AppLayout from '@/components/AppLayout';
 import { adminApi } from '@/lib/api';
@@ -258,18 +258,16 @@ export default function AdminOrders() {
   const [orders, setOrders] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, total: 0, pages: 1 });
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [archivedView, setArchivedView] = useState(false);
   const [page, setPage] = useState(1);
   const [selectedOrderId, setSelectedOrderId] = useState(null);
 
-  const load = (p = page, q = search, s = statusFilter, arch = archivedView) => {
+  const load = (p = page, s = statusFilter, arch = archivedView) => {
     setLoading(true);
     adminApi.listOrders({
       page: p,
       limit: 20,
-      search: q || undefined,
       status: s || undefined,
       archived: arch ? 'true' : 'false',
     })
@@ -293,12 +291,6 @@ export default function AdminOrders() {
     }
   };
 
-  const handleSearch = (e) => {
-    e.preventDefault();
-    setPage(1);
-    load(1, search, statusFilter);
-  };
-
   return (
     <AppLayout requireAdmin>
       <div className="p-8">
@@ -309,18 +301,6 @@ export default function AdminOrders() {
 
         {/* Filters */}
         <div className="flex flex-wrap gap-2 mb-6">
-          <form onSubmit={handleSearch} className="flex gap-2">
-            <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
-              <input
-                className="input pl-9 w-56"
-                placeholder="Order # or email…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-              />
-            </div>
-            <button type="submit" className="btn-secondary">Search</button>
-          </form>
           <select
             className="input w-auto"
             value={statusFilter}
