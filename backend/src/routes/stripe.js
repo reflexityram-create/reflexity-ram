@@ -74,9 +74,9 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
 
     // ── Build line_items from DB-stored Stripe Price IDs ──────────────────────
     const lineItems = [];
-    // Products the session actually charges for. Their server-side shipping
-    // overrides — never anything the client sent — set the session's rate.
-    const cartProducts = [];
+    // What the session actually charges for: the stick count and the products'
+    // own rates (server-side, never anything the client sent) set the shipping.
+    const shippingLines = [];
     for (const item of eligibleItems) {
       const product = productsBySlug.get(item.slug);
       if (product.stockQuantity <= 0 || product.stock === 'out') {
@@ -96,7 +96,7 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
       }
 
       lineItems.push({ price: priceId, quantity: item.qty });
-      cartProducts.push(product);
+      shippingLines.push({ product, qty: item.qty });
     }
 
     const frontendUrl = process.env.FRONTEND_URL || 'https://reflexityram.com';
@@ -113,7 +113,7 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
       // ── Shipping: Canada + US only. Stripe renders the country-appropriate
       // address form (Province/Postal code vs State/ZIP) automatically. ──────
       shipping_address_collection: { allowed_countries: ALLOWED_SHIPPING_COUNTRIES },
-      shipping_options: toStripeShippingOptions(resolveCartShippingPrice(cartProducts)),
+      shipping_options: toStripeShippingOptions(resolveCartShippingPrice(shippingLines)),
       phone_number_collection: { enabled: true },
       billing_address_collection: 'auto',
 

@@ -311,7 +311,7 @@ function ProductModal({ product, onClose, onSave }) {
                     className="input"
                     value={form.shippingPrice ?? ''}
                     onChange={e => setField('shippingPrice', e.target.value)}
-                    placeholder="Blank = $14 flat rate"
+                    placeholder="Blank = $14, or $25 for 3+ sticks"
                     data-testid="product-shipping-price"
                   />
                 </Field>

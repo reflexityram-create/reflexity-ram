@@ -159,3 +159,19 @@ test('only signed-in customers get the "View all orders" button', async () => {
   const page = await read('../src/pages/OrderSuccess.jsx');
   assert.match(page, /isAuthenticated\(\) && \(\s*<Link to="\/account\?tab=orders"/);
 });
+
+// Owner's rule (2026-10-05): 1–2 sticks ship for $14, 3 or more for $25.
+test('the product page, checkout and shipping policies state the stick-count shipping rule', async () => {
+  const [currency, product, checkout, shipping, international] = await Promise.all([
+    read('../src/lib/currency.js'),
+    read('../src/pages/Product.jsx'),
+    read('../src/pages/Checkout.jsx'),
+    read('../src/pages/policies/Shipping.jsx'),
+    read('../src/pages/policies/International.jsx'),
+  ]);
+  assert.match(currency, /export const LARGE_ORDER_MIN_STICKS = 3;/);
+  assert.match(currency, /export const LARGE_ORDER_SHIPPING_PRICE = 25;/);
+  assert.match(product, /hasOwnShippingPrice\(p\) \? '' : ` \(\$\{formatStorePriceWithCode\(LARGE_ORDER_SHIPPING_PRICE, 0\)\} for \$\{LARGE_ORDER_MIN_STICKS\}\+ sticks\)`/);
+  assert.match(checkout, /\$14 for 1–2 sticks, \$25 for 3 or more/);
+  for (const policy of [shipping, international]) assert.match(policy, /\$14 CAD for 1–2 sticks and \$25 CAD for 3 or more/);
+});

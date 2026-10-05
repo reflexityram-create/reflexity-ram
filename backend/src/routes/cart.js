@@ -20,14 +20,14 @@ const publicCartView = async (cart) => {
   const products = slugs.length
     ? await Product.find({ slug: { $in: slugs }, isActive: true, line: 'Server' }).lean()
     : [];
-  const publicSlugs = new Set(products.map((product) => product.slug));
-  const items = cart.items.filter((item) => publicSlugs.has(item.slug));
+  const productsBySlug = new Map(products.map((product) => [product.slug, product]));
+  const items = cart.items.filter((item) => productsBySlug.has(item.slug));
   return {
     items,
     subtotal: items.reduce((sum, item) => sum + item.price * item.qty, 0),
     itemCount: items.reduce((sum, item) => sum + item.qty, 0),
     // The flat rate Stripe Checkout will charge for this cart (same function).
-    shipping: items.length ? resolveCartShippingPrice(products) : 0,
+    shipping: items.length ? resolveCartShippingPrice(items.map((item) => ({ product: productsBySlug.get(item.slug), qty: item.qty }))) : 0,
   };
 };
 
@@ -65,7 +65,7 @@ router.get('/', optionalAuth, async (req, res) => {
     const subtotal = items.reduce((sum, i) => sum + i.price * i.qty, 0);
     const itemCount = items.reduce((sum, i) => sum + i.qty, 0);
     // The flat rate Stripe Checkout will charge for this cart (same function).
-    const shipping = items.length ? resolveCartShippingPrice(items.map((i) => i.product).filter(Boolean)) : 0;
+    const shipping = items.length ? resolveCartShippingPrice(items.map((i) => ({ product: i.product, qty: i.qty }))) : 0;
 
     res.json({
       cart: {

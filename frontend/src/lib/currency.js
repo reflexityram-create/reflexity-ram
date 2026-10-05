@@ -1,9 +1,17 @@
 export const STORE_CURRENCY_CODE = "CAD";
 export const STORE_CURRENCY_NAME = "Canadian dollars (CAD)";
 export const STANDARD_SHIPPING_PRICE = 14;
+// 3 or more sticks in one order ship for the higher flat rate (backend/src/config/shipping.js).
+export const LARGE_ORDER_MIN_STICKS = 3;
+export const LARGE_ORDER_SHIPPING_PRICE = 25;
 
-// A product may carry its own shipping rate (`shippingPrice`) when it costs more
-// to ship than the standard flat rate; everything else ships at the flat rate.
+export function hasOwnShippingPrice(product) {
+  const raw = product?.shippingPrice;
+  return !(raw === undefined || raw === null || raw === "") && Number.isFinite(Number(raw)) && Number(raw) >= 0;
+}
+
+// A product may carry its own shipping rate (`shippingPrice`); everything else
+// ships at the stick-count rate ($14, or $25 for 3+ sticks).
 // Display only — the server resolves the rate it actually charges.
 export function shippingPriceFor(product) {
   const raw = product?.shippingPrice;

@@ -34,6 +34,9 @@ import {
   formatStorePrice,
   formatStorePriceWithCode,
   shippingPriceFor,
+  hasOwnShippingPrice,
+  LARGE_ORDER_MIN_STICKS,
+  LARGE_ORDER_SHIPPING_PRICE,
   STORE_CURRENCY_CODE,
 } from "@/lib/currency";
 
@@ -466,7 +469,7 @@ export default function Product() {
                   <div>
                     <div className="text-[13px] font-medium">🇨🇦 Canada-wide shipping</div>
                     <div className="text-[12px] text-neutral-500">
-                      {formatStorePriceWithCode(shippingPriceFor(p), 0)} flat rate · ESD-safe · tracked
+                      {formatStorePriceWithCode(shippingPriceFor(p), 0)} flat rate{hasOwnShippingPrice(p) ? '' : ` (${formatStorePriceWithCode(LARGE_ORDER_SHIPPING_PRICE, 0)} for ${LARGE_ORDER_MIN_STICKS}+ sticks)`} · ESD-safe · tracked
                     </div>
                   </div>
                 </div>
