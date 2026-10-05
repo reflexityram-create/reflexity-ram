@@ -22,12 +22,12 @@ const { cancelReviewRequest } = require('../utils/reviewRequests');
 
 const router = express.Router();
 
-// Stripe's hosted page otherwise shows the Stripe account's public name (still
-// the sign-up placeholder "reflexityram-real") and Stripe's blue button.
-// Receipts keep using the account name until it is changed in the Stripe
-// dashboard (Settings > Public details).
+// Stripe's hosted page takes its name from the Stripe account's public business
+// name (Stripe dashboard > Settings > Public details, set to "ReflexityRam" on
+// 2026-10-04), the same name receipts use. The account's own branding (icon,
+// colours) is empty, so without these Stripe shows a generic icon and its
+// default blue button.
 const CHECKOUT_BRANDING = {
-  display_name: 'Reflexity RAM',
   button_color: '#ffcf24', // --brand-yellow in frontend/src/index.css
   icon: { type: 'url', url: 'https://reflexityram.com/brand/stripe-checkout-icon.png' },
 };

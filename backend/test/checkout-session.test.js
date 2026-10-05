@@ -62,9 +62,10 @@ test('checkout sessions stay open for Stripe\'s 24-hour default and ship to Cana
   }
 });
 
-// Without branding_settings Stripe's page reads "Pay reflexityram-real" (the
-// account's sign-up placeholder name) with Stripe's default blue button.
-test('checkout sessions show the Reflexity RAM name, icon and yellow button on Stripe\'s page', async () => {
+// Without branding_settings Stripe's page shows a generic icon and Stripe's
+// default blue button. The name comes from the account's public business name
+// (set in the Stripe dashboard), so the session must not override it.
+test('checkout sessions show the account name, the Reflexity icon and the yellow button on Stripe\'s page', async () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const originalFind = Product.find;
@@ -87,7 +88,7 @@ test('checkout sessions show the Reflexity RAM name, icon and yellow button on S
     const response = await request(app, '/api/stripe/create-checkout-session');
 
     assert.equal(response.status, 200);
-    assert.equal(payload.branding_settings?.display_name, 'Reflexity RAM');
+    assert.equal('display_name' in payload.branding_settings, false, 'the Stripe account name is used, not a per-session one');
     assert.equal(payload.branding_settings.button_color, '#ffcf24');
     const iconUrl = new URL(payload.branding_settings.icon.url);
     assert.equal(iconUrl.origin, 'https://reflexityram.com');

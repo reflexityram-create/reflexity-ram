@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { CheckCircle, Package, Truck, Loader2, AlertTriangle } from 'lucide-react';
+import { CheckCircle, Package, Truck, Loader2, AlertTriangle, ExternalLink } from 'lucide-react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { ordersApi } from '@/lib/api';
 import GoogleCustomerReviewsOptIn from '@/components/GoogleCustomerReviewsOptIn';
 import { imageUrl } from '@/lib/imageUrl';
+import useAuthStore from '@/lib/authStore';
 
 const STATUS_STEPS = [
   { id: 'pending', label: 'Order placed' },
@@ -16,11 +17,36 @@ const STATUS_STEPS = [
 
 const STATUS_INDEX = { pending: 0, processing: 1, shipped: 2, delivered: 3 };
 
+const dayLabel = (value) => (value
+  ? new Date(value).toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' })
+  : null);
+
+// The same page is the confirmation right after paying and the status page the
+// shipping email links to later, so the headline follows the order's status.
+const headline = (order) => {
+  const email = order.user?.email || order.guestEmail;
+  switch (order.status) {
+    case 'shipped':
+      return { Icon: Truck, title: 'Your order is on its way',
+        text: `Shipped${order.shippedAt ? ` ${dayLabel(order.shippedAt)}` : ''} with Canada Post. Delivery usually takes 3–6 business days after dispatch.` };
+    case 'delivered':
+      return { Icon: Package, title: 'Your order was delivered',
+        text: `Delivered${order.deliveredAt ? ` ${dayLabel(order.deliveredAt)}` : ''}. Thank you for shopping with us.` };
+    case 'cancelled':
+      return { Icon: AlertTriangle, warn: true, title: 'This order was cancelled', text: 'Questions about it? Email reflexityram@gmail.com.' };
+    case 'refunded':
+      return { Icon: AlertTriangle, warn: true, title: 'This order was refunded', text: 'The refund goes back to your original payment method.' };
+    default:
+      return { Icon: CheckCircle, title: 'Order confirmed!', text: email ? `Thank you for your order. A confirmation email has been sent to ${email}.` : 'Thank you for your order.' };
+  }
+};
+
 export default function OrderSuccess() {
   const { orderNumber } = useParams();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const { isAuthenticated } = useAuthStore();
 
   useEffect(() => {
     if (!orderNumber) return;
@@ -66,20 +92,22 @@ export default function OrderSuccess() {
           </div>
         ) : (
           <div className="max-w-2xl mx-auto">
-            {/* Success header */}
-            <div className="text-center mb-10">
-              <div className="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto mb-4">
-                <CheckCircle size={32} className="text-emerald-400" />
-              </div>
-              <h1 className="text-3xl font-bold tracking-tight">Order confirmed!</h1>
-              <p className="text-neutral-400 text-[14px] mt-2">
-                Thank you for your order. A confirmation email has been sent to{' '}
-                <strong>{order.user?.email || order.guestEmail}</strong>.
-              </p>
-              <div className="mono text-[13px] text-neutral-500 mt-2">
-                Order #{order.orderNumber}
-              </div>
-            </div>
+            {/* Status header */}
+            {(() => {
+              const { Icon, title, text, warn } = headline(order);
+              return (
+                <div className="text-center mb-10" data-testid="order-headline">
+                  <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 border ${warn ? 'bg-amber-500/10 border-amber-500/30' : 'bg-emerald-500/10 border-emerald-500/30'}`}>
+                    <Icon size={32} className={warn ? 'text-amber-400' : 'text-emerald-400'} />
+                  </div>
+                  <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
+                  <p className="text-neutral-400 text-[14px] mt-2">{text}</p>
+                  <div className="mono text-[13px] text-neutral-500 mt-2">
+                    Order #{order.orderNumber}
+                  </div>
+                </div>
+              );
+            })()}
 
             <GoogleCustomerReviewsOptIn order={order} />
 
@@ -108,10 +136,12 @@ export default function OrderSuccess() {
                 })}
               </div>
               {order.trackingNumber && (
-                <div className="mt-4 pt-4 border-t border-white/5 text-[13px] text-neutral-400">
-                  Tracking: <span className="mono text-white">{order.trackingNumber}</span>
-                  {order.status === 'shipped' && (
-                    <p className="mt-2">Estimated delivery: 3–6 business days after dispatch.</p>
+                <div className="mt-4 pt-4 border-t border-white/5 text-[13px] text-neutral-400 flex flex-wrap items-center justify-between gap-3" data-testid="order-tracking">
+                  <span>Canada Post tracking: <span className="mono text-white">{order.trackingNumber}</span></span>
+                  {order.trackingUrl && (
+                    <a href={order.trackingUrl} target="_blank" rel="noopener noreferrer" className="btn-secondary">
+                      Track package <ExternalLink size={14} />
+                    </a>
                   )}
                 </div>
               )}
@@ -190,7 +220,10 @@ export default function OrderSuccess() {
             </div>
 
             <div className="flex gap-3 justify-center">
-              <Link to="/account?tab=orders" className="btn-secondary">View all orders</Link>
+              {/* Guests check out without an account, so they have no order list to open. */}
+              {isAuthenticated() && (
+                <Link to="/account?tab=orders" className="btn-secondary">View all orders</Link>
+              )}
               <Link to="/shop" className="btn-primary">Continue shopping</Link>
             </div>
           </div>
