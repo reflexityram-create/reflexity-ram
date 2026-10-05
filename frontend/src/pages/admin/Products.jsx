@@ -18,7 +18,7 @@ const EMPTY_PRODUCT = {
   ecc: false,
   condition: 'Used', warranty: '90 Days',
   price: 0, shippingPrice: '', stockQuantity: 0,
-  countryOfOrigin: '', hsCode: '8473.30',
+  countryOfOrigin: '', hsCode: '8473.30', featured: false,
   images: [],
 };
 
@@ -107,6 +107,7 @@ function normalizeProduct(p) {
     shippingPrice: p.shippingPrice ?? '',
     countryOfOrigin: p.countryOfOrigin ?? '',
     hsCode: p.hsCode ?? '8473.30',
+    featured: Boolean(p.featured),
   };
 }
 // Auto-generate slug from product name (server also has a unique index).
@@ -185,6 +186,7 @@ function ProductModal({ product, onClose, onSave }) {
         // Blank "Made in" is stored as unknown, not as an empty code.
         countryOfOrigin: form.countryOfOrigin || null,
         hsCode: form.hsCode || null,
+        featured: Boolean(form.featured),
         images: form.images,
       };
       if (!isEdit) {
@@ -324,6 +326,12 @@ function ProductModal({ product, onClose, onSave }) {
                 </Field>
                 <Field label="HS code (customs)">
                   <input className="input" value={form.hsCode ?? ''} onChange={e => setField('hsCode', e.target.value)} placeholder="8473.30 (memory modules)" data-testid="product-hs-code" />
+                </Field>
+                <Field label="Home page">
+                  <label className="flex items-center gap-2 text-[14px] cursor-pointer py-2">
+                    <input type="checkbox" checked={Boolean(form.featured)} onChange={e => setField('featured', e.target.checked)} data-testid="product-featured" />
+                    Feature on the home page (replaces the current one)
+                  </label>
                 </Field>
                 <Field label="Shipping override (CAD)">
                   <input

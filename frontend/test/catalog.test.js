@@ -11,6 +11,7 @@ import {
   getCatalogCategoryLabel,
   isPublicServerRam,
   matchesCatalogLines,
+  pickFeatured,
   RAM_CATEGORIES,
 } from "../src/lib/catalog.js";
 
@@ -205,4 +206,18 @@ test("fetchAllCatalogProducts stops before requesting a later page when cancelle
   );
 
   assert.deepEqual(requestedPages, [1]);
+});
+
+// The home page shows one stick large: the admin's pick, else the priciest in stock, never a sold-out one.
+test("the home page features the admin's pick, else the highest-priced stick in stock", async () => {
+  const stick = (slug, price, extra = {}) => ({ slug, price, stock: "in", ...extra });
+  assert.equal(pickFeatured([stick("a", 135), stick("b", 585), stick("c", 170, { featured: true })]).slug, "c");
+  assert.equal(pickFeatured([stick("a", 135), stick("b", 585)]).slug, "b");
+  assert.equal(pickFeatured([stick("a", 135), stick("b", 585, { stock: "out", featured: true })]).slug, "a");
+  assert.equal(pickFeatured([stick("b", 585, { stock: "out" })]), null);
+  const home = await readFile(new URL("../src/pages/Home.jsx", import.meta.url), "utf8");
+  assert.match(home, /const featured = pickFeatured\(publicProducts\);/);
+  assert.match(home, /const rest = publicProducts\.filter\(\(p\) => p !== featured\);/);
+  assert.match(home, /data-testid="home-featured"/);
+  assert.match(home, /Ships from Toronto to Canada and 70\+ countries, tracked\./);
 });

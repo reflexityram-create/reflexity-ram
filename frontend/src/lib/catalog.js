@@ -21,6 +21,13 @@ export function isPublicServerRam(product) {
   return product?.line === "Server";
 }
 
+// The stick shown large on the home page: the one the admin ticked "Feature on
+// the home page", else the highest-priced one in stock. Never a sold-out one.
+export function pickFeatured(products) {
+  const inStock = products.filter((p) => p.stock !== "out");
+  return inStock.find((p) => p.featured) || [...inStock].sort((a, b) => b.price - a.price)[0] || null;
+}
+
 export function getCatalogCategoryLabel(generation, formFactors, lines, eccOnly) {
   const serverForms = ["RDIMM", "LRDIMM"];
   const allServerForms = serverForms.every((form) => formFactors.includes(form))

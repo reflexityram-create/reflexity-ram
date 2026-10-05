@@ -92,6 +92,10 @@ const productSchema = new mongoose.Schema({
   // tariff code. US orders need both to prepay duties; RAM modules are 8473.30.
   countryOfOrigin: { type: String, trim: true, uppercase: true, match: [/^[A-Z]{2}$/, 'Use a 2-letter country code'] },
   hsCode: { type: String, trim: true, match: [/^\d{4}(\.?\d{2}){0,3}$/, 'Use an HS code like 8473.30'] },
+  // The one stick shown large on the home page (admin "Feature on the home
+  // page"); setting it clears it on every other product. With none set, the
+  // home page shows the highest-priced stick in stock.
+  featured: { type: Boolean, default: false },
   stock: {
     type: String,
     enum: ['in', 'low', 'out'],
