@@ -2,6 +2,7 @@ const { Resend } = require('resend');
 const { CURRENCY } = require('../config/shipping');
 const { escapeHtml } = require('./htmlEscape');
 const { orderAccessUrl } = require('./orderAccessLink');
+const { trackingUrlFor } = require('./tracking');
 
 let resend;
 const getResend = () => {
@@ -177,6 +178,7 @@ const sendOrderConfirmationEmail = async ({ email, firstName, order }) => {
  */
 const sendShippingNotificationEmail = async ({ email, firstName, order }) => {
   const orderUrl = orderAccessUrl(FRONTEND_URL, order, email);
+  const trackingUrl = trackingUrlFor(order);
 
   const { data, error } = await getResend().emails.send({
     from: FROM_EMAIL,
@@ -192,8 +194,9 @@ const sendShippingNotificationEmail = async ({ email, firstName, order }) => {
             <div style="margin-bottom:32px;"><span style="font-size:20px;font-weight:700;">Reflexity RAM</span></div>
             <h1 style="font-size:22px;font-weight:700;margin:0 0 12px;">Your order is on its way!</h1>
             <p style="color:#a0a0aa;margin:0 0 24px;line-height:1.6;">Hi ${escapeHtml(firstName)}, your order <span style="font-family:monospace;color:#f5f5f7;">${escapeHtml(order.orderNumber)}</span> has been shipped.</p>
-            ${order.trackingNumber ? `<p style="color:#a0a0aa;font-size:13px;">Tracking: <span style="font-family:monospace;color:#f5f5f7;">${escapeHtml(order.trackingNumber)}</span></p>` : ''}
-            <a href="${escapeHtml(orderUrl)}" style="display:inline-block;background:#f5f5f7;color:#050505;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;font-size:13px;margin-top:16px;">Track Order</a>
+            ${trackingUrl && order.trackingNumber ? `<p style="color:#a0a0aa;font-size:13px;">Canada Post tracking number: <a href="${escapeHtml(trackingUrl)}" style="font-family:monospace;color:#f5f5f7;">${escapeHtml(order.trackingNumber)}</a></p>` : ''}
+            <a href="${escapeHtml(trackingUrl || orderUrl)}" style="display:inline-block;background:#f5f5f7;color:#050505;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;font-size:13px;margin-top:16px;">${trackingUrl ? 'Track your package' : 'View your order'}</a>
+            ${trackingUrl ? `<p style="margin:16px 0 0;font-size:13px;"><a href="${escapeHtml(orderUrl)}" style="color:#a0a0aa;">View your order</a></p>` : ''}
           </div>
         </div>
       </body>

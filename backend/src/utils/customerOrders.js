@@ -1,3 +1,5 @@
+const { trackingUrlFor } = require('./tracking');
+
 const addressForCustomer = (address) => {
   if (!address) return undefined;
   const value = typeof address.toObject === 'function' ? address.toObject() : address;
@@ -50,7 +52,7 @@ const customerOrderResponse = (order) => {
     total: value.total,
     shippingMethod: value.shippingMethod,
     trackingNumber: value.trackingNumber,
-    trackingUrl: value.trackingUrl,
+    trackingUrl: trackingUrlFor(value),
     estimatedDelivery: value.estimatedDelivery,
     shippedAt: value.shippedAt,
     deliveredAt: value.deliveredAt,

@@ -143,3 +143,19 @@ test('the order page lists the tax, so its summary adds up to the total', async 
   assert.match(summary, /order\.tax > 0 && \(/);
   assert.match(summary, />Tax</);
 });
+
+// The order page is also the status page the shipping email links to: it used to
+// say "Order confirmed!" for a delivered parcel and showed the tracking number
+// as plain text.
+test('the order page headline follows the order status and tracking opens Canada Post', async () => {
+  const page = await read('../src/pages/OrderSuccess.jsx');
+  assert.match(page, /case 'shipped':[\s\S]*?title: 'Your order is on its way'/);
+  assert.match(page, /case 'delivered':[\s\S]*?title: 'Your order was delivered'/);
+  assert.match(page, /<a href=\{order\.trackingUrl\} target="_blank" rel="noopener noreferrer"/);
+});
+
+// Most buyers check out as guests; for them "View all orders" opened a sign-in wall.
+test('only signed-in customers get the "View all orders" button', async () => {
+  const page = await read('../src/pages/OrderSuccess.jsx');
+  assert.match(page, /isAuthenticated\(\) && \(\s*<Link to="\/account\?tab=orders"/);
+});
