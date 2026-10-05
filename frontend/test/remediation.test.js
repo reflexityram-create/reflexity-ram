@@ -175,3 +175,61 @@ test('the product page, checkout and shipping policies state the stick-count shi
   assert.match(checkout, /\$14 for 1–2 sticks, \$25 for 3 or more/);
   for (const policy of [shipping, international]) assert.match(policy, /\$14 CAD for 1–2 sticks and \$25 CAD for 3 or more/);
 });
+
+// Canada Post tracking sync stores the latest scan on the order; buyers see it under the tracking number.
+test('the order page shows the latest Canada Post scan and expected delivery date', async () => {
+  const page = await read('../src/pages/OrderSuccess.jsx');
+  assert.match(page, /order\.trackingLatest\?\.description && \(/);
+  assert.match(page, /Latest from Canada Post:/);
+  assert.match(page, /Canada Post expects to deliver it/);
+});
+
+// Every listing records where the module was made (needed for US duties).
+test('the admin product form asks where the module was made and the product page shows it', async () => {
+  const [admin, product] = await Promise.all([read('../src/pages/admin/Products.jsx'), read('../src/pages/Product.jsx')]);
+  assert.match(admin, /data-testid="product-country-of-origin"/);
+  assert.match(admin, /\['KR', 'Korea'\]/);
+  assert.match(admin, /countryOfOrigin: form\.countryOfOrigin \|\| null/);
+  assert.match(product, /\["Made in", p\.countryOfOrigin \?/);
+});
+
+// Outside Canada buyers pick their country and a Canada Post service priced live.
+test('checkout ships abroad with live Canada Post options and a duties notice', async () => {
+  const [checkout, api, picker] = await Promise.all([read('../src/pages/Checkout.jsx'), read('../src/lib/api.js'), read('../src/components/CountryPicker.jsx')]);
+  assert.match(checkout, /\[\['CA', 'Canada'\], \['INTL', 'Another country'\]\]/);
+  assert.match(picker, /data-testid="checkout-country"/);
+  assert.match(checkout, /data-testid="checkout-shipping-options"/);
+  assert.match(checkout, /Import taxes and duties are charged by your country on delivery\./);
+  assert.match(checkout, /international \? \{ country, serviceCode \} : undefined/);
+  assert.match(checkout, /Shipping to the United States or a country not listed\?/);
+  assert.match(api, /internationalQuote: \(country\) => api\.post\('\/shipping\/international-quote', \{ country \}\)/);
+});
+
+// The native country <select> was unreadable in dark mode; buyers can now type their country.
+test('the checkout country picker is searchable, themed and explains the US', async () => {
+  const [picker, checkout] = await Promise.all([read('../src/components/CountryPicker.jsx'), read('../src/pages/Checkout.jsx')]);
+  assert.match(picker, /role="combobox"/);
+  assert.match(picker, /role="listbox"/);
+  assert.match(picker, /background: 'var\(--bg-elev\)'/);
+  assert.match(picker, /color: 'var\(--fg\)'/);
+  assert.match(picker, /uk: 'GB'/);
+  assert.match(picker, /Not on the list\? Canada Post has no tracked service there right now\./);
+  assert.doesNotMatch(checkout, /<select className="input" value=\{country\}/);
+  assert.match(checkout, /<CountryPicker/);
+});
+
+// A factory-sealed module was never opened, so it cannot claim "Individually tested".
+test('sealed listings say "Factory sealed, unopened" instead of "Individually tested"', async () => {
+  const product = await read('../src/pages/Product.jsx');
+  assert.match(product, /if \(\/sealed\/i\.test\(p\.name \|\| ""\)\) return "Factory sealed, unopened";/);
+  assert.match(product, /\[conditionBadge\(p\), `\$\{p\.warranty\} warranty`/);
+});
+
+// Checkout ships abroad now, so the product page and the International page's search text stop saying "custom orders".
+test('the product page and International metadata describe checkout abroad', async () => {
+  const [product, metadata, international] = await Promise.all([read('../src/pages/Product.jsx'), read('../functions-shared/staticMetadata.js'), read('../src/pages/policies/International.jsx')]);
+  assert.match(product, /Many countries check out here at Canada Post's price, tracked\. US orders by quote\./);
+  assert.doesNotMatch(product, /We ship worldwide as custom orders/);
+  assert.match(metadata, /Ship Reflexity RAM abroad with Canada Post: tracked, at Canada Post's price at checkout\. US orders by quote\./);
+  assert.match(international, /<h2>Checking out from outside Canada<\/h2>/);
+});

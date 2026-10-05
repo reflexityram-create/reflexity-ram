@@ -12,7 +12,7 @@ const EMPTY_ROOT = /<div\s+id=(['"])root\1\s*><\/div>/i;
 const PAGES = {
   "/": {
     title: "Tested Server RAM in Canada — Reflexity RAM",
-    description: "Shop individually tested Server RAM across DDR generations and form factors, shipped from Toronto.",
+    description: "Shop tested and factory-sealed Server RAM across DDR generations and form factors, shipped from Toronto.",
     heading: "Tested Server RAM, shipped from Toronto",
     links: [["Shop tested RAM", "/shop"], ["Find the right memory", "/guides/how-to-identify-ram"]],
     jsonLd: [
@@ -106,7 +106,7 @@ const PAGES = {
   },
   "/international": {
     title: "International RAM Orders — Reflexity RAM",
-    description: "How to request custom shipping for Reflexity RAM orders outside Canada, including the United States.",
+    description: "Ship Reflexity RAM abroad with Canada Post: tracked, at Canada Post's price at checkout. US orders by quote.",
     heading: "International RAM orders",
     links: [["Contact support", "/support"], ["Shop tested RAM", "/shop"]],
   },

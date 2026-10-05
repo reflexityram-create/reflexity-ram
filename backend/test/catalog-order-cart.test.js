@@ -23,6 +23,7 @@ const { sanitizeHtml } = require('../src/utils/sanitizeHtml');
 const { CartMutationError, createCartMutation } = require('../src/utils/cartConcurrency');
 const Cart = require('../src/models/Cart');
 const Product = require('../src/models/Product');
+const Order = require('../src/models/Order');
 const cartRouter = require('../src/routes/cart');
 process.env.NODE_ENV ||= 'test';
 process.env.STRIPE_SECRET_KEY ||= 'sk_test_public_scope_unit_test';
@@ -545,4 +546,23 @@ test('cart mutation reports a concurrent disappearance as not found', async () =
   const result = await mutate({ sessionId: 'session_0123456789' }, async () => { called = true; });
   assert.equal(result, null);
   assert.equal(called, false);
+});
+
+// US orders need each product's "Made in" country to prepay duties.
+test('products store a 2-letter "Made in" country and an HS code, and buyers can see the country', async () => {
+  const valid = new Product({ countryOfOrigin: 'kr', hsCode: '8473.30' });
+  assert.equal(valid.countryOfOrigin, 'KR');
+  await assert.rejects(new Product({ countryOfOrigin: 'Korea' }).validate(['countryOfOrigin']));
+  await assert.rejects(new Product({ hsCode: 'ram' }).validate(['hsCode']));
+  assert.equal(PUBLIC_PRODUCT_PROJECTION.countryOfOrigin, 1);
+});
+
+// A UK buyer's address has no province and Stripe may leave the postal code
+// empty for some countries; the paid order must still save. Canadian
+// addresses keep their required province and postal code.
+test('orders accept addresses abroad without a province or postal code', async () => {
+  const address = (extra) => ({ firstName: 'Sam', lastName: 'Buyer', line1: '1 Example Road', city: 'London', state: '', zip: '', ...extra });
+  const order = (shippingAddress) => new Order({ orderNumber: 'RFX-ADDR', items: [], subtotal: 1, total: 1, shippingAddress });
+  await order(address({ country: 'GB' })).validate(['shippingAddress']);
+  await assert.rejects(order(address({ country: 'CA' })).validate(['shippingAddress']));
 });

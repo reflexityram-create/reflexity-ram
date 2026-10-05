@@ -455,7 +455,7 @@ export default function Product() {
 
               {/* Trust strip — quick reassurance at the point of decision */}
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mb-4 text-[12px] text-neutral-600 dark:text-neutral-400">
-                {["Individually tested", `${p.warranty} warranty`, "Ships from Toronto", "Secure checkout"].map((t) => (
+                {[conditionBadge(p), `${p.warranty} warranty`, "Ships from Toronto", "Secure checkout"].map((t) => (
                   <span key={t} className="inline-flex items-center gap-1.5">
                     <span className="text-emerald-600 dark:text-emerald-400">✓</span> {t}
                   </span>
@@ -488,9 +488,9 @@ export default function Product() {
               <div className="glass-soft rounded-xl p-4 flex items-start gap-3 mb-6">
                 <Globe size={18} className="text-neutral-300 mt-0.5 shrink-0" />
                 <div>
-                  <div className="text-[13px] font-medium">🌍 Shipping outside Canada, including the US?</div>
+                  <div className="text-[13px] font-medium">🌍 Shipping outside Canada?</div>
                   <div className="text-[12px] text-neutral-500">
-                    We ship worldwide as custom orders.{" "}
+                    Many countries check out here at Canada Post's price, tracked. US orders by quote.{" "}
                     <Link to="/international" className="text-emerald-400 hover:text-emerald-300 underline">
                       Read more →
                     </Link>
@@ -765,10 +765,18 @@ function RecentlyViewedSection({ slugs, currentSlug }) {
   );
 }
 
+// A factory-sealed module was not opened, so it was not tested here.
+function conditionBadge(p) {
+  if (/sealed/i.test(p.name || "")) return "Factory sealed, unopened";
+  if (p.condition === "New") return "Brand new";
+  return "Individually tested";
+}
+
 function SpecsTable({ p }) {
   const rows = [
     ["Manufacturer", p.brand],
     ["Manufacturer Part Number", p.mpn],
+    ["Made in", p.countryOfOrigin ? new Intl.DisplayNames(["en"], { type: "region" }).of(p.countryOfOrigin) : null],
     ["Generation", p.generation],
     ["Form Factor", p.formFactor],
     ["Capacity (kit)", p.capacityLabel],

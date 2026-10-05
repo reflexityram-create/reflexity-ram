@@ -155,6 +155,8 @@ router.post(
     body('description').optional().trim().isLength({ max: 5000 }),
     body('brand').optional().trim().isLength({ max: 100 }),
     body('mpn').optional().trim().isLength({ max: 100 }),
+    body('countryOfOrigin').optional({ values: 'falsy' }).trim().matches(/^[A-Za-z]{2}$/).withMessage('Made in must be a 2-letter country code'),
+    body('hsCode').optional({ values: 'falsy' }).trim().matches(/^\d{4}(\.?\d{2}){0,3}$/).withMessage('HS code looks wrong (e.g. 8473.30)'),
   ],
   validate,
   async (req, res) => {
@@ -165,7 +167,7 @@ router.post(
         'capacityLabel', 'kit', 'speed', 'speedLabel', 'cas', 'timings', 'voltage',
         'ecc', 'rank', 'profile', 'heatspreader', 'rgb', 'condition', 'warranty',
         'price', 'shippingPrice', 'stockQuantity', 'images', 'description', 'brand', 'mpn',
-        'metaTitle', 'metaDescription',
+        'countryOfOrigin', 'hsCode', 'metaTitle', 'metaDescription',
       ];
       // Force new products to be active
       const data = { isActive: true };
@@ -208,7 +210,7 @@ router.patch(
         'kit', 'speed', 'speedLabel', 'cas', 'timings', 'voltage', 'ecc', 'rank',
         'profile', 'heatspreader', 'rgb', 'condition', 'warranty', 'price',
         'shippingPrice', 'stockQuantity', 'images', 'description', 'brand', 'mpn',
-        'metaTitle', 'metaDescription', 'isActive',
+        'countryOfOrigin', 'hsCode', 'metaTitle', 'metaDescription', 'isActive',
       ];
       // Validate line if provided
       if (req.body.line !== undefined && !['Desktop', 'Laptop', 'Server'].includes(req.body.line)) {

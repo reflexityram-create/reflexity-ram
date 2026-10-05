@@ -131,14 +131,21 @@ export const ordersApi = {
     }),
 };
 
+// ─── Shipping outside Canada (Canada Post prices) ────────────────────────────
+export const shippingApi = {
+  countries: () => api.get('/shipping/countries'),
+  internationalQuote: (country) => api.post('/shipping/international-quote', { country }),
+};
+
 // ─── Stripe API ───────────────────────────────────────────────────────────────
 export const stripeApi = {
   // `analytics` ({ clientId, sessionId }) is optional; the server validates it and uses it
   // only to attribute the purchase it reports to GA4.
-  createCheckoutSession: (analytics) => api.post(
-    '/stripe/create-checkout-session',
-    analytics && Object.keys(analytics).length > 0 ? { analytics } : undefined,
-  ),
+  // `shipping` ({ country, serviceCode }) is only sent for orders outside Canada.
+  createCheckoutSession: (analytics, shipping) => api.post('/stripe/create-checkout-session', {
+    ...(analytics && Object.keys(analytics).length > 0 ? { analytics } : {}),
+    ...(shipping ? { shipping } : {}),
+  }),
   sessionStatus: (sessionId) =>
     api.get('/stripe/session-status', { params: { session_id: sessionId } }),
 };

@@ -21,6 +21,16 @@ const dayLabel = (value) => (value
   ? new Date(value).toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' })
   : null);
 
+// Canada Post scan times come as a local date + time + zone label (e.g. MST).
+const scanTime = ({ date, time, timeZone }) => {
+  if (!date) return '';
+  const [y, m, d] = date.split('-').map(Number);
+  const day = new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  if (!time) return day;
+  const [hh, mm] = time.split(':').map(Number);
+  return `${day}, ${((hh + 11) % 12) + 1}:${String(mm).padStart(2, '0')} ${hh < 12 ? 'AM' : 'PM'}${timeZone ? ` ${timeZone}` : ''}`;
+};
+
 // The same page is the confirmation right after paying and the status page the
 // shipping email links to later, so the headline follows the order's status.
 const headline = (order) => {
@@ -28,7 +38,9 @@ const headline = (order) => {
   switch (order.status) {
     case 'shipped':
       return { Icon: Truck, title: 'Your order is on its way',
-        text: `Shipped${order.shippedAt ? ` ${dayLabel(order.shippedAt)}` : ''} with Canada Post. Delivery usually takes 3–6 business days after dispatch.` };
+        text: `Shipped${order.shippedAt ? ` ${dayLabel(order.shippedAt)}` : ''} with Canada Post. ${order.trackingLatest?.expectedDeliveryDate
+          ? `Canada Post expects to deliver it ${dayLabel(`${order.trackingLatest.expectedDeliveryDate}T12:00:00Z`)}.`
+          : 'Delivery usually takes 3–6 business days after dispatch.'}` };
     case 'delivered':
       return { Icon: Package, title: 'Your order was delivered',
         text: `Delivered${order.deliveredAt ? ` ${dayLabel(order.deliveredAt)}` : ''}. Thank you for shopping with us.` };
@@ -144,6 +156,13 @@ export default function OrderSuccess() {
                     </a>
                   )}
                 </div>
+              )}
+              {order.trackingLatest?.description && (
+                <p className="mt-3 text-[13px] text-neutral-400" data-testid="order-tracking-latest">
+                  Latest from Canada Post: <span className="text-white">{order.trackingLatest.description}</span>
+                  {order.trackingLatest.date && ` · ${scanTime(order.trackingLatest)}`}
+                  {order.trackingLatest.location && ` · ${order.trackingLatest.location}`}
+                </p>
               )}
             </div>
 

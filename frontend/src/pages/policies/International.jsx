@@ -2,15 +2,16 @@ import EditablePolicyPage from "@/components/EditablePolicyPage";
 
 // Default content below is the built-in copy. Admins can override it inline via
 // the Edit button (persisted server-side); this stays as the fallback.
-const DEFAULT_HTML = `<p>We ship Reflexity RAM worldwide — international orders just work a little differently than domestic ones.</p>
-<h2>Why international orders are handled directly</h2>
-<p>We're a small, independent shop based in Toronto. Rather than bake inflated worldwide shipping into our prices or run a complicated multi-carrier checkout system, we handle international orders personally. That keeps our domestic pricing honest and lets us give you an accurate shipping quote for your exact location instead of a rough guess.</p>
-<h2>How it works</h2>
-<p>1. Email us at reflexityram@gmail.com with the product(s) you want and your country.</p>
-<p>2. We'll reply to arrange the details, including a shipping quote and your contact number so we can stay in touch.</p>
-<p>3. Once everything's confirmed, we pack and ship directly to you with tracking.</p>
+const DEFAULT_HTML = `<p>We ship Reflexity RAM from Toronto to many countries with Canada Post, and every parcel is tracked.</p>
+<h2>Checking out from outside Canada</h2>
+<p>At checkout, choose "Another country" and type your country. You'll see Canada Post's current price and delivery time for your parcel: Tracked Packet – International and, where available, Xpresspost – International (guaranteed). You pay what Canada Post charges for your parcel, at checkout with your order.</p>
+<p>Checkout lists every country where Canada Post offers tracked delivery, including the United Kingdom, Australia, Japan, Mexico and many European countries.</p>
+<h2>Import taxes and duties</h2>
+<p>Prices and shipping do not include your country's import taxes or duties. If your country charges them, they are collected when the parcel arrives.</p>
+<h2>United States and countries not listed</h2>
+<p>Parcels to the United States currently need duties paid before they ship, so we arrange US orders directly. For the United States, or a country not listed at checkout, email us at reflexityram@gmail.com with the product(s) you want and your country, and we'll reply with a shipping quote.</p>
 <h2>Customers in Canada</h2>
-<p>If you're in Canada, there's nothing extra to do — just check out normally on the site: shipping is a flat $14 CAD for 1–2 sticks and $25 CAD for 3 or more (a few listings ship at their own flat rate, shown on the product page and at checkout). Orders to the United States are handled like other international orders: email us for a quote.</p>
+<p>If you're in Canada, there's nothing extra to do: shipping is a flat $14 CAD for 1–2 sticks and $25 CAD for 3 or more (a few listings ship at their own flat rate, shown on the product page and at checkout).</p>
 <h2>Questions</h2>
 <p>Reach us anytime at reflexityram@gmail.com and we'll be happy to help.</p>`;
 
