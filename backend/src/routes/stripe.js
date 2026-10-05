@@ -12,6 +12,8 @@ const {
   CURRENCY,
 } = require('../config/shipping');
 const { analyticsOrder } = require('../utils/analyticsOrder');
+const { INTERNATIONAL_COUNTRIES } = require('../config/shipping');
+const { internationalOptions, optionLabel } = require('../utils/internationalShipping');
 const { isServerPurchaseTrackingEnabled, sanitizeAnalyticsIds } = require('../utils/ga4');
 const { reportPaidOrderToGa4 } = require('../utils/purchaseAnalytics');
 const { decrementStockForOrder, shouldDecrementStockForFulfillment } = require('../utils/stock');
@@ -99,6 +101,33 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
       shippingLines.push({ product, qty: item.qty });
     }
 
+    // ── Where it ships: Canada (flat rates) or another country (the Canada Post
+    // price for the service the buyer picked, re-quoted here, never taken from
+    // the client). ──────────────────────────────────────────────────────────
+    const country = String(req.body?.shipping?.country || 'CA').toUpperCase();
+    let shippingOptions = toStripeShippingOptions(resolveCartShippingPrice(shippingLines));
+    let allowedCountries = ALLOWED_SHIPPING_COUNTRIES;
+    let internationalService;
+    if (country !== 'CA') {
+      if (!INTERNATIONAL_COUNTRIES.includes(country)) {
+        return res.status(400).json({ error: 'Website checkout does not ship there. Email us for a quote.' });
+      }
+      const sticks = shippingLines.reduce((n, line) => n + line.qty, 0);
+      const options = await internationalOptions({ country, sticks });
+      internationalService = options.find((o) => o.serviceCode === req.body?.shipping?.serviceCode);
+      if (!internationalService) return res.status(400).json({ error: 'Choose a shipping option again.' });
+      shippingOptions = [{
+        shipping_rate_data: {
+          type: 'fixed_amount',
+          display_name: optionLabel(internationalService),
+          fixed_amount: { amount: Math.round(internationalService.price * 100), currency: CURRENCY },
+          tax_behavior: 'exclusive',
+          metadata: { canadaPostService: internationalService.serviceCode, country },
+        },
+      }];
+      allowedCountries = [country];
+    }
+
     const frontendUrl = process.env.FRONTEND_URL || 'https://reflexityram.com';
     // GA identifiers let the server attribute the purchase to the buyer's browsing
     // session. They are optional, untrusted, and validated before use.
@@ -112,8 +141,13 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
 
       // ── Shipping: Canada + US only. Stripe renders the country-appropriate
       // address form (Province/Postal code vs State/ZIP) automatically. ──────
-      shipping_address_collection: { allowed_countries: ALLOWED_SHIPPING_COUNTRIES },
-      shipping_options: toStripeShippingOptions(resolveCartShippingPrice(shippingLines)),
+      shipping_address_collection: { allowed_countries: allowedCountries },
+      shipping_options: shippingOptions,
+      ...(internationalService ? {
+        custom_text: {
+          shipping_address: { message: 'Import taxes and duties are charged by your country on delivery and are not included in this total.' },
+        },
+      } : {}),
       phone_number_collection: { enabled: true },
       billing_address_collection: 'auto',
 
@@ -130,6 +164,7 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
       metadata: {
         userId: userId ? userId.toString() : 'guest',
         cartSessionId: sessionId || '',
+        ...(internationalService ? { shippingCountry: country, canadaPostService: internationalService.serviceCode } : {}),
         ...(gaIds.clientId ? { gaClientId: gaIds.clientId } : {}),
         ...(gaIds.sessionId ? { gaSessionId: gaIds.sessionId } : {}),
       },

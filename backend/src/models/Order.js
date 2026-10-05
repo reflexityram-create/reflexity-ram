@@ -18,14 +18,21 @@ const orderItemSchema = new mongoose.Schema({
   decrementedQty: { type: Number },
 }, { _id: false });
 
+// Canadian and US addresses always have a city, province/state and postal
+// code. Many other countries have no province or postal code (and a few no
+// city), and Stripe leaves those empty, so a paid order must still save.
+const requiredInNorthAmerica = function requiredInNorthAmerica() {
+  return ['CA', 'US'].includes(this.country);
+};
+
 const addressSchema = new mongoose.Schema({
   firstName: { type: String, required: true },
   lastName: { type: String, required: true },
   line1: { type: String, required: true },
   line2: { type: String },
-  city: { type: String, required: true },
-  state: { type: String, required: true },
-  zip: { type: String, required: true },
+  city: { type: String, required: requiredInNorthAmerica },
+  state: { type: String, required: requiredInNorthAmerica },
+  zip: { type: String, required: requiredInNorthAmerica },
   country: { type: String, required: true, default: 'US' },
   phone: { type: String },
 }, { _id: false });

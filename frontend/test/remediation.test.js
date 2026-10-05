@@ -192,3 +192,15 @@ test('the admin product form asks where the module was made and the product page
   assert.match(admin, /countryOfOrigin: form\.countryOfOrigin \|\| null/);
   assert.match(product, /\["Made in", p\.countryOfOrigin \?/);
 });
+
+// Outside Canada buyers pick their country and a Canada Post service priced live.
+test('checkout ships abroad with live Canada Post options and a duties notice', async () => {
+  const [checkout, api] = await Promise.all([read('../src/pages/Checkout.jsx'), read('../src/lib/api.js')]);
+  assert.match(checkout, /\[\['CA', 'Canada'\], \['INTL', 'Another country'\]\]/);
+  assert.match(checkout, /data-testid="checkout-country"/);
+  assert.match(checkout, /data-testid="checkout-shipping-options"/);
+  assert.match(checkout, /Import taxes and duties are charged by your country on delivery\./);
+  assert.match(checkout, /international \? \{ country, serviceCode \} : undefined/);
+  assert.match(checkout, /Shipping to the United States\?/);
+  assert.match(api, /internationalQuote: \(country\) => api\.post\('\/shipping\/international-quote', \{ country \}\)/);
+});

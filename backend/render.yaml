@@ -53,6 +53,12 @@ services:
         sync: false
       - key: TRACKING_SYNC_TOKEN
         sync: false
+      # Optional: the account's customer number (discounted Canada Post prices
+      # for buyers abroad) and the postal code parcels are mailed from.
+      - key: CANADA_POST_CUSTOMER_NUMBER
+        sync: false
+      - key: CANADA_POST_ORIGIN_POSTAL_CODE
+        sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET

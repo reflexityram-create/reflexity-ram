@@ -56,6 +56,29 @@ const CURRENCY = (process.env.STRIPE_CURRENCY || 'cad').toLowerCase();
 // the policy pages, the edge JSON-LD and the Merchant Center settings.
 const ALLOWED_SHIPPING_COUNTRIES = ['CA'];
 
+// ─── Outside Canada ────────────────────────────────────────────────────────────
+// Buyers pay what Canada Post charges for their country, quoted live by the
+// Rating API (utils/internationalShipping.js). Only tracked services.
+const INTERNATIONAL_SERVICES = {
+  'INT.TP': 'Tracked Packet – International',
+  'INT.XP': 'Xpresspost – International (guaranteed)',
+  'INT.PW.PARCEL': 'Priority Worldwide',
+};
+// Not sold through website checkout: Canada has its own flat rates; US parcels
+// need duties prepaid (email for a quote until that is built); Russia and
+// Belarus are under Canadian sanctions on electronics.
+const NO_INTERNATIONAL_CHECKOUT = new Set(['CA', 'US', 'RU', 'BY']);
+const INTERNATIONAL_COUNTRIES = require('./countries').STRIPE_SHIPPING_COUNTRIES
+  .filter((code) => !NO_INTERNATIONAL_CHECKOUT.has(code));
+// Parcel used for quotes, by stick count: modules in ESD bags in a padded box.
+const parcelForSticks = (sticks) => {
+  if (sticks <= 2) return { weight: 0.4, dimensions: { length: 23, width: 15, height: 5 } };
+  if (sticks <= 6) return { weight: 0.9, dimensions: { length: 30, width: 23, height: 8 } };
+  return { weight: Math.round((0.6 + 0.12 * sticks) * 10) / 10, dimensions: { length: 35, width: 25, height: 12 } };
+};
+// Postal code parcels are mailed from (Canada Post format, no space).
+const SHIP_FROM_POSTAL_CODE = (process.env.CANADA_POST_ORIGIN_POSTAL_CODE || 'M5H2N2').replace(/\s+/g, '').toUpperCase();
+
 // Build Stripe Checkout `shipping_options` from the same table the rest of
 // the app uses, so display prices and charged prices can never diverge.
 // tax_behavior 'exclusive': Stripe Tax adds tax on top of shipping where the
@@ -91,4 +114,8 @@ module.exports = {
   CURRENCY,
   ALLOWED_SHIPPING_COUNTRIES,
   toStripeShippingOptions,
+  INTERNATIONAL_SERVICES,
+  INTERNATIONAL_COUNTRIES,
+  parcelForSticks,
+  SHIP_FROM_POSTAL_CODE,
 };

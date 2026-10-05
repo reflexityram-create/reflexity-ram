@@ -7,6 +7,7 @@
 const BASE = 'https://api.canadapost-postescanada.ca/prod/devportal-portaildesdeveloppeurs';
 const TOKEN_URL = `${BASE}/cpc-api-native-oauth-provider/oauth2/token`;
 const TRACKING_URL = `${BASE}/tracking/v1`;
+const RATING_URL = `${BASE}/rating/v1`;
 
 const isConfigured = () => Boolean(process.env.CANADA_POST_API_KEY && process.env.CANADA_POST_API_SECRET);
 
@@ -90,6 +91,37 @@ const trackParcel = async (pin, fetchImpl = fetch) => {
   return normalizeTracking(Array.isArray(summaries) ? summaries[0] : summaries, details);
 };
 
+// Live prices for a parcel to another country. With CANADA_POST_CUSTOMER_NUMBER
+// set, Canada Post returns the account's discounted (commercial) price.
+const rateInternational = async ({ countryCode, parcel, originPostalCode, fetchImpl = fetch }) => {
+  const customerNumber = process.env.CANADA_POST_CUSTOMER_NUMBER;
+  const res = await fetchImpl(`${RATING_URL}/prices`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${await accessToken(fetchImpl)}`,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'Accept-Language': 'en-CA',
+    },
+    body: JSON.stringify({
+      quoteType: customerNumber ? 'commercial' : 'counter',
+      ...(customerNumber ? { customerNumber } : {}),
+      parcelCharacteristics: parcel,
+      originPostalCode,
+      destination: { international: { countryCode } },
+    }),
+  });
+  if (!res.ok) throw new Error(`Canada Post rating request failed (${res.status})`);
+  const quotes = await res.json();
+  return (Array.isArray(quotes) ? quotes : []).map((q) => ({
+    serviceCode: q.serviceCode,
+    serviceName: q.serviceName,
+    price: Number(q.priceDetails?.due),
+    transitDays: q.serviceStandard?.expectedTransitTime ?? null,
+    guaranteed: Boolean(q.serviceStandard?.guaranteedDelivery),
+  }));
+};
+
 const resetTokenCacheForTest = () => { cachedToken = null; pendingToken = null; };
 
-module.exports = { isConfigured, accessToken, trackParcel, normalizeTracking, resetTokenCacheForTest, BASE };
+module.exports = { isConfigured, accessToken, trackParcel, normalizeTracking, rateInternational, resetTokenCacheForTest, BASE };
