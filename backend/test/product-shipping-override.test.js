@@ -13,6 +13,8 @@ const {
   STANDARD_SHIPPING_PRICE,
   shippingPriceForProduct,
   resolveCartShippingPrice,
+  LARGE_ORDER_MIN_STICKS,
+  LARGE_ORDER_SHIPPING_PRICE,
   toStripeShippingOptions,
 } = require('../src/config/shipping');
 const { PUBLIC_PRODUCT_PROJECTION } = require('../src/utils/publicProducts');
@@ -75,19 +77,34 @@ test('an override sets that product\'s rate, and junk falls back to the flat rat
   assert.equal(shippingPriceForProduct(product({ shippingPrice: 'free' })), 14);
 });
 
+const line = (overrides, qty = 1) => ({ product: product(overrides), qty });
+
 test('a cart is charged the highest rate it contains, never the sum', () => {
   assert.equal(resolveCartShippingPrice([]), 14);
-  assert.equal(resolveCartShippingPrice([product(), product()]), 14);
+  assert.equal(resolveCartShippingPrice([line(), line()]), 14);
   // 25 + 14 would be 39; the buyer pays 25.
-  assert.equal(resolveCartShippingPrice([product({ shippingPrice: 25 }), product()]), 25);
-  assert.equal(resolveCartShippingPrice([product(), product({ shippingPrice: 25 })]), 25);
-  assert.equal(
-    resolveCartShippingPrice([product({ shippingPrice: 25 }), product({ shippingPrice: 40 })]),
-    40
-  );
+  assert.equal(resolveCartShippingPrice([line({ shippingPrice: 25 }), line()]), 25);
+  assert.equal(resolveCartShippingPrice([line(), line({ shippingPrice: 25 })]), 25);
+  assert.equal(resolveCartShippingPrice([line({ shippingPrice: 25 }), line({ shippingPrice: 40 })]), 40);
   // A cheaper-than-standard override is honoured when nothing dearer is present.
-  assert.equal(resolveCartShippingPrice([product({ shippingPrice: 5 })]), 5);
-  assert.equal(resolveCartShippingPrice([product({ shippingPrice: 5 }), product()]), 14);
+  assert.equal(resolveCartShippingPrice([line({ shippingPrice: 5 })]), 5);
+  assert.equal(resolveCartShippingPrice([line({ shippingPrice: 5 }), line()]), 14);
+});
+
+// Owner's rule (2026-10-05): 1–2 sticks ship for $14, 3 or more for $25.
+test('3 or more sticks in a cart ship for $25, fewer for $14', () => {
+  assert.equal(LARGE_ORDER_MIN_STICKS, 3);
+  assert.equal(LARGE_ORDER_SHIPPING_PRICE, 25);
+  assert.equal(resolveCartShippingPrice([line({}, 1)]), 14);
+  assert.equal(resolveCartShippingPrice([line({}, 2)]), 14);
+  assert.equal(resolveCartShippingPrice([line({}, 3)]), 25);
+  assert.equal(resolveCartShippingPrice([line({}, 10)]), 25);
+  // Sticks of different products count together.
+  assert.equal(resolveCartShippingPrice([line({}, 2), line({}, 1)]), 25);
+  assert.equal(resolveCartShippingPrice([line({}, 1), line({}, 1)]), 14);
+  // A product's own rate still wins when it is higher; a lower one does not undercut 3+ other sticks.
+  assert.equal(resolveCartShippingPrice([line({ shippingPrice: 40 }, 3)]), 40);
+  assert.equal(resolveCartShippingPrice([line({ shippingPrice: 5 }, 1), line({}, 3)]), 25);
 });
 
 test('Stripe shipping options carry the resolved amount in cents', () => {
@@ -139,6 +156,37 @@ test('checkout charges the override from the server-side product, not the client
     assert.equal(payload.shipping_options.length, 1);
     // 2500, not 1400 (the flat rate) and not 100 (the value planted in the cart).
     assert.equal(payload.shipping_options[0].shipping_rate_data.fixed_amount.amount, 2500);
+  } finally {
+    stripeRouter.setCheckoutDependenciesForTest();
+    Product.find = originalFind;
+    Cart.findOne = originalCartFindOne;
+  }
+});
+
+// The rate Stripe charges follows the stick count: 2 sticks $14, 3 sticks $25.
+test('checkout charges $25 shipping for 3 sticks and $14 for 2', async () => {
+  const originalFind = Product.find;
+  const originalCartFindOne = Cart.findOne;
+  try {
+    const app = express();
+    app.use(express.json());
+    app.use('/api/stripe', stripeRouter);
+    const stick = new Product(product({
+      _id: undefined, slug: 'server-rdimm', price: 170, capacityLabel: '16GB', capacity: 16,
+      speed: 3200, speedLabel: '3200 MT/s', warranty: '30 Days',
+    }));
+    Product.find = () => productQuery([stick]);
+    let payload;
+    stripeRouter.setCheckoutDependenciesForTest({
+      ensurePrice: async () => 'price_server_rdimm',
+      createSession: async (sent) => { payload = sent; return { id: 'cs_test', url: 'https://stripe.test/s' }; },
+    });
+    for (const [qty, cents] of [[2, 1400], [3, 2500]]) {
+      Cart.findOne = async () => ({ items: [{ slug: 'server-rdimm', name: 'Server RDIMM 16GB', price: 170, qty }], save: async () => undefined });
+      const response = await jsonRequest(app, '/api/stripe/create-checkout-session', {});
+      assert.equal(response.status, 200);
+      assert.equal(payload.shipping_options[0].shipping_rate_data.fixed_amount.amount, cents, `${qty} sticks`);
+    }
   } finally {
     stripeRouter.setCheckoutDependenciesForTest();
     Product.find = originalFind;

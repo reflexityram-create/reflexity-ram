@@ -125,7 +125,7 @@ export default function Checkout() {
                       <dd className="mono">{formatStorePrice(subtotal)}</dd>
                     </div>
                     <div className="flex justify-between gap-4">
-                      <dt className="text-neutral-400">Shipping <span className="block text-[13px]">Flat rate within Canada</span></dt>
+                      <dt className="text-neutral-400">Shipping <span className="block text-[13px]">Canada Post, tracked: $14 for 1–2 sticks, $25 for 3 or more</span></dt>
                       <dd className="mono">{formatStorePrice(shipping)}</dd>
                     </div>
                     <div className="flex justify-between gap-4">

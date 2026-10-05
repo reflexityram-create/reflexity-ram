@@ -14,25 +14,35 @@ const getShippingOption = (id) => SHIPPING_OPTIONS[id] || null;
 // the Google Merchant Center shipping service.
 const HANDLING_DAYS = { min: 1, max: 3 };
 
-// Some lots cost more to ship than the standard flat rate (heavier, bulkier, or
-// higher-value packaging). Those products carry a `shippingPrice` override; the
-// rest ship at the standard rate. A cart is charged the HIGHEST rate it
-// contains — never the sum — so adding a normal stick to an expensive lot can
-// never increase the buyer's shipping.
-// SECURITY: overrides come from the product documents on the server, never from
+// Bigger orders ship in a bigger box. Owner's rule (2026-10-05): 1–2 sticks
+// ship for the standard $14, 3 or more sticks for $25 (Canada Post, tracked).
+const LARGE_ORDER_MIN_STICKS = 3;
+const LARGE_ORDER_SHIPPING_PRICE = 25;
+
+// A product may still carry its own rate (`shippingPrice`, set in the admin
+// product form), which replaces the stick-count rate for that product.
+// SECURITY: rates come from the product documents on the server, never from
 // the client.
 const STANDARD_SHIPPING_PRICE = SHIPPING_OPTIONS.standard.price;
 
-const shippingPriceForProduct = (product) => {
+const ownShippingPrice = (product) => {
   const raw = product?.shippingPrice;
-  if (raw === undefined || raw === null || raw === '') return STANDARD_SHIPPING_PRICE;
-  const override = Number(raw);
-  return Number.isFinite(override) && override >= 0 ? override : STANDARD_SHIPPING_PRICE;
+  if (raw === undefined || raw === null || raw === '') return null;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : null;
 };
 
-const resolveCartShippingPrice = (products = []) => {
-  if (!products.length) return STANDARD_SHIPPING_PRICE;
-  return products.reduce((highest, product) => Math.max(highest, shippingPriceForProduct(product)), 0);
+// One stick on its own (the product page, the Google feed).
+const shippingPriceForProduct = (product) => ownShippingPrice(product) ?? STANDARD_SHIPPING_PRICE;
+
+// A whole cart, as [{ product, qty }]: 3+ sticks in total pay the large-order
+// rate, a product with its own rate charges that instead, and the cart pays the
+// HIGHEST of these, never the sum.
+const resolveCartShippingPrice = (lines = []) => {
+  if (!lines.length) return STANDARD_SHIPPING_PRICE;
+  const sticks = lines.reduce((total, line) => total + Math.max(0, Number(line.qty) || 0), 0);
+  const stickRate = sticks >= LARGE_ORDER_MIN_STICKS ? LARGE_ORDER_SHIPPING_PRICE : STANDARD_SHIPPING_PRICE;
+  return lines.reduce((highest, line) => Math.max(highest, ownShippingPrice(line.product) ?? stickRate), 0);
 };
 
 // Store currency for Stripe (lowercase ISO). CAD is the storefront default;
@@ -50,8 +60,8 @@ const ALLOWED_SHIPPING_COUNTRIES = ['CA'];
 // the app uses, so display prices and charged prices can never diverge.
 // tax_behavior 'exclusive': Stripe Tax adds tax on top of shipping where the
 // destination province taxes shipping (most Canadian provinces do).
-// `price` overrides the standard rate for this session (see
-// resolveCartShippingPrice); omit it for the standard rate.
+// `price` is the cart's rate from resolveCartShippingPrice; omit it for the
+// standard rate.
 // No `delivery_estimate`: the label already states the delivery time, and
 // Stripe would print the estimate a second time after it ("... after
 // dispatch) (3-6 business days)").
@@ -73,6 +83,8 @@ module.exports = {
   SHIPPING_OPTIONS,
   HANDLING_DAYS,
   STANDARD_SHIPPING_PRICE,
+  LARGE_ORDER_MIN_STICKS,
+  LARGE_ORDER_SHIPPING_PRICE,
   getShippingOption,
   shippingPriceForProduct,
   resolveCartShippingPrice,

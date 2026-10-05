@@ -193,7 +193,7 @@ test('the cart the checkout page loads carries the flat shipping rate Stripe wil
   const originalCartFindOne = Cart.findOne;
   const cartWith = (products) => ({
     _id: 'cart-id',
-    items: products.map((productDoc, i) => ({ slug: `module-${i}`, name: 'Server module', price: productDoc.price, qty: 1, product: productDoc })),
+    items: products.map((productDoc, i) => ({ slug: `module-${i}`, name: 'Server module', price: productDoc.price, qty: productDoc.qty || 1, product: productDoc })),
     save: async () => undefined,
   });
   const app = express();
@@ -203,6 +203,10 @@ test('the cart the checkout page loads carries the flat shipping rate Stripe wil
     for (const [products, expected] of [
       [[{ price: 135, line: 'Server' }], 14],
       [[{ price: 135, line: 'Server' }, { price: 170, line: 'Server', shippingPrice: 25 }], 25],
+      // 1–2 sticks ship for $14, 3 or more for $25, counted across products.
+      [[{ price: 135, line: 'Server', qty: 2 }], 14],
+      [[{ price: 135, line: 'Server', qty: 3 }], 25],
+      [[{ price: 135, line: 'Server', qty: 2 }, { price: 170, line: 'Server', qty: 1 }], 25],
       [[], 0],
     ]) {
       Cart.findOne = () => ({ populate: async () => cartWith(products) });
