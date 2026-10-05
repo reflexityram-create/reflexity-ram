@@ -29,6 +29,7 @@ export default function Checkout() {
   // Outside Canada the buyer pays what Canada Post charges for their country.
   const [destination, setDestination] = useState('CA');
   const [countries, setCountries] = useState([]);
+  const [countriesLoading, setCountriesLoading] = useState(false);
   const [country, setCountry] = useState('');
   const [quote, setQuote] = useState({ loading: false, options: [], error: '' });
   const [serviceCode, setServiceCode] = useState('');
@@ -42,10 +43,12 @@ export default function Checkout() {
   useEffect(() => {
     if (!international || countries.length) return;
     const names = new Intl.DisplayNames(['en'], { type: 'region' });
+    setCountriesLoading(true);
     shippingApi.countries()
       .then(({ data }) => setCountries((data.countries || []).map((code) => ({ code, name: names.of(code) || code }))
         .sort((a, b) => a.name.localeCompare(b.name))))
-      .catch(() => setQuote((q) => ({ ...q, error: 'Could not load the country list.' })));
+      .catch(() => setQuote((q) => ({ ...q, error: 'Could not load the country list.' })))
+      .finally(() => setCountriesLoading(false));
   }, [international]);
 
   const chooseCountry = async (code) => {
@@ -173,6 +176,7 @@ export default function Checkout() {
                       <div className="mt-3 space-y-3">
                         <CountryPicker
                           countries={countries}
+                          loading={countriesLoading}
                           value={country}
                           onChange={chooseCountry}
                           unavailableNote="United States: duties must be prepaid, so email us for a quote."
