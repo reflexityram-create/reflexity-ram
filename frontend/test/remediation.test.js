@@ -254,3 +254,17 @@ test('product cards are compact, full-opacity and say nothing about shipping onl
   assert.match(shop, /Ships from Toronto, tracked, across Canada and abroad/);
   assert.match(home, /grid grid-cols-2 lg:grid-cols-3/);
 });
+
+// Buyers did not know the specs were there: key specs and "More below" links sit by the buy box, and shipping says worldwide.
+test('the product page shows key specs near the top, signals the details below and ships worldwide', async () => {
+  const product = await read('../src/pages/Product.jsx');
+  assert.match(product, /<KeySpecs p=\{p\} onMore=\{\(\) => openTab\("specs"\)\} className="hidden lg:block mt-5" \/>/);
+  assert.match(product, /<KeySpecs p=\{p\} onMore=\{\(\) => openTab\("specs"\)\} className="lg:hidden mb-5" \/>/);
+  assert.match(product, /data-testid="product-jump-links"/);
+  assert.match(product, /More below:/);
+  assert.match(product, /ref=\{detailsRef\} id="product-details"/);
+  assert.match(product, /Ships worldwide from Toronto/);
+  assert.doesNotMatch(product, /Canada-wide shipping|Shipping outside Canada\?/);
+  assert.match(product, /Dispatch: \{p\.estimatedDispatch \|\| "1–3 business days"\}/);
+  assert.match(product, /imageUrl\(imageUrls\[imgIdx\], \{ width: 1200, trim: true \}\)/);
+});
