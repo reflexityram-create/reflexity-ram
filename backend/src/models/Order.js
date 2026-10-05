@@ -88,6 +88,21 @@ const orderSchema = new mongoose.Schema({
   shippingMethod: { type: String },
   trackingNumber: { type: String },
   trackingUrl: { type: String },
+  // Latest Canada Post scan for a shipped order (utils/trackingSync.js).
+  trackingLatest: {
+    code: String,
+    description: String,
+    date: String,
+    time: String,
+    timeZone: String,
+    location: String,
+    expectedDeliveryDate: String,
+    checkedAt: Date,
+  },
+  // Each tracking email goes out once; set when it is sent.
+  outForDeliveryEmailAt: { type: Date },
+  pickupNoticeEmailAt: { type: Date },
+  deliveredEmailAt: { type: Date },
   notes: { type: String },
   adminNotes: { type: String },
   estimatedDelivery: { type: Date },

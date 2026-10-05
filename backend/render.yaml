@@ -45,6 +45,14 @@ services:
         value: G-LHK5KZSYG6
       - key: GA4_API_SECRET
         sync: false
+      # Canada Post developer API (tracking + rating) and the token the
+      # scheduled tracking sync sends (.github/workflows/tracking-sync.yml).
+      - key: CANADA_POST_API_KEY
+        sync: false
+      - key: CANADA_POST_API_SECRET
+        sync: false
+      - key: TRACKING_SYNC_TOKEN
+        sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET

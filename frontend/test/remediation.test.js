@@ -175,3 +175,11 @@ test('the product page, checkout and shipping policies state the stick-count shi
   assert.match(checkout, /\$14 for 1–2 sticks, \$25 for 3 or more/);
   for (const policy of [shipping, international]) assert.match(policy, /\$14 CAD for 1–2 sticks and \$25 CAD for 3 or more/);
 });
+
+// Canada Post tracking sync stores the latest scan on the order; buyers see it under the tracking number.
+test('the order page shows the latest Canada Post scan and expected delivery date', async () => {
+  const page = await read('../src/pages/OrderSuccess.jsx');
+  assert.match(page, /order\.trackingLatest\?\.description && \(/);
+  assert.match(page, /Latest from Canada Post:/);
+  assert.match(page, /Canada Post expects to deliver it/);
+});

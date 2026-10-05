@@ -257,11 +257,64 @@ const cancelScheduledEmail = async (id) => {
   return data;
 };
 
+// ─── Canada Post tracking updates (utils/trackingSync.js) ─────────────────────
+const TRACKING_EMAILS = {
+  outForDelivery: {
+    subject: (n) => `Out for delivery today — ${n}`,
+    title: 'Your order is out for delivery',
+    text: 'Canada Post has your parcel out for delivery today.',
+  },
+  pickup: {
+    subject: (n) => `Your parcel is waiting at the post office — ${n}`,
+    title: 'Your parcel is waiting for you',
+    text: 'Canada Post could not leave your parcel and is holding it for pickup. The notice card and the tracking page show where to collect it.',
+  },
+  delivered: {
+    subject: (n) => `Delivered — ${n}`,
+    title: 'Your order was delivered',
+    text: 'Canada Post shows your parcel as delivered. Thank you for shopping with Reflexity RAM.',
+  },
+};
+
+const sendTrackingUpdateEmail = async ({ email, firstName, order, kind }) => {
+  const copy = TRACKING_EMAILS[kind];
+  if (!copy) throw new Error(`Unknown tracking email: ${kind}`);
+  const orderUrl = orderAccessUrl(FRONTEND_URL, order, email);
+  const trackingUrl = trackingUrlFor(order);
+  const { data, error } = await getResend().emails.send({
+    from: FROM_EMAIL,
+    to: email,
+    replyTo: SUPPORT_EMAIL,
+    subject: copy.subject(order.orderNumber),
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head><meta charset="utf-8"></head>
+      <body style="margin:0;padding:0;background:#0a0a0c;font-family:'Figtree',system-ui,sans-serif;color:#f5f5f7;">
+        <div style="max-width:560px;margin:40px auto;padding:0 20px;">
+          <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:40px;">
+            <div style="margin-bottom:32px;"><span style="font-size:20px;font-weight:700;">Reflexity RAM</span></div>
+            <h1 style="font-size:22px;font-weight:700;margin:0 0 12px;">${copy.title}</h1>
+            <p style="color:#a0a0aa;margin:0 0 24px;line-height:1.6;">Hi ${escapeHtml(firstName || 'there')}, ${copy.text} Order <span style="font-family:monospace;color:#f5f5f7;">${escapeHtml(order.orderNumber)}</span>.</p>
+            <a href="${escapeHtml(trackingUrl || orderUrl)}" style="display:inline-block;background:#f5f5f7;color:#050505;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;font-size:13px;">${trackingUrl ? 'Track your package' : 'View your order'}</a>
+            ${trackingUrl ? `<p style="margin:16px 0 0;font-size:13px;"><a href="${escapeHtml(orderUrl)}" style="color:#a0a0aa;">View your order</a></p>` : ''}
+            <p style="color:#a0a0aa;font-size:13px;margin:28px 0 0;line-height:1.6;">Something not right? Reply to this email or write to <a href="mailto:${SUPPORT_EMAIL}" style="color:#8a8a92;">${SUPPORT_EMAIL}</a>.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+  });
+  if (error) { console.error('Resend error detail:', JSON.stringify(error)); throw new Error(`Email send failed: ${error.message || JSON.stringify(error)}`); }
+  return data;
+};
+
 module.exports = {
   sendVerificationEmail,
   sendPasswordResetEmail,
   sendOrderConfirmationEmail,
   sendShippingNotificationEmail,
+  sendTrackingUpdateEmail,
   sendReviewRequestEmail,
   cancelScheduledEmail,
 };

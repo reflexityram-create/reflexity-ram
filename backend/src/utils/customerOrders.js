@@ -53,6 +53,16 @@ const customerOrderResponse = (order) => {
     shippingMethod: value.shippingMethod,
     trackingNumber: value.trackingNumber,
     trackingUrl: trackingUrlFor(value),
+    trackingLatest: value.trackingLatest?.description
+      ? {
+        description: value.trackingLatest.description,
+        date: value.trackingLatest.date,
+        time: value.trackingLatest.time,
+        timeZone: value.trackingLatest.timeZone,
+        location: value.trackingLatest.location,
+        expectedDeliveryDate: value.trackingLatest.expectedDeliveryDate,
+      }
+      : undefined,
     estimatedDelivery: value.estimatedDelivery,
     shippedAt: value.shippedAt,
     deliveredAt: value.deliveredAt,
