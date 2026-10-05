@@ -19,18 +19,20 @@ const STATUS_PILLS = {
 
 export default function Account() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const tab = searchParams.get('tab') || 'profile';
+  const { user, logout, updateProfile, changePassword, isAuthenticated } = useAuthStore();
+  const isAdmin = user?.role === 'admin';
+  // Admins have no Profile tab (it only showed their role), so they open on Settings.
+  const requestedTab = searchParams.get('tab');
+  const tab = requestedTab && !(isAdmin && requestedTab === 'profile') ? requestedTab : (isAdmin ? 'settings' : 'profile');
   const setTab = (t) => setSearchParams({ tab: t });
 
   const [authOpen, setAuthOpen] = useState(false);
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
-  const [profileForm, setProfileForm] = useState({ firstName: '', lastName: '', phone: '' });
+  const [profileForm, setProfileForm] = useState({ firstName: '', lastName: '' });
   const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [saving, setSaving] = useState(false);
   const [resendingVerification, setResendingVerification] = useState(false);
-
-  const { user, logout, updateProfile, changePassword, isAuthenticated } = useAuthStore();
 
   const handleResendVerification = async () => {
     setResendingVerification(true);
@@ -49,10 +51,14 @@ export default function Account() {
       setProfileForm({
         firstName: user.firstName || '',
         lastName: user.lastName || '',
-        phone: user.phone || '',
       });
     }
   }, [user]);
+
+  // Keep the URL on the tab an admin actually sees, so the sidebar highlights it.
+  useEffect(() => {
+    if (isAdmin && (!requestedTab || requestedTab === 'profile')) setSearchParams({ tab: 'settings' }, { replace: true });
+  }, [isAdmin, requestedTab]);
 
   useEffect(() => {
     if (user && tab === 'orders') {
@@ -109,7 +115,7 @@ export default function Account() {
               {user.firstName} {user.lastName} · {user.email}
             </p>
           )}
-          {user && !user.isEmailVerified && (
+          {user && !isAdmin && !user.isEmailVerified && (
             <div className="mt-3 flex items-center gap-3 px-4 py-3 rounded-xl border border-amber-500/20 bg-amber-500/5 text-[13px]">
               <AlertTriangle size={15} className="text-amber-400 shrink-0" />
               <span className="text-amber-200">Your email address is not verified.</span>
@@ -144,15 +150,11 @@ export default function Account() {
         ) : (
           <div>
             <div>
-              {tab === 'profile' && (
+              {tab === 'profile' && !isAdmin && (
                 <div className="space-y-6">
                   <div className="glass rounded-2xl p-6">
                     <h3 className="font-semibold tracking-tight text-[15px] mb-4">Account overview</h3>
                     <div className="grid grid-cols-2 gap-3 text-[13px]">
-                      <div className="glass rounded-xl p-4">
-                        <div className="text-neutral-500 text-[11px] uppercase tracking-widest mb-1">Role</div>
-                        <div className="font-medium capitalize">{user.role}</div>
-                      </div>
                       <div className="glass rounded-xl p-4">
                         <div className="text-neutral-500 text-[11px] uppercase tracking-widest mb-1">Email</div>
                         <div className={`font-medium flex items-center gap-1.5 ${user.isEmailVerified ? 'text-emerald-400' : 'text-amber-400'}`}>
@@ -212,7 +214,13 @@ export default function Account() {
                 </div>
               )}
 
-              {tab === 'security' && (
+              {tab === 'security' && user.hasPassword === false && (
+                <div className="glass rounded-2xl p-6 max-w-xl text-[13px] text-neutral-400" data-testid="account-security-google">
+                  This account signs in with Google, so there is no password to change here.
+                </div>
+              )}
+
+              {tab === 'security' && user.hasPassword !== false && (
                 <form onSubmit={handlePasswordChange} className="glass rounded-2xl p-6 max-w-xl flex flex-col gap-4" data-testid="account-security-form">
                   <h3 className="font-semibold tracking-tight text-[15px]">Change password</h3>
                   <input type="password" placeholder="Current password" className="input" value={pwForm.currentPassword} onChange={(e) => setPwForm(f => ({ ...f, currentPassword: e.target.value }))} required />
@@ -233,7 +241,6 @@ export default function Account() {
                     <input placeholder="Last name" className="input" value={profileForm.lastName} onChange={(e) => setProfileForm(f => ({ ...f, lastName: e.target.value }))} />
                   </div>
                   <input type="email" placeholder="Email" className="input" value={user?.email || ''} disabled />
-                  <input placeholder="Phone number" className="input" value={profileForm.phone} onChange={(e) => setProfileForm(f => ({ ...f, phone: e.target.value }))} />
                   <button type="submit" disabled={saving} className="btn-primary self-start flex items-center gap-2">
                     {saving && <Loader2 size={14} className="animate-spin" />}
                     Save changes

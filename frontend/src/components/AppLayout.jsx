@@ -1,5 +1,5 @@
 import { Link, useLocation, Navigate } from 'react-router-dom';
-import { User, ShoppingBag, Shield, Settings as SettingsIcon, Package, Boxes, Users, LogOut, ChevronRight, Cpu } from 'lucide-react';
+import { User, ShoppingBag, Shield, Settings as SettingsIcon, Package, Users, LogOut, ChevronRight, Cpu } from 'lucide-react';
 import useAuthStore from '@/lib/authStore';
 import { toast } from 'sonner';
 
@@ -8,20 +8,23 @@ import { toast } from 'sonner';
 // `tab` is matched against the ?tab= query string (Account uses tab-based content
 // switching); items without `tab` match by pathname.
 const USER_ITEMS = [
-  { to: '/account', tab: null, label: 'Profile', icon: User },
+  // Customers only: an admin's profile showed nothing but "Role: admin", so
+  // admins open their account on Settings instead.
+  { to: '/account', tab: null, label: 'Profile', icon: User, customerOnly: true },
   // Personal order history — only customers (non-admins) see this. Admins
   // get the store-wide Orders entry in the Admin section instead, so there's
   // never two "Orders" rows for the same user.
   { to: '/account?tab=orders', tab: 'orders', label: 'Orders', icon: ShoppingBag, customerOnly: true },
-  { to: '/account?tab=security', tab: 'security', label: 'Security', icon: Shield },
+  // Hidden for accounts that sign in with Google and have no password to change.
+  { to: '/account?tab=security', tab: 'security', label: 'Security', icon: Shield, passwordOnly: true },
   { to: '/account?tab=settings', tab: 'settings', label: 'Settings', icon: SettingsIcon },
 ];
 
+// Retail products and wholesale lots share the one Products page.
 const ADMIN_ITEMS = [
-  { to: '/admin/products', label: 'Retail products', icon: Package, group: 'Products' },
-  { to: '/admin/wholesale', label: 'Wholesale lots', icon: Boxes, group: 'Products' },
-  { to: '/admin/orders', label: 'Orders', icon: ShoppingBag, group: 'Operations' },
-  { to: '/admin/users', label: 'Users', icon: Users, group: 'Operations' },
+  { to: '/admin/products', label: 'Products', icon: Package },
+  { to: '/admin/orders', label: 'Orders', icon: ShoppingBag },
+  { to: '/admin/users', label: 'Users', icon: Users },
 ];
 
 export default function AppLayout({ children, requireAdmin = false }) {
@@ -53,8 +56,8 @@ export default function AppLayout({ children, requireAdmin = false }) {
     return location.pathname === item.to || location.pathname.startsWith(item.to + '/');
   };
 
-  // User items — skip the customer-only personal Orders entry for admins
-  const visibleUserItems = USER_ITEMS.filter((i) => !(i.customerOnly && isAdmin));
+  // User items — skip customer-only entries for admins, and Security when there is no password
+  const visibleUserItems = USER_ITEMS.filter((i) => !(i.customerOnly && isAdmin) && !(i.passwordOnly && user.hasPassword === false));
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row">
@@ -76,12 +79,8 @@ export default function AppLayout({ children, requireAdmin = false }) {
 
           {isAdmin && (
             <>
-              <div className="app-nav-group hidden px-3 pb-1 pt-4 text-[10px] uppercase tracking-widest md:block">Products</div>
-              {ADMIN_ITEMS.filter((item) => item.group === 'Products').map((item) => (
-                <SidebarLink key={item.to} item={item} active={isActive(item)} />
-              ))}
-              <div className="app-nav-group hidden px-3 pb-1 pt-4 text-[10px] uppercase tracking-widest md:block">Operations</div>
-              {ADMIN_ITEMS.filter((item) => item.group === 'Operations').map((item) => (
+              <div className="app-nav-group hidden px-3 pb-1 pt-4 text-[10px] uppercase tracking-widest md:block">Store</div>
+              {ADMIN_ITEMS.map((item) => (
                 <SidebarLink key={item.to} item={item} active={isActive(item)} />
               ))}
             </>

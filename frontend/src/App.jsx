@@ -52,7 +52,6 @@ const BusinessInfo = lazy(() => import("@/pages/policies/BusinessInfo"));
 
 // Admin pages
 const AdminProducts = lazy(() => import("@/pages/admin/Products"));
-const AdminWholesale = lazy(() => import("@/pages/admin/WholesaleAdmin"));
 const AdminOrders = lazy(() => import("@/pages/admin/Orders"));
 const AdminUsers = lazy(() => import("@/pages/admin/Users"));
 const AdminSecurity = lazy(() => import("@/pages/admin/Security"));
@@ -159,7 +158,8 @@ export default function App() {
           {/* Admin (each page uses AppLayout requireAdmin) */}
           <Route path="/admin" element={<Navigate to="/admin/products" replace />} />
           <Route path="/admin/products" element={<AdminProducts />} />
-          <Route path="/admin/wholesale" element={<AdminWholesale />} />
+          {/* Wholesale lots now sit on the Products page; old links land there. */}
+          <Route path="/admin/wholesale" element={<Navigate to="/admin/products#wholesale" replace />} />
           <Route path="/admin/orders" element={<AdminOrders />} />
           <Route path="/admin/users" element={<AdminUsers />} />
           <Route path="/admin/security" element={<AdminSecurity />} />

@@ -250,7 +250,10 @@ router.post('/logout', (req, res) => {
 
 // ─── GET /api/auth/me ──────────────────────────────────────────────────────────
 router.get('/me', authenticate, async (req, res) => {
-  res.json({ user: req.user });
+  // The account page hides "Change password" for Google-only accounts, which
+  // have no password to change. The password itself never leaves the server.
+  const hasPassword = Boolean(await User.exists({ _id: req.user._id, password: { $exists: true, $nin: [null, ''] } }));
+  res.json({ user: { ...req.user.toJSON(), hasPassword } });
 });
 
 // ─── POST /api/auth/verify-email ──────────────────────────────────────────────

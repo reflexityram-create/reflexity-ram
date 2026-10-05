@@ -270,8 +270,8 @@ export default function Wholesale() {
 
   const adminControls = user?.role === "admin" ? (
     <div className="ws-admin-actions" aria-label="Wholesale admin actions">
-      <Link to="/admin/wholesale"><Settings2 aria-hidden="true" size={13} /> Manage</Link>
-      <Link className="is-primary" to="/admin/wholesale?new=1"><Plus aria-hidden="true" size={13} /> Add listing</Link>
+      <Link to="/admin/products#wholesale"><Settings2 aria-hidden="true" size={13} /> Manage</Link>
+      <Link className="is-primary" to="/admin/products?newLot=1#wholesale"><Plus aria-hidden="true" size={13} /> Add listing</Link>
     </div>
   ) : null;
 
