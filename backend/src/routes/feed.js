@@ -60,11 +60,15 @@ const shippingXml = (country, shippingPrice) => `<g:shipping><g:country>${countr
 // converts it for shoppers there). A country whose quote fails is left out
 // until the next fetch, so Google never shows a made-up price.
 const FEED_QUOTE_CONCURRENCY = 8;
+// Google lists products in South Korea only with prices in KRW (it refused
+// ours with invalid_currency_for_country, 2026-10-05), and a shipping line
+// alone makes Google try, so the feed leaves KR out. Checkout still ships there.
+const FEED_SKIP_COUNTRIES = new Set(['KR']);
 let quoteAbroad = internationalOptions;
 let shipsAbroad = () => canadaPost.isConfigured();
 const internationalShipping = async () => {
   if (!shipsAbroad()) return [];
-  const queue = [...INTERNATIONAL_COUNTRIES];
+  const queue = INTERNATIONAL_COUNTRIES.filter((country) => !FEED_SKIP_COUNTRIES.has(country));
   const lines = [];
   const worker = async () => {
     while (queue.length) {
