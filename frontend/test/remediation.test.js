@@ -233,3 +233,12 @@ test('the product page and International metadata describe checkout abroad', asy
   assert.match(metadata, /Ship Reflexity RAM abroad with Canada Post: tracked, at Canada Post's price at checkout\. US orders by quote\./);
   assert.match(international, /<h2>Checking out from outside Canada<\/h2>/);
 });
+
+// While the country list loads, an empty list is not "Not on the list?".
+test('the country picker says it is loading instead of "not on the list" while countries load', async () => {
+  const [picker, checkout] = await Promise.all([read('../src/components/CountryPicker.jsx'), read('../src/pages/Checkout.jsx')]);
+  assert.match(picker, /Loading countries…/);
+  assert.match(picker, /matches\.length === 0 && !wantsUnavailable && !loading/);
+  assert.match(checkout, /loading=\{countriesLoading\}/);
+  assert.match(checkout, /\.finally\(\(\) => setCountriesLoading\(false\)\)/);
+});

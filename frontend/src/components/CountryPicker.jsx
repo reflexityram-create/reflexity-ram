@@ -13,7 +13,7 @@ const ALIASES = {
   'hong kong': 'HK', usa: 'US', america: 'US', 'united states': 'US', us: 'US',
 };
 
-export default function CountryPicker({ countries, value, onChange, unavailableNote }) {
+export default function CountryPicker({ countries, value, onChange, unavailableNote, loading = false }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -86,7 +86,10 @@ export default function CountryPicker({ countries, value, onChange, unavailableN
           {wantsUnavailable && unavailableNote && (
             <li className="px-3 py-2 text-[13px]" style={{ color: 'var(--fg-muted)' }}>{unavailableNote}</li>
           )}
-          {matches.length === 0 && !wantsUnavailable && (
+          {loading && (
+            <li className="px-3 py-2 text-[13px]" style={{ color: 'var(--fg-muted)' }}>Loading countries…</li>
+          )}
+          {matches.length === 0 && !wantsUnavailable && !loading && (
             <li className="px-3 py-2 text-[13px]" style={{ color: 'var(--fg-muted)' }}>Not on the list? Canada Post has no tracked service there right now. Email us and we will check.</li>
           )}
           {matches.map((c, i) => (
