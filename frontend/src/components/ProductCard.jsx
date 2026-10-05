@@ -3,9 +3,15 @@ import { Cpu } from "lucide-react";
 import { imageSrcSet, imageUrl } from "@/lib/imageUrl";
 import { formatStorePrice, STORE_CURRENCY_CODE } from "@/lib/currency";
 
+// Compact card: the photo is trimmed to the module on a white panel (the
+// photos have white backgrounds), then one spec line, the name, the price and
+// the stock status (kept off the photo, where it covered small images).
+// Two per row on phones, three on desktop. The part number, CAS latency and
+// shipping details live on the product page.
 export default function ProductCard({ p, index = 0, priority = false }) {
   const image = p.images?.[0];
-  const primaryImage = imageUrl(image, { width: 480 });
+  const primaryImage = imageUrl(image, { width: 640, trim: true });
+  const specs = [p.generation, p.formFactor, p.capacityLabel, p.speedLabel].filter(Boolean);
 
   return (
     <Link
@@ -14,83 +20,55 @@ export default function ProductCard({ p, index = 0, priority = false }) {
       style={{ animationDelay: `${(index % 8) * 0.04}s` }}
       data-testid={`product-card-${p.slug}`}
     >
-      <div className="relative aspect-[5/4] bg-gradient-to-b from-white/[0.03] to-transparent overflow-hidden">
+      <div className="relative aspect-[2/1] bg-white overflow-hidden px-3 py-4 sm:px-5 sm:py-5">
         {primaryImage ? (
           <img
             src={primaryImage}
-            srcSet={imageSrcSet(image)}
-            sizes="(min-width: 1024px) 30vw, (min-width: 640px) 45vw, 92vw"
+            srcSet={imageSrcSet(image, undefined, { trim: true })}
+            sizes="(min-width: 1024px) 30vw, 46vw"
             alt={p.name}
-            className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform"
-            width="640"
-            height="512"
+            className="w-full h-full object-contain"
+            width="960"
+            height="300"
             loading={priority ? "eager" : "lazy"}
             fetchPriority={priority ? "high" : "auto"}
             decoding="async"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <Cpu size={36} className="text-neutral-700" />
-          </div>
+          <Cpu size={32} className="w-full h-full text-neutral-400" />
         )}
-
-        <div className="absolute top-3 left-3 flex gap-1.5">
-          <span className="pill text-[10px] py-1 px-2">{p.generation}</span>
-          <span className="pill text-[10px] py-1 px-2">{p.formFactor}</span>
-        </div>
-
-        <div className="absolute top-3 right-3">
-          <span
-            className={`pill text-[10px] py-1 px-2 ${
-              p.stock === "low" ? "pill-amber" : p.stock === "out" ? "" : "pill-accent"
-            }`}
-            data-testid={`stock-${p.slug}`}
-          >
-            <span
-              className={`dot ${
-                p.stock === "low" ? "dot-amber" : p.stock === "out" ? "dot-red" : "dot-green"
-              }`}
-            />
-            {p.stockLabel}
-          </span>
-        </div>
-
-        {/* Shipping coverage badge — positive framing, bottom-left */}
-        <div className="absolute bottom-3 left-3">
-          <span className="pill text-[10px] py-1 px-2 bg-black/50 backdrop-blur-sm">
-            🇨🇦 Ships in Canada
-          </span>
-        </div>
       </div>
 
-      <div className="p-5 flex flex-col flex-1">
-        <div className="mono text-[10px] text-neutral-500 tracking-widest mb-2">
-          {p.sku}
+      <div className="p-3 sm:p-4 flex flex-col flex-1">
+        <div className="mono text-[9px] sm:text-[10px] text-neutral-500 tracking-widest uppercase mb-1.5">
+          {specs.join(" · ")}
         </div>
-        <h2 className="text-[15px] font-semibold tracking-tight text-white leading-snug mb-2">
+        <h2 className="text-[13px] sm:text-[15px] font-semibold tracking-tight text-white leading-snug line-clamp-3 sm:line-clamp-2 mb-3">
           {p.name}
         </h2>
 
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          <span className="pill text-[10px] py-0.5">{p.capacityLabel}</span>
-          <span className="pill text-[10px] py-0.5">{p.speedLabel}</span>
-          <span className="pill text-[10px] py-0.5">{p.cas}</span>
-        </div>
-
-        <div className="mt-auto flex items-end gap-3">
-          <div className="text-2xl font-bold tracking-tight">
+        <div className="mt-auto flex flex-wrap items-baseline gap-x-2">
+          <div className="text-lg sm:text-xl font-bold tracking-tight">
             {formatStorePrice(p.price)} <span className="text-[10px] font-medium text-neutral-500">{STORE_CURRENCY_CODE}</span>
           </div>
           {p.compareAt && p.compareAt > p.price && (
             <>
-              <div className="text-[12px] text-neutral-500 line-through mb-1">
+              <div className="text-[12px] text-neutral-500 line-through">
                 {formatStorePrice(p.compareAt)}
               </div>
-              <div className="ml-auto mb-1 mono text-[10px] text-emerald-300">
+              <div className="mono text-[10px] text-emerald-300">
                 Save {formatStorePrice(p.compareAt - p.price, 0)}
               </div>
             </>
           )}
+        </div>
+        <div className="mt-1 inline-flex items-center gap-1.5 text-[11px] sm:text-[12px] text-neutral-500" data-testid={`stock-${p.slug}`}>
+          <span
+            className={`dot ${
+              p.stock === "low" ? "dot-amber" : p.stock === "out" ? "dot-red" : "dot-green"
+            }`}
+          />
+          {p.stockLabel}
         </div>
       </div>
     </Link>

@@ -115,7 +115,7 @@ test("the public server catalog is a full-width inventory grid without redundant
 
   assert.match(shop, /const publicProducts = products\.filter\(isPublicServerRam\);/);
   assert.match(shop, /publicProducts\.map\(\(p, i\) =>/);
-  assert.match(shop, /grid sm:grid-cols-2 xl:grid-cols-3 gap-4/);
+  assert.match(shop, /grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4/);
   assert.doesNotMatch(shop, /@\/lib\/shopFilters|productsApi\.filters|useSearchParams|<select|<input|<aside|shop-search-input|shop-sort-select|shop-filters-sidebar|shop-mobile-filter-btn|mobile-filters-overlay|filter-ecc-only/);
   assert.doesNotMatch(productCard, /p\.ecc|>ECC</);
   assert.match(productCard, /formatStorePrice\(p\.price\)/);
