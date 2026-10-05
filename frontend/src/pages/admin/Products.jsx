@@ -18,8 +18,16 @@ const EMPTY_PRODUCT = {
   ecc: false,
   condition: 'Used', warranty: '90 Days',
   price: 0, shippingPrice: '', stockQuantity: 0,
+  countryOfOrigin: '', hsCode: '8473.30',
   images: [],
 };
+
+// Where server memory is usually made; the label on the module says which.
+const MADE_IN_COUNTRIES = [
+  ['KR', 'Korea'], ['CN', 'China'], ['TW', 'Taiwan'], ['PH', 'Philippines'], ['MY', 'Malaysia'],
+  ['JP', 'Japan'], ['SG', 'Singapore'], ['TH', 'Thailand'], ['VN', 'Vietnam'], ['MX', 'Mexico'],
+  ['US', 'United States'], ['DE', 'Germany'], ['IN', 'India'],
+];
 
 function ImageUploader({ images, onChange }) {
   const inputRef = useRef();
@@ -97,6 +105,8 @@ function normalizeProduct(p) {
     speed: p.speed ?? EMPTY_PRODUCT.speed,
     // No override stored → blank field → the store's standard flat rate
     shippingPrice: p.shippingPrice ?? '',
+    countryOfOrigin: p.countryOfOrigin ?? '',
+    hsCode: p.hsCode ?? '8473.30',
   };
 }
 // Auto-generate slug from product name (server also has a unique index).
@@ -172,6 +182,9 @@ function ProductModal({ product, onClose, onSave }) {
           ? null
           : Number(form.shippingPrice),
         stockQuantity: Number(form.stockQuantity),
+        // Blank "Made in" is stored as unknown, not as an empty code.
+        countryOfOrigin: form.countryOfOrigin || null,
+        hsCode: form.hsCode || null,
         images: form.images,
       };
       if (!isEdit) {
@@ -302,6 +315,15 @@ function ProductModal({ product, onClose, onSave }) {
                 </Field>
                 <Field label="Stock quantity" required>
                   <input type="number" className="input" value={form.stockQuantity} onChange={e => setField('stockQuantity', e.target.value)} required placeholder="10" />
+                </Field>
+                <Field label="Made in (from the label)">
+                  <select className="input" value={form.countryOfOrigin || ''} onChange={e => setField('countryOfOrigin', e.target.value)} data-testid="product-country-of-origin">
+                    <option value="">Not set (needed for US orders)</option>
+                    {MADE_IN_COUNTRIES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+                  </select>
+                </Field>
+                <Field label="HS code (customs)">
+                  <input className="input" value={form.hsCode ?? ''} onChange={e => setField('hsCode', e.target.value)} placeholder="8473.30 (memory modules)" data-testid="product-hs-code" />
                 </Field>
                 <Field label="Shipping override (CAD)">
                   <input

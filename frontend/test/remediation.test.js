@@ -183,3 +183,12 @@ test('the order page shows the latest Canada Post scan and expected delivery dat
   assert.match(page, /Latest from Canada Post:/);
   assert.match(page, /Canada Post expects to deliver it/);
 });
+
+// Every listing records where the module was made (needed for US duties).
+test('the admin product form asks where the module was made and the product page shows it', async () => {
+  const [admin, product] = await Promise.all([read('../src/pages/admin/Products.jsx'), read('../src/pages/Product.jsx')]);
+  assert.match(admin, /data-testid="product-country-of-origin"/);
+  assert.match(admin, /\['KR', 'Korea'\]/);
+  assert.match(admin, /countryOfOrigin: form\.countryOfOrigin \|\| null/);
+  assert.match(product, /\["Made in", p\.countryOfOrigin \?/);
+});

@@ -88,6 +88,10 @@ const productSchema = new mongoose.Schema({
   // standard flat rate (config/shipping.js). Set it only for lots that genuinely
   // cost more to ship; a mixed cart is charged the highest rate it contains.
   shippingPrice: { type: Number, min: [0, 'Shipping price cannot be negative'] },
+  // "Made in" from the module's label (2-letter country code) and the customs
+  // tariff code. US orders need both to prepay duties; RAM modules are 8473.30.
+  countryOfOrigin: { type: String, trim: true, uppercase: true, match: [/^[A-Z]{2}$/, 'Use a 2-letter country code'] },
+  hsCode: { type: String, trim: true, match: [/^\d{4}(\.?\d{2}){0,3}$/, 'Use an HS code like 8473.30'] },
   stock: {
     type: String,
     enum: ['in', 'low', 'out'],

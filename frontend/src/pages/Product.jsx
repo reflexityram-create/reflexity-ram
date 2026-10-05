@@ -769,6 +769,7 @@ function SpecsTable({ p }) {
   const rows = [
     ["Manufacturer", p.brand],
     ["Manufacturer Part Number", p.mpn],
+    ["Made in", p.countryOfOrigin ? new Intl.DisplayNames(["en"], { type: "region" }).of(p.countryOfOrigin) : null],
     ["Generation", p.generation],
     ["Form Factor", p.formFactor],
     ["Capacity (kit)", p.capacityLabel],

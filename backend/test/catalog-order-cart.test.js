@@ -546,3 +546,12 @@ test('cart mutation reports a concurrent disappearance as not found', async () =
   assert.equal(result, null);
   assert.equal(called, false);
 });
+
+// US orders need each product's "Made in" country to prepay duties.
+test('products store a 2-letter "Made in" country and an HS code, and buyers can see the country', async () => {
+  const valid = new Product({ countryOfOrigin: 'kr', hsCode: '8473.30' });
+  assert.equal(valid.countryOfOrigin, 'KR');
+  await assert.rejects(new Product({ countryOfOrigin: 'Korea' }).validate(['countryOfOrigin']));
+  await assert.rejects(new Product({ hsCode: 'ram' }).validate(['hsCode']));
+  assert.equal(PUBLIC_PRODUCT_PROJECTION.countryOfOrigin, 1);
+});
