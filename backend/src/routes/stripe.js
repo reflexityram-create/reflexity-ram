@@ -21,6 +21,17 @@ const { isFullyRefundedCharge } = require('../utils/refunds');
 const { cancelReviewRequest } = require('../utils/reviewRequests');
 
 const router = express.Router();
+
+// Stripe's hosted page otherwise shows the Stripe account's public name (still
+// the sign-up placeholder "reflexityram-real") and Stripe's blue button.
+// Receipts keep using the account name until it is changed in the Stripe
+// dashboard (Settings > Public details).
+const CHECKOUT_BRANDING = {
+  display_name: 'Reflexity RAM',
+  button_color: '#ffcf24', // --brand-yellow in frontend/src/index.css
+  icon: { type: 'url', url: 'https://reflexityram.com/brand/stripe-checkout-icon.png' },
+};
+
 let checkoutPriceEnsurer = ensureStripePrice;
 let checkoutSessionCreator = (payload) => stripe.checkout.sessions.create(payload);
 let checkoutSessionRetriever = (sessionId, options) => stripe.checkout.sessions.retrieve(sessionId, options);
@@ -97,6 +108,7 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
       mode: 'payment',
       line_items: lineItems,
       allow_promotion_codes: true,
+      branding_settings: CHECKOUT_BRANDING,
 
       // ── Shipping: Canada + US only. Stripe renders the country-appropriate
       // address form (Province/Postal code vs State/ZIP) automatically. ──────

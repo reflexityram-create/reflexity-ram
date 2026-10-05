@@ -94,10 +94,9 @@ test('Stripe shipping options carry the resolved amount in cents', () => {
   const [standard] = toStripeShippingOptions();
   assert.equal(standard.shipping_rate_data.fixed_amount.amount, 1400);
   assert.match(standard.shipping_rate_data.display_name, /delivery 3–6 business days after dispatch/);
-  assert.deepEqual(standard.shipping_rate_data.delivery_estimate, {
-    minimum: { unit: 'business_day', value: 3 },
-    maximum: { unit: 'business_day', value: 6 },
-  });
+  // The label carries the estimate; a delivery_estimate would make Stripe's
+  // page print it twice ("... after dispatch) (3-6 business days)").
+  assert.equal(standard.shipping_rate_data.delivery_estimate, undefined);
   const [overridden] = toStripeShippingOptions(25);
   assert.equal(overridden.shipping_rate_data.fixed_amount.amount, 2500);
   const [garbage] = toStripeShippingOptions('not-a-number');
