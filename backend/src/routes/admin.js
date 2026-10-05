@@ -14,6 +14,12 @@ const { ORDER_STATUSES, canTransitionOrder } = require('../utils/orderTransition
 
 const router = express.Router();
 
+// Only one product is featured on the home page at a time.
+const unfeatureOthers = (keepId) => Product.updateMany(
+  { _id: { $ne: keepId }, featured: true },
+  { $set: { featured: false } },
+);
+
 // All admin routes require authentication + admin role
 router.use(authenticate, requireAdmin);
 
@@ -157,6 +163,7 @@ router.post(
     body('mpn').optional().trim().isLength({ max: 100 }),
     body('countryOfOrigin').optional({ values: 'falsy' }).trim().matches(/^[A-Za-z]{2}$/).withMessage('Made in must be a 2-letter country code'),
     body('hsCode').optional({ values: 'falsy' }).trim().matches(/^\d{4}(\.?\d{2}){0,3}$/).withMessage('HS code looks wrong (e.g. 8473.30)'),
+    body('featured').optional().isBoolean().withMessage('featured must be true or false'),
   ],
   validate,
   async (req, res) => {
@@ -167,7 +174,7 @@ router.post(
         'capacityLabel', 'kit', 'speed', 'speedLabel', 'cas', 'timings', 'voltage',
         'ecc', 'rank', 'profile', 'heatspreader', 'rgb', 'condition', 'warranty',
         'price', 'shippingPrice', 'stockQuantity', 'images', 'description', 'brand', 'mpn',
-        'countryOfOrigin', 'hsCode', 'metaTitle', 'metaDescription',
+        'countryOfOrigin', 'hsCode', 'featured', 'metaTitle', 'metaDescription',
       ];
       // Force new products to be active
       const data = { isActive: true };
@@ -176,6 +183,7 @@ router.post(
       }
 
       const product = await Product.create(data);
+      if (product.featured) await unfeatureOthers(product._id);
 
       // Sync to Stripe (Product + Price). Non-fatal: if Stripe is down or not
       // configured, the product still saves and sync retries lazily at checkout.
@@ -210,7 +218,7 @@ router.patch(
         'kit', 'speed', 'speedLabel', 'cas', 'timings', 'voltage', 'ecc', 'rank',
         'profile', 'heatspreader', 'rgb', 'condition', 'warranty', 'price',
         'shippingPrice', 'stockQuantity', 'images', 'description', 'brand', 'mpn',
-        'countryOfOrigin', 'hsCode', 'metaTitle', 'metaDescription', 'isActive',
+        'countryOfOrigin', 'hsCode', 'featured', 'metaTitle', 'metaDescription', 'isActive',
       ];
       // Validate line if provided
       if (req.body.line !== undefined && !['Desktop', 'Laptop', 'Server'].includes(req.body.line)) {
@@ -222,6 +230,9 @@ router.patch(
       }
       if (req.body.isActive !== undefined && typeof req.body.isActive !== 'boolean') {
         return res.status(400).json({ error: 'isActive must be boolean' });
+      }
+      if (req.body.featured !== undefined && typeof req.body.featured !== 'boolean') {
+        return res.status(400).json({ error: 'featured must be boolean' });
       }
       // Shipping override: a number >= 0 sets a per-product rate; null or ''
       // clears it so the product falls back to the store's standard flat rate.
@@ -256,6 +267,7 @@ router.patch(
         { returnDocument: 'after', runValidators: true }
       );
       if (!product) return res.status(404).json({ error: 'Product not found' });
+      if (updates.featured === true) await unfeatureOthers(product._id);
 
       // Re-sync Stripe: price changes create a new Price (prices are immutable),
       // name/description/image changes update the Stripe Product. Non-fatal.

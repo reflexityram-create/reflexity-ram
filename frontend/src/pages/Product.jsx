@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   ChevronLeft,
@@ -6,7 +6,6 @@ import {
   Plus,
   ShoppingCart,
   Truck,
-  Shield,
   Copy,
   Check,
   AlertTriangle,
@@ -14,7 +13,7 @@ import {
   Cpu,
   Star,
 } from "lucide-react";
-import { Pencil, Globe } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { toast } from "sonner";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -61,6 +60,12 @@ export default function Product() {
   const [qty, setQty] = useState(1);
   const [imgIdx, setImgIdx] = useState(0);
   const [tab, setTab] = useState("specs");
+  // "More below" links and "All specifications" open a tab and scroll to it.
+  const detailsRef = useRef(null);
+  const openTab = (id) => {
+    setTab(id);
+    detailsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   const [modalOpen, setModalOpen] = useState(false);
   const [skuCopied, setSkuCopied] = useState(false);
   const [reviewData, setReviewData] = useState({ reviews: [], summary: { count: 0, average: 0 } });
@@ -303,19 +308,19 @@ export default function Product() {
             {/* Gallery */}
             <div>
               <button
-                className="block w-full glass rounded-2xl overflow-hidden aspect-[5/4] mb-3 cursor-zoom-in"
+                className="block w-full glass rounded-2xl overflow-hidden aspect-[16/9] mb-3 cursor-zoom-in bg-white p-5 sm:p-8"
                 onClick={() => setModalOpen(true)}
                 data-testid="product-main-image-btn"
               >
                 {imageUrls[imgIdx] ? (
                   <img
-                    src={imageUrl(imageUrls[imgIdx], { width: 1200 })}
-                    srcSet={imageSrcSet(imageUrls[imgIdx], DETAIL_IMAGE_WIDTHS)}
+                    src={imageUrl(imageUrls[imgIdx], { width: 1200, trim: true })}
+                    srcSet={imageSrcSet(imageUrls[imgIdx], DETAIL_IMAGE_WIDTHS, { trim: true })}
                     sizes="(min-width: 1024px) 52vw, 100vw"
                     alt={p.name}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-contain"
                     width="1200"
-                    height="960"
+                    height="675"
                     loading="eager"
                     fetchPriority="high"
                     decoding="async"
@@ -343,6 +348,7 @@ export default function Product() {
                   ))}
                 </div>
               )}
+              <KeySpecs p={p} onMore={() => openTab("specs")} className="hidden lg:block mt-5" />
             </div>
 
             {/* Right column */}
@@ -367,10 +373,9 @@ export default function Product() {
                   <Pencil size={11} /> Edit this product
                 </Link>
               )}
-              <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight mb-3">
+              <h1 className="text-2xl md:text-3xl font-bold tracking-tight leading-tight mb-4">
                 {p.name}
               </h1>
-              <div className="text-[13px] text-neutral-500 mb-5">{p.line}</div>
 
               <div className="flex flex-wrap gap-1.5 mb-6">
                 <span className="pill">{p.generation}</span>
@@ -412,7 +417,7 @@ export default function Product() {
                   {p.stockLabel}
                 </span>
                 <span className="mono text-[11px] text-neutral-500">
-                  Dispatch: {p.estimatedDispatch}
+                  Dispatch: {p.estimatedDispatch || "1–3 business days"}
                 </span>
               </div>
 
@@ -453,6 +458,8 @@ export default function Product() {
                 </button>
               </div>
 
+              <KeySpecs p={p} onMore={() => openTab("specs")} className="lg:hidden mb-5" />
+
               {/* Trust strip — quick reassurance at the point of decision */}
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mb-4 text-[12px] text-neutral-600 dark:text-neutral-400">
                 {[conditionBadge(p), `${p.warranty} warranty`, "Ships from Toronto", "Secure checkout"].map((t) => (
@@ -462,41 +469,36 @@ export default function Product() {
                 ))}
               </div>
 
-              {/* Shipping + warranty */}
-              <div className="grid sm:grid-cols-2 gap-3 mb-4">
+              {/* Shipping (the warranty is in the trust strip above) */}
+              <div className="mb-4">
                 <div className="glass-soft rounded-xl p-4 flex items-start gap-3">
                   <Truck size={18} className="text-neutral-300 mt-0.5 shrink-0" />
                   <div>
-                    <div className="text-[13px] font-medium">🇨🇦 Canada-wide shipping</div>
+                    <div className="text-[13px] font-medium">Ships worldwide from Toronto</div>
                     <div className="text-[12px] text-neutral-500">
-                      {formatStorePriceWithCode(shippingPriceFor(p), 0)} flat rate{hasOwnShippingPrice(p) ? '' : ` (${formatStorePriceWithCode(LARGE_ORDER_SHIPPING_PRICE, 0)} for ${LARGE_ORDER_MIN_STICKS}+ sticks)`} · ESD-safe · tracked
-                    </div>
-                  </div>
-                </div>
-                <div className="glass-soft rounded-xl p-4 flex items-start gap-3">
-                  <Shield size={18} className="text-neutral-300 mt-0.5 shrink-0" />
-                  <div>
-                    <div className="text-[13px] font-medium">{p.warranty}</div>
-                    <div className="text-[12px] text-neutral-500">
-                      Defect-replacement coverage
+                      Canada: {formatStorePriceWithCode(shippingPriceFor(p), 0)} flat rate{hasOwnShippingPrice(p) ? '' : ` (${formatStorePriceWithCode(LARGE_ORDER_SHIPPING_PRICE, 0)} for ${LARGE_ORDER_MIN_STICKS}+ sticks)`} · ESD-safe · tracked.
+                      {" "}Many countries check out here at Canada Post's price, tracked. US orders by quote.{" "}
+                      <Link to="/international" className="underline underline-offset-2">Read more</Link>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* International orders pointer — framed as available, not blocked */}
-              <div className="glass-soft rounded-xl p-4 flex items-start gap-3 mb-6">
-                <Globe size={18} className="text-neutral-300 mt-0.5 shrink-0" />
-                <div>
-                  <div className="text-[13px] font-medium">🌍 Shipping outside Canada?</div>
-                  <div className="text-[12px] text-neutral-500">
-                    Many countries check out here at Canada Post's price, tracked. US orders by quote.{" "}
-                    <Link to="/international" className="text-emerald-400 hover:text-emerald-300 underline">
-                      Read more →
-                    </Link>
-                  </div>
-                </div>
-              </div>
+              {/* A visible signal that the details continue below the fold */}
+              <nav aria-label="Product details" className="flex flex-wrap items-center gap-2" data-testid="product-jump-links">
+                <span className="text-[12px] text-neutral-500 mr-1">More below:</span>
+                {TABS.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => openTab(t.id)}
+                    className="pill text-[11px] py-1 px-2.5 hover:border-white/30"
+                    data-testid={`product-jump-${t.id}`}
+                  >
+                    {t.label} ↓
+                  </button>
+                ))}
+              </nav>
 
               <div className="mono text-[10.5px] text-neutral-600 leading-relaxed mt-4">
                 {p.note}
@@ -505,7 +507,7 @@ export default function Product() {
           </div>
 
           {/* TABS */}
-          <div className="mt-16 border-t border-white/5 pt-10">
+          <div ref={detailsRef} id="product-details" className="mt-10 border-t border-white/5 pt-8 scroll-mt-20">
             <div className="flex flex-wrap gap-1 mb-6" data-testid="product-tabs">
               {TABS.map((t) => (
                 <button
@@ -557,7 +559,7 @@ export default function Product() {
               )}
               {tab === "shipping" && (
                 <div data-testid="product-shipping-content" className="space-y-3 text-[14px] text-neutral-300 leading-relaxed">
-                  <p>Orders typically ship within 1–3 business days of purchase. Delivery is estimated within 3–6 business days after dispatch.</p>
+                  <p>Orders typically ship within 1–3 business days of purchase. In Canada, delivery is estimated within 3–6 business days after dispatch; outside Canada, checkout shows Canada Post's delivery time for your country.</p>
                   <p>Memory modules are packaged appropriately to help protect them during transit. Packaging may include anti-static bags, original manufacturer packaging and boxes, or other suitable protective materials at our discretion.</p>
                   <p>
                     <Link to="/shipping" className="text-white underline underline-offset-4">
@@ -770,6 +772,39 @@ function conditionBadge(p) {
   if (/sealed/i.test(p.name || "")) return "Factory sealed, unopened";
   if (p.condition === "New") return "Brand new";
   return "Individually tested";
+}
+
+// The specs buyers check first, near the top of the page (the full table is in
+// the Specifications tab below).
+function KeySpecs({ p, onMore, className = "" }) {
+  const items = [
+    ["Capacity", p.capacityLabel],
+    ["Speed", p.speedLabel],
+    ["Type", [p.generation, p.formFactor].filter(Boolean).join(" ")],
+    ["Rank", p.rank],
+    ["Voltage", p.voltage ? `${p.voltage}${/v\s*$/i.test(String(p.voltage)) ? "" : " V"}` : null],
+    ["ECC", p.ecc ? "Yes" : "No"],
+    ["CAS latency", p.cas],
+    ["Part number", p.mpn],
+  ].filter(([, v]) => v);
+  return (
+    <section className={`glass rounded-2xl p-5 ${className}`} aria-label="Key specs" data-testid="product-key-specs">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="mono text-[11px] tracking-widest text-neutral-500">KEY SPECS</div>
+        <button type="button" onClick={onMore} className="text-[12px] font-medium underline underline-offset-4">
+          All specifications ↓
+        </button>
+      </div>
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
+        {items.map(([k, v]) => (
+          <div key={k} className="min-w-0">
+            <dt className="text-[11.5px] text-neutral-500">{k}</dt>
+            <dd className="text-[14px] font-medium text-neutral-100 break-words">{v}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
 }
 
 function SpecsTable({ p }) {
