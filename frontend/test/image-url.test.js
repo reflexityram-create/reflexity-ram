@@ -21,7 +21,7 @@ test("imageUrl requests responsive Cloudinary delivery without changing the asse
   const source = "https://res.cloudinary.com/fike/image/upload/v123/product.jpg";
   assert.equal(
     imageUrl(source, { width: 640 }),
-    "https://res.cloudinary.com/fike/image/upload/c_limit,f_auto,q_auto,w_640/v123/product.jpg",
+    "https://res.cloudinary.com/fike/image/upload/c_limit,f_auto,q_auto:best,w_640/e_sharpen:40/v123/product.jpg",
   );
   assert.equal(imageUrl("https://example.com/product.jpg", { width: 640 }), "https://example.com/product.jpg");
   assert.equal(imageUrl(source, { width: 99999 }), source);
@@ -32,10 +32,20 @@ test("imageSrcSet gives browsers bounded Cloudinary width candidates only", () =
   assert.equal(
     imageSrcSet(source, [320, 640]),
     [
-      "https://res.cloudinary.com/fike/image/upload/c_limit,f_auto,q_auto,w_320/v123/product.jpg 320w",
-      "https://res.cloudinary.com/fike/image/upload/c_limit,f_auto,q_auto,w_640/v123/product.jpg 640w",
+      "https://res.cloudinary.com/fike/image/upload/c_limit,f_auto,q_auto:best,w_320/e_sharpen:40/v123/product.jpg 320w",
+      "https://res.cloudinary.com/fike/image/upload/c_limit,f_auto,q_auto:best,w_640/e_sharpen:40/v123/product.jpg 640w",
     ].join(", "),
   );
   assert.equal(imageSrcSet("https://example.com/product.jpg"), undefined);
   assert.equal(imageSrcSet(null), undefined);
+});
+
+// Cards trim the white background around a module so the stick fills the card.
+test("trimmed card images crop the background before resizing", () => {
+  const source = "https://res.cloudinary.com/fike/image/upload/v123/product.jpg";
+  assert.equal(
+    imageUrl(source, { width: 960, trim: true }),
+    "https://res.cloudinary.com/fike/image/upload/e_trim:12/c_limit,f_auto,q_auto:best,w_960/e_sharpen:40/v123/product.jpg",
+  );
+  assert.match(imageSrcSet(source, [640, 1280], { trim: true }), /e_trim:12\/c_limit,f_auto,q_auto:best,w_1280\/e_sharpen:40\/v123\/product\.jpg 1280w$/);
 });

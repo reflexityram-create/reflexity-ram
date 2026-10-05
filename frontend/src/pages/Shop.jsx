@@ -13,7 +13,7 @@ export function ShopInventory({ products }) {
   const publicProducts = products.filter(isPublicServerRam);
 
   return (
-    <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4" data-testid="shop-grid">
+    <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4" data-testid="shop-grid">
       {publicProducts.map((p, i) => (
         <ProductCard key={p.slug} p={p} index={i} priority={i < 3} />
       ))}
@@ -81,15 +81,16 @@ export default function Shop() {
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Server RAM</h1>
             <p className="text-[13px] text-neutral-500 mt-1.5">
               {loading ? "Loading…" : `${publicProducts.length} ${publicProducts.length === 1 ? "product" : "products"} available`}
+              {" · "}Ships from Toronto, tracked, across Canada and abroad
             </p>
           </div>
 
           {loading ? (
-            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4" data-testid="shop-loading">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4" data-testid="shop-loading">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="border border-white/8 rounded-xl overflow-hidden">
-                  <div className="skeleton aspect-[5/4]" />
-                  <div className="p-5 space-y-3">
+                  <div className="skeleton aspect-[2/1]" />
+                  <div className="p-3 sm:p-4 space-y-3">
                     <div className="skeleton h-3 w-1/3" />
                     <div className="skeleton h-4 w-4/5" />
                     <div className="skeleton h-3 w-2/3" />

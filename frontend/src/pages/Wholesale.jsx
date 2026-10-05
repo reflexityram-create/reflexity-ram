@@ -40,7 +40,7 @@ function WholesaleLotCard({ badgeLabel, detailBasePath = "/wholesale", index = 0
         {lot.imageUrl ? (
           <img
             alt={lot.imageAlt || lot.title}
-            className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform"
+            className="w-full h-full object-cover"
             decoding="async"
             fetchPriority={priorityImage ? "high" : "auto"}
             loading={priorityImage ? "eager" : "lazy"}

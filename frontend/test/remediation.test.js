@@ -242,3 +242,15 @@ test('the country picker says it is loading instead of "not on the list" while c
   assert.match(checkout, /loading=\{countriesLoading\}/);
   assert.match(checkout, /\.finally\(\(\) => setCountriesLoading\(false\)\)/);
 });
+
+// Listing cards were too tall and soft: trimmed photos at full opacity, compact text, two per row on phones.
+test('product cards are compact, full-opacity and say nothing about shipping only in Canada', async () => {
+  const [card, shop, home] = await Promise.all([read('../src/components/ProductCard.jsx'), read('../src/pages/Shop.jsx'), read('../src/pages/Home.jsx')]);
+  assert.doesNotMatch(card, /opacity-90/);
+  assert.doesNotMatch(card, /Ships in Canada/);
+  assert.match(card, /imageUrl\(image, \{ width: 640, trim: true \}\)/);
+  assert.match(card, /aspect-\[2\/1\] bg-white/);
+  assert.match(card, /line-clamp-3 sm:line-clamp-2/);
+  assert.match(shop, /Ships from Toronto, tracked, across Canada and abroad/);
+  assert.match(home, /grid grid-cols-2 lg:grid-cols-3/);
+});

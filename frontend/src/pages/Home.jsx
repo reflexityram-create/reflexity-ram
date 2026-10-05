@@ -87,9 +87,9 @@ export default function Home() {
               <span className="num">02</span> AVAILABLE INVENTORY
             </div>
             {loading ? (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
                 {[0, 1, 2].map((i) => (
-                  <div key={i} className="skeleton" style={{ height: 320 }} />
+                  <div key={i} className="skeleton" style={{ height: 260 }} />
                 ))}
               </div>
             ) : publicProducts.length === 0 ? (
@@ -97,7 +97,7 @@ export default function Home() {
                 Nothing listed right now — <Link to="/support" className="underline">email us</Link> for current stock.
               </p>
             ) : (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
                 {publicProducts.map((p, i) => (
                   <ProductCard key={p._id} p={p} index={i} priority={i < 3} />
                 ))}
