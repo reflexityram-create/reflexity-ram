@@ -76,8 +76,8 @@ test('every shipping line states handling and transit days that match the saved 
 
   const xml = await feedItems([product()]);
   const lines = xml.match(/<g:shipping>[\s\S]*?<\/g:shipping>/g);
-  // Website checkout ships to Canada only (US orders paused 2026-10-04), so the
-  // feed must not promise US shipping Google would then show to US shoppers.
+  // Without Canada Post keys (as here) only the Canada line is written, and the
+  // US is never promised (US orders paused 2026-10-04: duties must be prepaid).
   assert.equal(lines.length, 1);
   for (const line of lines) {
     assert.match(line, /<g:min_handling_time>1<\/g:min_handling_time><g:max_handling_time>3<\/g:max_handling_time>/);
@@ -220,4 +220,37 @@ test('a real photo never gets the AI copy: the override is keyed by the picture,
 test('the labeled-image lookup tolerates junk input', () => {
   for (const value of [undefined, null, '', 42, 'not a url', 'https://example.test/product-1-x']) assert.equal(labeledFeedImagePath(value), null);
   assert.equal(labeledFeedImagePath(`${AI_URL}?v=2`), AI_LABELED_FEED_IMAGES[AI_ASSET]);
+});
+
+// Abroad, Google gets what checkout charges for one stick: the cheapest tracked Canada Post service per country.
+test('the feed adds one shipping line per checkout country at the cheapest tracked Canada Post price', async (t) => {
+  const { INTERNATIONAL_COUNTRIES } = require('../src/config/shipping');
+  const asked = [];
+  feedRouter.setFeedShippingForTest({
+    enabled: () => true,
+    quote: async ({ country, sticks }) => {
+      asked.push([country, sticks]);
+      if (country === 'AU') throw new Error('Canada Post timeout');
+      if (country === 'JP') return [];
+      return [
+        { serviceCode: 'INT.TP', name: 'Tracked Packet – International', price: 33.41, transitDays: 7 },
+        { serviceCode: 'INT.XP', name: 'Xpresspost – International (guaranteed)', price: country === 'MX' ? 30 : 61.49, transitDays: 6 },
+      ];
+    },
+  });
+  t.after(() => feedRouter.setFeedShippingForTest());
+
+  const xml = await feedItems([product()]);
+  const lines = xml.match(/<g:shipping>[\s\S]*?<\/g:shipping>/g);
+  assert.equal(asked.length, INTERNATIONAL_COUNTRIES.length, 'one quote per checkout country');
+  assert.ok(asked.every(([, sticks]) => sticks === 1), 'priced for one stick');
+  assert.equal(lines.length, 1 + INTERNATIONAL_COUNTRIES.length - 2, 'Canada plus every country that has a price');
+  assert.match(lines[0], /<g:country>CA<\/g:country>[\s\S]*<g:price>14 CAD<\/g:price>/);
+  const gb = lines.find((line) => line.includes('<g:country>GB</g:country>'));
+  assert.match(gb, /<g:service>Canada Post Tracked Packet – International<\/g:service>/);
+  assert.match(gb, /<g:min_transit_time>7<\/g:min_transit_time><g:max_transit_time>10<\/g:max_transit_time>/);
+  assert.match(gb, /<g:price>33\.41 CAD<\/g:price>/);
+  const mx = lines.find((line) => line.includes('<g:country>MX</g:country>'));
+  assert.match(mx, /Xpresspost[\s\S]*<g:price>30\.00 CAD<\/g:price>/, 'the cheaper service wins');
+  for (const missing of ['AU', 'JP', 'US', 'DE']) assert.doesNotMatch(xml, new RegExp(`<g:country>${missing}</g:country>`), missing);
 });

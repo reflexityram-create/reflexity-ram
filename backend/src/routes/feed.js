@@ -1,9 +1,11 @@
 const express = require('express');
 const Product = require('../models/Product');
 const {
-  ALLOWED_SHIPPING_COUNTRIES, CURRENCY, HANDLING_DAYS, SHIPPING_OPTIONS, shippingPriceForProduct,
+  ALLOWED_SHIPPING_COUNTRIES, CURRENCY, HANDLING_DAYS, INTERNATIONAL_COUNTRIES, SHIPPING_OPTIONS, shippingPriceForProduct,
 } = require('../config/shipping');
 const { labeledFeedImagePath } = require('../config/feedImages');
+const canadaPost = require('../utils/canadaPost');
+const { internationalOptions } = require('../utils/internationalShipping');
 
 const router = express.Router();
 const BASE_URL = 'https://reflexityram.com';
@@ -53,6 +55,40 @@ const shippingXml = (country, shippingPrice) => `<g:shipping><g:country>${countr
   + `<g:min_handling_time>${HANDLING_DAYS.min}</g:min_handling_time><g:max_handling_time>${HANDLING_DAYS.max}</g:max_handling_time>`
   + `<g:min_transit_time>${STANDARD_OPTION.minDays}</g:min_transit_time><g:max_transit_time>${STANDARD_OPTION.maxDays}</g:max_transit_time>`
   + `<g:price>${shippingPrice} ${STORE_CURRENCY}</g:price></g:shipping>`;
+// Outside Canada, Google gets what checkout charges for one stick: the
+// cheapest tracked Canada Post service for that country, in CAD (Google
+// converts it for shoppers there). A country whose quote fails is left out
+// until the next fetch, so Google never shows a made-up price.
+const FEED_QUOTE_CONCURRENCY = 8;
+let quoteAbroad = internationalOptions;
+let shipsAbroad = () => canadaPost.isConfigured();
+const internationalShipping = async () => {
+  if (!shipsAbroad()) return [];
+  const queue = [...INTERNATIONAL_COUNTRIES];
+  const lines = [];
+  const worker = async () => {
+    while (queue.length) {
+      const country = queue.shift();
+      try {
+        const options = await quoteAbroad({ country, sticks: 1 });
+        const cheapest = [...options].sort((a, b) => a.price - b.price)[0];
+        if (cheapest) lines.push({ country, ...cheapest });
+      } catch {
+        // No line for this country this time.
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: FEED_QUOTE_CONCURRENCY }, worker));
+  return lines.sort((a, b) => a.country.localeCompare(b.country));
+};
+// Canada Post gives one expected transit time; allow three days on top of it.
+const abroadShippingXml = ({ country, name, price, transitDays }) => `<g:shipping><g:country>${country}</g:country>`
+  + `<g:service>${xmlEscape(`Canada Post ${name}`)}</g:service>`
+  + `<g:min_handling_time>${HANDLING_DAYS.min}</g:min_handling_time><g:max_handling_time>${HANDLING_DAYS.max}</g:max_handling_time>`
+  + (Number.isInteger(transitDays) && transitDays > 0
+    ? `<g:min_transit_time>${transitDays}</g:min_transit_time><g:max_transit_time>${transitDays + 3}</g:max_transit_time>`
+    : '')
+  + `<g:price>${price.toFixed(2)} ${STORE_CURRENCY}</g:price></g:shipping>`;
 const description = (product) => {
   const supplied = (product.description || '').trim();
   return supplied.length >= 20 && !/^\d+$/.test(supplied)
@@ -62,7 +98,7 @@ const description = (product) => {
 
 router.get('/feed.xml', async (_req, res) => {
   try {
-    const products = await publicFeedProducts();
+    const [products, abroad] = await Promise.all([publicFeedProducts(), internationalShipping()]);
     let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0"><channel>\n';
     xml += `<title>Reflexity RAM</title><link>${BASE_URL}</link><description>Tested server memory modules</description>\n`;
     for (const product of products) {
@@ -86,6 +122,7 @@ router.get('/feed.xml', async (_req, res) => {
       }
       const shippingPrice = shippingPriceForProduct(product);
       for (const country of ALLOWED_SHIPPING_COUNTRIES) xml += shippingXml(country, shippingPrice);
+      for (const line of abroad) xml += abroadShippingXml(line);
       xml += '</item>\n';
     }
     res.type('application/xml').set('Cache-Control', 'public, max-age=3600').send(`${xml}</channel></rss>`);
@@ -110,5 +147,11 @@ router.get('/feed.csv', async (_req, res) => {
     res.status(500).send('Error generating CSV feed');
   }
 });
+
+// Tests swap the Canada Post quotes; with no arguments the real ones come back.
+router.setFeedShippingForTest = ({ quote, enabled } = {}) => {
+  quoteAbroad = quote || internationalOptions;
+  shipsAbroad = enabled || (() => canadaPost.isConfigured());
+};
 
 module.exports = router;
