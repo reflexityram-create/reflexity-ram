@@ -1,7 +1,10 @@
 /**
  * Reflexity brand mark — two interlocking rings.
- * Geometry recovered from the reflexity.io favicon: two 324° arcs,
- * centre-line radius 46.5, stroke 10, centres 55 apart.
+ * Two circles (centre-line radius 46.5, stroke 10, centres 55 apart), each
+ * drawn as a ~324° arc whose gap is centred on the crossing where it passes
+ * under the other ring: the left ring dips under at the bottom, the right ring
+ * at the top. (The geometry first recovered from the reflexity.io favicon had
+ * its gaps away from the crossings, so the ring ends poked into the overlap.)
  */
 export default function ReflexityMark({ size = 28, color = "#FFCF24", className = "" }) {
   const ratio = 160 / 104;
@@ -17,8 +20,8 @@ export default function ReflexityMark({ size = 28, color = "#FFCF24", className 
       aria-hidden="true"
     >
       <g fill="none" stroke={color} strokeWidth="10" strokeLinecap="round">
-        <path d="M 98.05 45.03 A 46.5 46.5 0 1 1 86.01 19.79" />
-        <path d="M 61.07 58.77 A 46.5 46.5 0 1 1 74.12 84.38" />
+        <path d="M 66.41 95.71 A 46.5 46.5 0 1 1 89.84 78.53" />
+        <path d="M 92.59 7.29 A 46.5 46.5 0 1 1 69.16 24.47" />
       </g>
     </svg>
   );
