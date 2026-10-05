@@ -455,7 +455,7 @@ export default function Product() {
 
               {/* Trust strip — quick reassurance at the point of decision */}
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mb-4 text-[12px] text-neutral-600 dark:text-neutral-400">
-                {["Individually tested", `${p.warranty} warranty`, "Ships from Toronto", "Secure checkout"].map((t) => (
+                {[conditionBadge(p), `${p.warranty} warranty`, "Ships from Toronto", "Secure checkout"].map((t) => (
                   <span key={t} className="inline-flex items-center gap-1.5">
                     <span className="text-emerald-600 dark:text-emerald-400">✓</span> {t}
                   </span>
@@ -763,6 +763,13 @@ function RecentlyViewedSection({ slugs, currentSlug }) {
       </div>
     </div>
   );
+}
+
+// A factory-sealed module was not opened, so it was not tested here.
+function conditionBadge(p) {
+  if (/sealed/i.test(p.name || "")) return "Factory sealed, unopened";
+  if (p.condition === "New") return "Brand new";
+  return "Individually tested";
 }
 
 function SpecsTable({ p }) {

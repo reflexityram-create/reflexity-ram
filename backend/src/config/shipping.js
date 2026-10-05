@@ -64,12 +64,22 @@ const INTERNATIONAL_SERVICES = {
   'INT.XP': 'Xpresspost – International (guaranteed)',
   'INT.PW.PARCEL': 'Priority Worldwide',
 };
-// Not sold through website checkout: Canada has its own flat rates; US parcels
-// need duties prepaid (email for a quote until that is built); Russia and
-// Belarus are under Canadian sanctions on electronics.
-const NO_INTERNATIONAL_CHECKOUT = new Set(['CA', 'US', 'RU', 'BY']);
-const INTERNATIONAL_COUNTRIES = require('./countries').STRIPE_SHIPPING_COUNTRIES
-  .filter((code) => !NO_INTERNATIONAL_CHECKOUT.has(code));
+// Countries website checkout ships to: where Canada Post quotes Tracked Packet
+// or Xpresspost (both with delivery confirmation) at our commercial rate, from
+// a live Rating API sweep of every country on 2026-10-05. Elsewhere Canada Post
+// offers only services without delivery confirmation (International Parcel,
+// Small Packet) or refuses parcels (error 9111: the EU parcel suspension in
+// AT BE CZ DE DK FI FR LU PT, plus HT, LY, PS, SD, SO, SS, YE and others), so
+// those buyers email us. Not listed on purpose: CA (flat rates) and the US
+// (duties must be prepaid). Re-run the sweep when Canada Post changes service.
+const INTERNATIONAL_COUNTRIES = [
+  'AE', 'AL', 'AR', 'AU', 'BB', 'BR', 'BS', 'BZ', 'CH', 'CL', 'CN', 'CO', 'CR',
+  'CW', 'CY', 'DZ', 'EC', 'EE', 'ES', 'ET', 'GB', 'GD', 'GR', 'GY', 'HK', 'HR',
+  'HU', 'ID', 'IE', 'IL', 'IN', 'IS', 'IT', 'JM', 'JP', 'KE', 'KN', 'KR', 'KY',
+  'LB', 'LC', 'LI', 'LK', 'LT', 'LV', 'MA', 'MC', 'MO', 'MT', 'MU', 'MX', 'MY',
+  'NL', 'NO', 'NZ', 'PH', 'PL', 'RO', 'RS', 'SA', 'SE', 'SG', 'SI', 'SK', 'SM',
+  'SV', 'SX', 'TH', 'TR', 'TT', 'TW', 'UA', 'VN',
+];
 // Parcel used for quotes, by stick count: modules in ESD bags in a padded box.
 const parcelForSticks = (sticks) => {
   if (sticks <= 2) return { weight: 0.4, dimensions: { length: 23, width: 15, height: 5 } };

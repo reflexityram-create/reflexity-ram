@@ -44,10 +44,17 @@ const withFakeFetch = async (run) => {
   try { await run(requests); } finally { global.fetch = original; }
 };
 
-test('website checkout ships abroad everywhere Stripe allows except the US, Russia and Belarus', () => {
-  assert.ok(INTERNATIONAL_COUNTRIES.includes('GB'));
-  assert.ok(INTERNATIONAL_COUNTRIES.includes('AU'));
-  for (const code of ['CA', 'US', 'RU', 'BY', 'IR', 'KP']) assert.equal(INTERNATIONAL_COUNTRIES.includes(code), false, code);
+test('website checkout ships only where Canada Post has a tracked service, minus the US', () => {
+  const { STRIPE_SHIPPING_COUNTRIES } = require('../src/config/countries');
+  assert.equal(INTERNATIONAL_COUNTRIES.length, 73, 'the live sweep of 2026-10-05');
+  assert.ok(INTERNATIONAL_COUNTRIES.every((code) => STRIPE_SHIPPING_COUNTRIES.includes(code)), 'Stripe can collect every listed country');
+  for (const code of ['GB', 'AU', 'JP', 'AE', 'MX', 'IT', 'NL']) assert.ok(INTERNATIONAL_COUNTRIES.includes(code), code);
+  // Only International Parcel / Small Packet there: no delivery confirmation.
+  for (const code of ['ZA', 'NG', 'EG', 'PK']) assert.equal(INTERNATIONAL_COUNTRIES.includes(code), false, code);
+  // Canada's own rates, US duties, Canada Post's parcel suspensions (EU and others), sanctions.
+  for (const code of ['CA', 'US', 'PR', 'FR', 'DE', 'AT', 'BE', 'CZ', 'DK', 'FI', 'LU', 'PT', 'HT', 'PS', 'SD', 'RU', 'BY', 'IR', 'KP', 'CU']) {
+    assert.equal(INTERNATIONAL_COUNTRIES.includes(code), false, code);
+  }
   assert.deepEqual(parcelForSticks(2), { weight: 0.4, dimensions: { length: 23, width: 15, height: 5 } });
   assert.equal(parcelForSticks(3).weight, 0.9);
 });

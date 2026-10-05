@@ -195,12 +195,32 @@ test('the admin product form asks where the module was made and the product page
 
 // Outside Canada buyers pick their country and a Canada Post service priced live.
 test('checkout ships abroad with live Canada Post options and a duties notice', async () => {
-  const [checkout, api] = await Promise.all([read('../src/pages/Checkout.jsx'), read('../src/lib/api.js')]);
+  const [checkout, api, picker] = await Promise.all([read('../src/pages/Checkout.jsx'), read('../src/lib/api.js'), read('../src/components/CountryPicker.jsx')]);
   assert.match(checkout, /\[\['CA', 'Canada'\], \['INTL', 'Another country'\]\]/);
-  assert.match(checkout, /data-testid="checkout-country"/);
+  assert.match(picker, /data-testid="checkout-country"/);
   assert.match(checkout, /data-testid="checkout-shipping-options"/);
   assert.match(checkout, /Import taxes and duties are charged by your country on delivery\./);
   assert.match(checkout, /international \? \{ country, serviceCode \} : undefined/);
-  assert.match(checkout, /Shipping to the United States\?/);
+  assert.match(checkout, /Shipping to the United States or a country not listed\?/);
   assert.match(api, /internationalQuote: \(country\) => api\.post\('\/shipping\/international-quote', \{ country \}\)/);
+});
+
+// The native country <select> was unreadable in dark mode; buyers can now type their country.
+test('the checkout country picker is searchable, themed and explains the US', async () => {
+  const [picker, checkout] = await Promise.all([read('../src/components/CountryPicker.jsx'), read('../src/pages/Checkout.jsx')]);
+  assert.match(picker, /role="combobox"/);
+  assert.match(picker, /role="listbox"/);
+  assert.match(picker, /background: 'var\(--bg-elev\)'/);
+  assert.match(picker, /color: 'var\(--fg\)'/);
+  assert.match(picker, /uk: 'GB'/);
+  assert.match(picker, /Not on the list\? Canada Post has no tracked service there right now\./);
+  assert.doesNotMatch(checkout, /<select className="input" value=\{country\}/);
+  assert.match(checkout, /<CountryPicker/);
+});
+
+// A factory-sealed module was never opened, so it cannot claim "Individually tested".
+test('sealed listings say "Factory sealed, unopened" instead of "Individually tested"', async () => {
+  const product = await read('../src/pages/Product.jsx');
+  assert.match(product, /if \(\/sealed\/i\.test\(p\.name \|\| ""\)\) return "Factory sealed, unopened";/);
+  assert.match(product, /\[conditionBadge\(p\), `\$\{p\.warranty\} warranty`/);
 });

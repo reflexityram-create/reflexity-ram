@@ -6,6 +6,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import useCartStore from '@/lib/cartStore';
 import { stripeApi, shippingApi } from '@/lib/api';
+import CountryPicker from '@/components/CountryPicker';
 import { useSEO } from '@/lib/seo';
 import { imageUrl } from '@/lib/imageUrl';
 import { formatStorePrice, STORE_CURRENCY_NAME } from '@/lib/currency';
@@ -170,12 +171,14 @@ export default function Checkout() {
                     </div>
                     {international && (
                       <div className="mt-3 space-y-3">
-                        <select className="input" value={country} onChange={(e) => chooseCountry(e.target.value)} aria-label="Country" data-testid="checkout-country">
-                          <option value="">Choose your country</option>
-                          {countries.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
-                        </select>
+                        <CountryPicker
+                          countries={countries}
+                          value={country}
+                          onChange={chooseCountry}
+                          unavailableNote="United States: duties must be prepaid, so email us for a quote."
+                        />
                         <p className="text-[12px] text-neutral-500">
-                          Shipping to the United States? <a href="mailto:reflexityram@gmail.com?subject=US%20order%20quote" className="underline underline-offset-4">Email us</a> for a quote.
+                          Shipping to the United States or a country not listed? <a href="mailto:reflexityram@gmail.com?subject=Shipping%20quote" className="underline underline-offset-4">Email us</a> for a quote.
                         </p>
                         {quote.loading && (
                           <div className="flex items-center gap-2 text-[13px] text-neutral-400"><Loader2 size={14} className="animate-spin" /> Getting Canada Post prices…</div>
@@ -185,7 +188,8 @@ export default function Checkout() {
                           <fieldset className="space-y-2" data-testid="checkout-shipping-options">
                             <legend className="text-[13px] text-neutral-400 mb-1">Canada Post service</legend>
                             {quote.options.map((o) => (
-                              <label key={o.serviceCode} className={`flex items-start justify-between gap-3 rounded-xl border px-3 py-2.5 cursor-pointer ${serviceCode === o.serviceCode ? 'border-amber-300' : 'border-white/10'}`}>
+                              <label key={o.serviceCode} className="flex items-start justify-between gap-3 rounded-xl border px-3 py-2.5 cursor-pointer transition-colors"
+                                style={{ borderColor: serviceCode === o.serviceCode ? 'var(--brand-yellow)' : 'var(--border-strong)', background: serviceCode === o.serviceCode ? 'var(--input-bg-focus)' : 'transparent' }}>
                                 <span className="flex items-start gap-2.5">
                                   <input type="radio" name="service" className="mt-1" checked={serviceCode === o.serviceCode} onChange={() => setServiceCode(o.serviceCode)} />
                                   <span className="text-[14px]">{o.name}
