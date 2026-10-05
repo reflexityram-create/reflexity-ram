@@ -242,9 +242,10 @@ test('the feed adds one shipping line per checkout country at the cheapest track
 
   const xml = await feedItems([product()]);
   const lines = xml.match(/<g:shipping>[\s\S]*?<\/g:shipping>/g);
-  assert.equal(asked.length, INTERNATIONAL_COUNTRIES.length, 'one quote per checkout country');
+  assert.equal(asked.length, INTERNATIONAL_COUNTRIES.length - 1, 'one quote per checkout country, except South Korea');
   assert.ok(asked.every(([, sticks]) => sticks === 1), 'priced for one stick');
-  assert.equal(lines.length, 1 + INTERNATIONAL_COUNTRIES.length - 2, 'Canada plus every country that has a price');
+  assert.ok(!asked.some(([country]) => country === 'KR'), 'Google refuses CAD prices in South Korea');
+  assert.equal(lines.length, 1 + INTERNATIONAL_COUNTRIES.length - 1 - 2, 'Canada plus every country that has a price');
   assert.match(lines[0], /<g:country>CA<\/g:country>[\s\S]*<g:price>14 CAD<\/g:price>/);
   const gb = lines.find((line) => line.includes('<g:country>GB</g:country>'));
   assert.match(gb, /<g:service>Canada Post Tracked Packet – International<\/g:service>/);
@@ -252,5 +253,5 @@ test('the feed adds one shipping line per checkout country at the cheapest track
   assert.match(gb, /<g:price>33\.41 CAD<\/g:price>/);
   const mx = lines.find((line) => line.includes('<g:country>MX</g:country>'));
   assert.match(mx, /Xpresspost[\s\S]*<g:price>30\.00 CAD<\/g:price>/, 'the cheaper service wins');
-  for (const missing of ['AU', 'JP', 'US', 'DE']) assert.doesNotMatch(xml, new RegExp(`<g:country>${missing}</g:country>`), missing);
+  for (const missing of ['AU', 'JP', 'US', 'DE', 'KR']) assert.doesNotMatch(xml, new RegExp(`<g:country>${missing}</g:country>`), missing);
 });
