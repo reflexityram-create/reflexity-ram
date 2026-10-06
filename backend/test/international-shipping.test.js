@@ -117,15 +117,16 @@ const withCart = async (run) => {
   try { await run(); } finally { Cart.findOne = originals.cartFindOne; Product.find = originals.productFind; }
 };
 
-test('the quote endpoint prices the cart for the country and refuses the US', async () => {
+test('the quote endpoint prices the cart for the country and keeps the US closed until Zonos is configured', async () => {
   await withFakeFetch(async () => {
     await withCart(async () => {
       const uk = await post('/api/shipping/international-quote', { country: 'gb' });
       assert.equal(uk.status, 200);
       assert.equal(uk.body.sticks, 2);
       assert.deepEqual(uk.body.options.map((o) => o.serviceCode), ['INT.TP', 'INT.XP']);
+      // The US has its own quote (see us-checkout.test.js); without the Zonos key it is simply not open.
       const us = await post('/api/shipping/international-quote', { country: 'US' });
-      assert.equal(us.status, 400);
+      assert.equal(us.status, 422);
       assert.match(us.body.error, /Email us/);
     });
   });
@@ -151,8 +152,9 @@ test('checkout abroad charges the chosen Canada Post service and only accepts th
 
         const madeUp = await post('/api/stripe/create-checkout-session', { shipping: { country: 'GB', serviceCode: 'INT.FAKE' } });
         assert.equal(madeUp.status, 400);
+        // The US is never sold through an international service code: without the Zonos key it is not open at all.
         const us = await post('/api/stripe/create-checkout-session', { shipping: { country: 'US', serviceCode: 'INT.XP' } });
-        assert.equal(us.status, 400);
+        assert.equal(us.status, 422);
 
         const canada = await post('/api/stripe/create-checkout-session', {});
         assert.deepEqual(payload.shipping_address_collection, { allowed_countries: ['CA'] }, 'Canada keeps its flat rates');

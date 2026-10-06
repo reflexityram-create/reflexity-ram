@@ -47,6 +47,8 @@ const customerOrderResponse = (order) => {
     paymentStatus: value.paymentStatus,
     subtotal: value.subtotal,
     shippingCost: value.shippingCost,
+    // US orders: the part of shippingCost that is the prepaid import duties and fees, so receipts can show it on its own line.
+    ...(Number(value.importDuties) > 0 ? { importDuties: value.importDuties } : {}),
     tax: value.tax,
     discount: value.discount,
     total: value.total,

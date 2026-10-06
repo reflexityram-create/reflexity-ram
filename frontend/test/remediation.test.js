@@ -202,7 +202,8 @@ test('checkout ships abroad with live Canada Post options and a duties notice', 
   assert.match(checkout, /data-testid="checkout-shipping-options"/);
   assert.match(checkout, /Import taxes and duties are charged by your country on delivery\./);
   assert.match(checkout, /international\s*\? \{ country, serviceCode \}/);
-  assert.match(checkout, /Shipping to the United States or a country not listed\?/);
+  // The US has its own checkout since 2026-10-06 (see us-checkout.test.js); the 'email us' line is for countries that are not listed.
+  assert.match(checkout, /Shipping to a country not listed\? /);
   assert.match(api, /internationalQuote: \(country\) => api\.post\('\/shipping\/international-quote', \{ country \}\)/);
 });
 
@@ -230,9 +231,10 @@ test('sealed listings say "Factory sealed, unopened" instead of "Individually te
 test('the product page and International metadata describe checkout abroad', async () => {
   const [product, metadata, international] = await Promise.all([read('../src/pages/Product.jsx'), read('../functions-shared/staticMetadata.js'), read('../src/pages/policies/International.jsx')]);
   assert.match(product, /Pick your country at checkout to see Canada Post's tracked price and delivery time/);
-  assert.match(product, /By quote, because US duties must be prepaid/);
+  assert.match(product, /Not on the website for this item yet\./);
+  assert.match(product, /Choose Another country, then United States, at checkout: Canada Post Tracked Packet – USA/);
   assert.doesNotMatch(product, /We ship worldwide as custom orders/);
-  assert.match(metadata, /Ship Reflexity RAM abroad with Canada Post: tracked, at Canada Post's price at checkout\. US orders by quote\./);
+  assert.match(metadata, /Ship Reflexity RAM abroad with Canada Post: tracked, at Canada Post's price at checkout, with US import duties prepaid where the United States is offered\./);
   assert.match(international, /<h2>Checking out from outside Canada<\/h2>/);
 });
 

@@ -106,7 +106,7 @@ const PAGES = {
   },
   "/international": {
     title: "International RAM Orders — Reflexity RAM",
-    description: "Ship Reflexity RAM abroad with Canada Post: tracked, at Canada Post's price at checkout. US orders by quote.",
+    description: "Ship Reflexity RAM abroad with Canada Post: tracked, at Canada Post's price at checkout, with US import duties prepaid where the United States is offered.",
     heading: "International RAM orders",
     links: [["Contact support", "/support"], ["Shop tested RAM", "/shop"]],
   },

@@ -17,8 +17,9 @@ const {
   resolveFasterShippingPrice,
 } = require('../config/shipping');
 const { analyticsOrder } = require('../utils/analyticsOrder');
-const { INTERNATIONAL_COUNTRIES } = require('../config/shipping');
+const { INTERNATIONAL_COUNTRIES, US_SERVICE_CODE } = require('../config/shipping');
 const { internationalOptions, optionLabel } = require('../utils/internationalShipping');
+const { quoteUnitedStates, UsCheckoutError } = require('../utils/usCheckout');
 const { isServerPurchaseTrackingEnabled, sanitizeAnalyticsIds } = require('../utils/ga4');
 const { reportPaidOrderToGa4 } = require('../utils/purchaseAnalytics');
 const { decrementStockForOrder, shouldDecrementStockForFulfillment } = require('../utils/stock');
@@ -110,14 +111,41 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
       shippingLines.push({ product, qty: item.qty });
     }
 
-    // ── Where it ships: Canada (flat rates) or another country (the Canada Post
+    // ── Where it ships: Canada (flat rates), the United States (Tracked Packet USA plus the
+    // prepaid import duties, both worked out here) or another country (the Canada Post
     // price for the service the buyer picked, re-quoted here, never taken from
     // the client). ──────────────────────────────────────────────────────────
     const country = String(req.body?.shipping?.country || 'CA').toUpperCase();
     let shippingOptions = toStripeShippingOptions(resolveCartShippingPrice(shippingLines));
     let allowedCountries = ALLOWED_SHIPPING_COUNTRIES;
     let internationalService;
-    if (country !== 'CA') {
+    let usQuote;
+    if (country === 'US') {
+      try {
+        usQuote = await quoteUnitedStates({ lines: shippingLines });
+      } catch (err) {
+        if (err instanceof UsCheckoutError) return res.status(err.status).json({ error: err.publicMessage });
+        throw err;
+      }
+      if (req.body?.shipping?.serviceCode !== usQuote.service.serviceCode) return res.status(400).json({ error: 'Choose a shipping option again.' });
+      // The duties ride inside the shipping rate: a promotion code only ever discounts goods, and the order's
+      // subtotal stays the goods. The label spells it out because Stripe's page shows only this one line.
+      shippingOptions = [{
+        shipping_rate_data: {
+          type: 'fixed_amount',
+          display_name: `${optionLabel(usQuote.service)} + prepaid US import duties and fees`,
+          fixed_amount: { amount: Math.round(usQuote.total * 100), currency: CURRENCY },
+          tax_behavior: 'exclusive',
+          metadata: {
+            canadaPostService: usQuote.service.serviceCode,
+            country: 'US',
+            usShippingCad: usQuote.service.price.toFixed(2),
+            usDutiesCad: usQuote.duties.total.toFixed(2),
+          },
+        },
+      }];
+      allowedCountries = ['US'];
+    } else if (country !== 'CA') {
       if (!INTERNATIONAL_COUNTRIES.includes(country)) {
         return res.status(400).json({ error: 'Website checkout does not ship there. Email us for a quote.' });
       }
@@ -177,7 +205,8 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
     const session = await checkoutSessionCreator({
       mode: 'payment',
       line_items: lineItems,
-      allow_promotion_codes: true,
+      // Not on US orders: the duties are priced on the goods' full value, and a discount would leave the buyer paying duty on money they never paid.
+      allow_promotion_codes: !usQuote,
       branding_settings: CHECKOUT_BRANDING,
 
       // ── Shipping: Canada + US only. Stripe renders the country-appropriate
@@ -187,6 +216,11 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
       ...(internationalService ? {
         custom_text: {
           shipping_address: { message: 'Import taxes and duties are charged by your country on delivery and are not included in this total.' },
+        },
+      } : {}),
+      ...(usQuote ? {
+        custom_text: {
+          shipping_address: { message: 'US import duties and customs fees are prepaid in the shipping charge below. Nothing more to pay on delivery.' },
         },
       } : {}),
       phone_number_collection: { enabled: true },
@@ -209,6 +243,14 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
           shippingCountry: country,
           canadaPostService: internationalService.serviceCode,
           ...(internationalService.transitDays ? { canadaPostTransitDays: String(internationalService.transitDays) } : {}),
+        } : {}),
+        ...(usQuote ? {
+          shippingCountry: 'US',
+          canadaPostService: usQuote.service.serviceCode,
+          ...(usQuote.service.transitDays ? { canadaPostTransitDays: String(usQuote.service.transitDays) } : {}),
+          usShippingCad: usQuote.service.price.toFixed(2),
+          usDutiesCad: usQuote.duties.total.toFixed(2),
+          ...(usQuote.duties.quoteId ? { zonosLandedCostId: usQuote.duties.quoteId.slice(0, 80) } : {}),
         } : {}),
         ...(canadaChoice ? {
           shippingCountry: 'CA',
@@ -256,6 +298,18 @@ const shippingChoiceNote = (metadata = {}, label) => {
   if (signature) extras.push('add the Signature option');
   return `SHIPPING: the buyer paid for "${label}". When you make the label, ${extras.join(' and ')}.`;
 };
+
+// A US order's shipping charge includes the prepaid import duties (see create-checkout-session). The session metadata says
+// how much of it is duties; refuse anything that does not fit inside what was actually charged for shipping.
+const usDutiesFrom = (metadata = {}, shippingCharged = 0) => {
+  if (metadata.shippingCountry !== 'US') return null;
+  const duties = Math.round(Number(metadata.usDutiesCad) * 100) / 100;
+  if (!Number.isFinite(duties) || duties <= 0 || duties > shippingCharged + 0.005) return null;
+  return { duties, quoteId: String(metadata.zonosLandedCostId || '').slice(0, 80) };
+};
+const usOrderNote = (usDuties) => (usDuties
+  ? `US ORDER: the buyer prepaid US import duties and fees of $${usDuties.duties.toFixed(2)} CAD inside the shipping charge${usDuties.quoteId ? ` (Zonos quote ${usDuties.quoteId})` : ''}. Make the label in Snap Ship with the Zonos duties-paid option: Zonos pays US Customs and bills your card. Declare each item's country of origin and HS code (the customs panel on this order lists them).`
+  : null);
 
 const ensureCriticalFulfillmentEffects = async (order) => {
   if (!order) return order;
@@ -346,6 +400,7 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
   const total = (session.amount_total || 0) / 100;
   const shippingMethodLabel =
     session.shipping_cost?.shipping_rate?.display_name || 'Standard Shipping';
+  const usDuties = usDutiesFrom(session.metadata, shippingCost);
 
   const pi = session.payment_intent;
   const userId = session.metadata?.userId !== 'guest' ? session.metadata?.userId : undefined;
@@ -364,6 +419,7 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
       billingAddress: shippingAddress,
       shippingMethod: shippingMethodLabel,
       shippingCost,
+      ...(usDuties ? { importDuties: usDuties.duties, importDutiesQuoteId: usDuties.quoteId || undefined } : {}),
       subtotal,
       tax,
       discount,
@@ -387,6 +443,7 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
           ? 'REVIEW: disposable email detected after Stripe Checkout. Confirm before fulfillment.'
           : null,
         shippingChoiceNote(session.metadata, shippingMethodLabel),
+        usOrderNote(usDuties),
         unmappedPrices.length
           ? `REVIEW: ${unmappedPrices.length} paid line item${unmappedPrices.length === 1 ? '' : 's'} could not be matched to a product and ${unmappedPrices.length === 1 ? 'is' : 'are'} NOT on this order (Stripe price ${unmappedPrices.join(', ')}). Check the Stripe payment before shipping.`
           : null,
@@ -428,6 +485,7 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
           subtotal: order.subtotal,
           discount: order.discount,
           shippingCost: order.shippingCost,
+          importDuties: order.importDuties,
           tax: order.tax,
           total: order.total,
         },

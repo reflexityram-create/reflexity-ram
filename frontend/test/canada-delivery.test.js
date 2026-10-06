@@ -50,7 +50,8 @@ test('the cart store keeps the Faster price from every cart response', async () 
 
 test('the order page says which delivery the buyer paid for', async () => {
   const page = await read('../src/pages/OrderSuccess.jsx');
-  assert.match(page, /data-testid="order-shipping-method">\{order\.shippingMethod\}/);
+  // The method label is shown as recorded; a US order drops only the " + prepaid US import duties and fees" tail, because its duties get their own row (us-checkout.test.js).
+  assert.match(page, /data-testid="order-shipping-method">\{order\.importDuties > 0 \? [^}]*\) : order\.shippingMethod\}/);
 });
 
 test('the numbers the page shows match the server\'s (backend/src/config/shipping.js)', async () => {

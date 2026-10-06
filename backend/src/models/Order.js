@@ -68,6 +68,9 @@ const orderSchema = new mongoose.Schema({
   stripeChargeId: { type: String },
   subtotal: { type: Number, required: true },
   shippingCost: { type: Number, default: 0 },
+  // US orders: how much of shippingCost is the prepaid US import duties and fees (the rest is Canada Post). Zero elsewhere.
+  importDuties: { type: Number, default: 0 },
+  importDutiesQuoteId: { type: String },
   tax: { type: Number, default: 0 },
   discount: { type: Number, default: 0 },
   total: { type: Number, required: true },

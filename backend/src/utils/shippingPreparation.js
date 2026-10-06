@@ -72,6 +72,9 @@ function makeCopyText(preparation) {
       lines.push(`${line.qty} × ${line.name} | CAD $${line.unitValueCAD.toFixed(2)} each | origin ${origin} | HS ${hs}`);
     });
   }
+  if (preparation.duties) {
+    lines.push('', `US import duties and fees prepaid by the buyer: CAD $${preparation.duties.prepaidCAD.toFixed(2)} (Zonos pays US Customs when the label is made)`);
+  }
   return lines.join('\n');
 }
 
@@ -115,6 +118,10 @@ async function buildShippingPreparation(order, ProductModel = Product) {
     service: serviceFromOrder(order),
     recipient: addressForOrder(order?.shippingAddress),
     customs: { required: international, lines: international ? customsLines : [] },
+    // US orders: the part of the shipping charge that is prepaid import duties (the buyer reimbursed it; Zonos bills the owner's card at the label).
+    duties: Number(order?.importDuties) > 0
+      ? { prepaidCAD: Math.round(Number(order.importDuties) * 100) / 100, quoteId: text(order.importDutiesQuoteId) || null }
+      : null,
     links: { snapShip: CANADA_POST_SNAP_SHIP_URL },
     items: customsLines.map(({ sku, name, qty, unitValueCAD, productId, productFound, productActive }) => ({
       sku, name, qty, unitValueCAD, productId, productFound, productActive,

@@ -74,6 +74,12 @@ export default function ShippingPreparationPanel({ preparation }) {
           </div>
         </div>
       )}
+      {preparation.duties && (
+        <div className="mt-4 text-[12px]" data-testid="shipping-prep-duties">
+          <div className="text-neutral-500 text-[11px] uppercase tracking-widest mb-1">US import duties</div>
+          <div>Prepaid by the buyer: <span className="mono">{money(preparation.duties.prepaidCAD)}</span> (inside the shipping charge). Buy the label in Snap Ship with the Zonos duties-paid option; Zonos pays US Customs and bills your card.</div>
+        </div>
+      )}
       <div className="flex flex-wrap gap-2 mt-4">
         <button type="button" onClick={copy} className="btn-ghost flex items-center gap-1.5 text-[12px]">
           <Clipboard size={13} /> {copied ? 'Copied' : 'Copy shipping details'}

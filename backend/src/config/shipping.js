@@ -49,11 +49,8 @@ const resolveCartShippingPrice = (lines = []) => {
 // deployments can still override it explicitly when required.
 const CURRENCY = (process.env.STRIPE_CURRENCY || 'cad').toLowerCase();
 
-// Countries website checkout ships to, enforced by Stripe's hosted checkout.
-// US orders were paused 2026-10-04: every US parcel now needs a duties-paid
-// customs label, and the US had no add-to-carts in 90 days. US buyers email
-// for a quote, like other international orders. Re-adding 'US' here also needs
-// the policy pages, the edge JSON-LD and the Merchant Center settings.
+// Countries the flat-rate (Canada) checkout ships to, enforced by Stripe's hosted checkout. Other countries have
+// their own sessions: see INTERNATIONAL_COUNTRIES below and the United States block after it.
 const ALLOWED_SHIPPING_COUNTRIES = ['CA'];
 
 // ─── Outside Canada ────────────────────────────────────────────────────────────
@@ -80,6 +77,26 @@ const INTERNATIONAL_COUNTRIES = [
   'NL', 'NO', 'NZ', 'PH', 'PL', 'RO', 'RS', 'SA', 'SE', 'SG', 'SI', 'SK', 'SM',
   'SV', 'SX', 'TH', 'TR', 'TT', 'TW', 'UA', 'VN',
 ];
+// ─── United States ─────────────────────────────────────────────────────────────
+// Paused 2026-10-04, back 2026-10-06. Since 2025-08-29 every US parcel needs its duties prepaid before it crosses: Canada
+// Post will not print a US label without a duties-paid Declaration ID. The shop's Zonos Verified Account pays US Customs
+// when the label is made and bills the owner's card; the buyer reimburses exactly that at checkout (utils/zonos.js
+// quotes it live: on 2026-10-06 a $135 stick came to $44.31, mostly the 25% Section 232 semiconductor tariff, and a
+// China-made one twice that). It travels inside the shipping rate, never as a line item, so a promotion code cannot
+// discount it and the order's subtotal stays the goods.
+// Shipping is Canada Post Tracked Packet USA at the commercial rate. It costs the same to every ZIP (16 sampled ZIPs,
+// Alaska and Hawaii included, 2026-10-06: $16.70 for the 0.4 kg box, $24.72 for 0.9 kg, $30.37 at 2 kg), so one live
+// quote with a fixed ZIP prices any buyer, and it stops at 2 kg. parcelForSticks models 12 sticks at 2.04 kg and ROUNDS that down
+// to 2.0, so the limit is 11 sticks (1.92 kg): a 12th would be rated as fitting and then be refused at label time.
+const US_SERVICE_CODE = 'USA.TP';
+const US_SERVICE_NAME = 'Tracked Packet – USA';
+const US_RATING_ZIP = '10001';
+const US_MAX_STICKS = 11;
+// Goods value (CAD) the website will take to the US. Customs clears about US$2,500 on an informal entry; above that a formal
+// entry (a customs broker) is needed, which this checkout and a Tracked Packet label do not do. Nothing above CA$3,400 was
+// ever quoted or probed, so bigger orders are by email. Raise it only after a real larger label has been made.
+const US_MAX_GOODS_CAD = 3000;
+
 // ─── Faster shipping inside Canada ─────────────────────────────────────────────
 // The flat rate above stays the default. A buyer can pay a FLAT extra for Canada Post Xpresspost
 // (tracked, typically 1–3 business days after dispatch): no postal code, no quote, instant.
@@ -157,6 +174,11 @@ module.exports = {
   toStripeShippingOptions,
   INTERNATIONAL_SERVICES,
   INTERNATIONAL_COUNTRIES,
+  US_SERVICE_CODE,
+  US_SERVICE_NAME,
+  US_RATING_ZIP,
+  US_MAX_STICKS,
+  US_MAX_GOODS_CAD,
   parcelForSticks,
   SHIP_FROM_POSTAL_CODE,
   FASTER_SHIPPING_UPCHARGE,
