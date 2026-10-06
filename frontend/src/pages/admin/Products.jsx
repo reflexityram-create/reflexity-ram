@@ -10,6 +10,8 @@ import { WholesaleLotsSection } from '@/pages/admin/WholesaleAdmin';
 import { adminApi } from '@/lib/api';
 import { formatStorePrice } from '@/lib/currency';
 import { imageUrl } from '@/lib/imageUrl';
+import { countryName } from '@/lib/madeIn';
+import { readLabels } from '@/lib/readLabel';
 
 const EMPTY_PRODUCT = {
   name: '', line: 'Desktop', generation: 'DDR4',
@@ -29,12 +31,13 @@ const MADE_IN_COUNTRIES = [
   ['US', 'United States'], ['DE', 'Germany'], ['IN', 'India'],
 ];
 
-function ImageUploader({ images, onChange }) {
+function ImageUploader({ images, onChange, onFiles }) {
   const inputRef = useRef();
   const [uploading, setUploading] = useState(false);
 
   const handleFiles = async (files) => {
     if (!files.length) return;
+    onFiles?.(Array.from(files)); // the label is read from the files themselves while they upload
     setUploading(true);
     try {
       const formData = new FormData();
@@ -135,12 +138,67 @@ const Field = ({ label, required, className = '', children }) => (
   </div>
 );
 
+// What the label reader found, under the "Made in" field. Only a clear "Made in ..." fills the field (on a
+// new listing); everything else is a prompt to look at the stick, because the country is a customs declaration.
+function MadeInNote({ note, current, onUse }) {
+  if (!note) return null;
+  const quote = (text) => <strong>&ldquo;{text}&rdquo;</strong>;
+  let tone = 'text-neutral-500';
+  let body = null;
+  if (note.status === 'reading') {
+    body = <><Loader2 size={11} className="inline animate-spin mr-1" />{note.text}</>;
+  } else if (note.status === 'found' && current === note.code) {
+    tone = 'text-emerald-600 dark:text-emerald-400';
+    body = <>Read from the photo: {quote(note.evidence)}. Check it matches the stick.</>;
+  } else if (note.status === 'found') {
+    tone = 'text-amber-700 dark:text-amber-300';
+    body = (
+      <>
+        The photo says {quote(note.evidence)}, but this is set to {countryName(current) || current}.{' '}
+        <button type="button" className="underline" onClick={() => onUse(note.code)}>Use {note.name}</button>
+      </>
+    );
+  } else if (note.status === 'conflict') {
+    tone = 'text-amber-700 dark:text-amber-300';
+    body = <>The photo names more than one country ({note.names.join(', ')}). Choose the one on the stick&rsquo;s own label.</>;
+  } else if (note.status === 'hint') {
+    tone = 'text-amber-700 dark:text-amber-300';
+    body = <>The photo shows {quote(note.evidence)} but no &ldquo;Made in&rdquo; line. Check the stick&rsquo;s label, then choose the country.</>;
+  } else if (note.status === 'error') {
+    tone = 'text-red-600 dark:text-red-400';
+    body = <>Couldn&rsquo;t read that photo. Choose the country by hand.</>;
+  } else {
+    body = <>No &ldquo;Made in&rdquo; line found in that photo. A sharp close-up of the label works best.</>;
+  }
+  return (
+    <p className={`mt-1.5 text-[12px] leading-snug ${tone}`} role="status" data-testid="made-in-note" data-state={note.status}>
+      {body}
+    </p>
+  );
+}
+
 function ProductModal({ product, onClose, onSave }) {
   const isEdit = !!product?._id;
   const [form, setForm] = useState(() => normalizeProduct(product));
   const [saving, setSaving] = useState(false);
 
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  // Reads the "Made in" line off label photos (the files just chosen, or the photos already on the product).
+  // A clear answer fills the field only while it is empty; the owner always has the last word.
+  const [madeInNote, setMadeInNote] = useState(null);
+  const readPhotos = async (sources) => {
+    if (!sources.length) return;
+    setMadeInNote({ status: 'reading', text: 'Starting the reader…' });
+    try {
+      const result = await readLabels(sources, { onStatus: (text) => setMadeInNote({ status: 'reading', text }) });
+      setMadeInNote(result);
+      if (result.status === 'found') setForm(f => (f.countryOfOrigin ? f : { ...f, countryOfOrigin: result.code }));
+    } catch (err) {
+      console.error('Label reader failed:', err);
+      setMadeInNote({ status: 'error' });
+    }
+  };
 
   const handleLineChange = (line) => {
     setForm(f => {
@@ -240,7 +298,7 @@ function ProductModal({ product, onClose, onSave }) {
                 <textarea className="input min-h-20 resize-y" value={form.description} onChange={e => setField('description', e.target.value)} placeholder="Describe the exact module, condition, and what is included." />
               </Field>
               <Field label="Images" className="md:col-span-2">
-                <ImageUploader images={form.images || []} onChange={imgs => setField('images', imgs)} />
+                <ImageUploader images={form.images || []} onChange={imgs => setField('images', imgs)} onFiles={readPhotos} />
               </Field>
             </div>
           </div>
@@ -321,8 +379,20 @@ function ProductModal({ product, onClose, onSave }) {
                 <Field label="Made in (from the label)">
                   <select className="input" value={form.countryOfOrigin || ''} onChange={e => setField('countryOfOrigin', e.target.value)} data-testid="product-country-of-origin">
                     <option value="">Not set (needed for US orders)</option>
-                    {MADE_IN_COUNTRIES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+                    {[...MADE_IN_COUNTRIES, ...(form.countryOfOrigin && !MADE_IN_COUNTRIES.some(([code]) => code === form.countryOfOrigin) ? [[form.countryOfOrigin, countryName(form.countryOfOrigin) || form.countryOfOrigin]] : [])]
+                      .map(([code, name]) => <option key={code} value={code}>{name}</option>)}
                   </select>
+                  <MadeInNote note={madeInNote} current={form.countryOfOrigin} onUse={code => setField('countryOfOrigin', code)} />
+                  {(form.images || []).length > 0 && madeInNote?.status !== 'reading' && (
+                    <button
+                      type="button"
+                      className="mt-1.5 text-[12px] underline text-neutral-500 hover:text-neutral-300"
+                      onClick={() => readPhotos(form.images.map(img => imageUrl(img, { width: 2000 })))}
+                      data-testid="made-in-read-photos"
+                    >
+                      Read it from the photos
+                    </button>
+                  )}
                 </Field>
                 <Field label="HS code (customs)">
                   <input className="input" value={form.hsCode ?? ''} onChange={e => setField('hsCode', e.target.value)} placeholder="8473.30 (memory modules)" data-testid="product-hs-code" />

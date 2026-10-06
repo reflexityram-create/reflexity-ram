@@ -33,3 +33,8 @@ Thumbs.db
 .cache/
 .wrangler/
 *.tgz
+
+# OCR engine files copied from node_modules at build time (frontend/scripts/copy-ocr-assets.mjs)
+frontend/public/ocr/worker.min.js
+frontend/public/ocr/tesseract-core-*.wasm.js
+frontend/public/ocr/eng.traineddata.gz
