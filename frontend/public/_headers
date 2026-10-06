@@ -35,3 +35,12 @@
 # and each branch preview) out of search results so they cannot compete as duplicates.
 https://:project.pages.dev/*
   X-Robots-Tag: noindex
+
+# The OCR engine (Tesseract compiled to WebAssembly) reads "Made in" off label photos on the admin page.
+# WebAssembly needs 'wasm-unsafe-eval', which no other path gets: this block REPLACES the site-wide policy
+# for /ocr/ only (a worker takes the policy of its own script's response, not the page's). Keep it last: rules
+# apply in file order. public/ocr/csp-probe.js is the self-test.
+/ocr/*
+  ! Content-Security-Policy
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'
+  Cache-Control: public, max-age=86400
