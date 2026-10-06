@@ -10,6 +10,7 @@ import CountryPicker from '@/components/CountryPicker';
 import { useSEO } from '@/lib/seo';
 import { imageUrl } from '@/lib/imageUrl';
 import { formatStorePrice, STORE_CURRENCY_NAME } from '@/lib/currency';
+import { formatPostalCode, isPostalCode, normalizePostalCode } from '@/lib/postalCode';
 import { ACCEPTED_PAYMENTS_SENTENCE } from '@/lib/payments';
 import { ecommerceItem, readGaIdentifiers, trackEvent } from '@/lib/analytics';
 
@@ -22,6 +23,22 @@ import { ecommerceItem, readGaIdentifiers, trackEvent } from '@/lib/analytics';
 //   same amount the server puts on the Stripe session
 // This page is a final order review + hand-off.
 
+// One delivery speed inside Canada: a radio row with its wording and price.
+function SpeedRow({ selected, onSelect, title, detail, price, testId }) {
+  return (
+    <label className="flex items-start justify-between gap-3 rounded-xl border px-3 py-2.5 cursor-pointer transition-colors" data-testid={testId}
+      style={{ borderColor: selected ? 'var(--brand-yellow)' : 'var(--border-strong)', background: selected ? 'var(--input-bg-focus)' : 'transparent' }}>
+      <span className="flex items-start gap-2.5">
+        <input type="radio" name="delivery-speed" className="mt-1" checked={selected} onChange={onSelect} />
+        <span className="text-[14px]">{title}
+          <span className="block text-[12px] text-neutral-500">{detail}</span>
+        </span>
+      </span>
+      <span className="mono text-[14px]">{formatStorePrice(price)}</span>
+    </label>
+  );
+}
+
 export default function Checkout() {
   useSEO({ title: 'Checkout — Reflexity RAM' });
   const { items, subtotal, shipping, itemCount, fetchCart, isLoading } = useCartStore();
@@ -33,9 +50,17 @@ export default function Checkout() {
   const [country, setCountry] = useState('');
   const [quote, setQuote] = useState({ loading: false, options: [], error: '' });
   const [serviceCode, setServiceCode] = useState('');
+  // Inside Canada the flat rate is the default. A buyer can enter a postal code to pay Canada Post's price for a faster
+  // service instead, and add a signature on delivery to either.
+  const [postal, setPostal] = useState('');
+  const [fast, setFast] = useState({ loading: false, options: [], signaturePrice: null, error: '', postalCode: '' });
+  const [speed, setSpeed] = useState('STANDARD');
+  const [signature, setSignature] = useState(false);
   const international = destination === 'INTL';
   const chosen = quote.options.find((o) => o.serviceCode === serviceCode);
-  const shippingAmount = international ? chosen?.price : shipping;
+  const fastChoice = fast.options.find((o) => o.serviceCode === speed);
+  const signatureExtra = signature && Number.isFinite(fast.signaturePrice) ? fast.signaturePrice : 0;
+  const shippingAmount = international ? chosen?.price : (fastChoice ? fastChoice.price : Number(shipping || 0)) + signatureExtra;
   const totalBeforeTax = Number(subtotal || 0) + Number(shippingAmount || 0);
 
   useEffect(() => { fetchCart(); }, []);
@@ -50,6 +75,34 @@ export default function Checkout() {
       .catch(() => setQuote((q) => ({ ...q, error: 'Could not load the country list.' })))
       .finally(() => setCountriesLoading(false));
   }, [international]);
+
+  // A complete postal code asks Canada Post for the faster services; anything else puts the flat rate back.
+  useEffect(() => {
+    if (international) return undefined;
+    if (!isPostalCode(postal)) {
+      setFast({ loading: false, options: [], signaturePrice: null, error: '', postalCode: '' });
+      setSpeed('STANDARD');
+      setSignature(false);
+      return undefined;
+    }
+    const code = normalizePostalCode(postal);
+    let current = true;
+    setFast((f) => ({ ...f, loading: true, error: '' }));
+    shippingApi.canadaQuote(code)
+      .then(({ data }) => {
+        if (!current) return;
+        setFast({ loading: false, options: data.options, signaturePrice: data.signaturePrice, error: '', postalCode: code });
+        setSpeed((s) => (data.options.some((o) => o.serviceCode === s) ? s : 'STANDARD'));
+        if (!Number.isFinite(data.signaturePrice)) setSignature(false);
+      })
+      .catch((err) => {
+        if (!current) return;
+        setFast({ loading: false, options: [], signaturePrice: null, error: err.response?.data?.error || 'Could not get Canada Post prices right now. Standard delivery still works.', postalCode: '' });
+        setSpeed('STANDARD');
+        setSignature(false);
+      });
+    return () => { current = false; };
+  }, [postal, international]);
 
   const chooseCountry = async (code) => {
     setCountry(code);
@@ -71,8 +124,22 @@ export default function Checkout() {
       // Never blocks checkout: resolves {} when analytics is unavailable or blocked.
       const { data } = await stripeApi.createCheckoutSession(
         await readGaIdentifiers(),
-        international ? { country, serviceCode } : undefined,
+        international
+          ? { country, serviceCode }
+          : (speed !== 'STANDARD' || signature)
+            ? { country: 'CA', postalCode: fast.postalCode, ...(speed !== 'STANDARD' ? { serviceCode: speed } : {}), signature }
+            : undefined,
       );
+      // Which delivery the buyer chose, for GA4's shipping_tier report (Standard, Xpresspost, "Xpresspost + signature", ...).
+      const tier = international
+        ? (chosen?.name || 'International')
+        : `${fastChoice ? fastChoice.name : 'Standard'}${signature ? ' + signature' : ''}`;
+      trackEvent('add_shipping_info', {
+        currency: 'CAD',
+        value: Number(subtotal || 0),
+        shipping_tier: tier,
+        items: items.map((item) => ecommerceItem(item, item.qty)),
+      });
       trackEvent('checkout_redirect', {
         currency: 'CAD',
         value: Number(subtotal || 0),
@@ -142,8 +209,12 @@ export default function Checkout() {
                     <div>
                       <div className="font-medium text-[14px]">{international
                         ? (chosen?.transitDays ? `Arrives about ${chosen.transitDays} business days later` : 'Delivery time depends on the service')
-                        : 'Arrives 3–6 business days later'}</div>
-                      <div className="text-[13px] text-neutral-400">{international ? 'Canada Post, tracked to your door' : 'Shipping within Canada'}</div>
+                        : fastChoice?.transitDays
+                          ? `Arrives about ${fastChoice.transitDays} business day${fastChoice.transitDays === 1 ? '' : 's'} later`
+                          : 'Arrives 3–6 business days later'}</div>
+                      <div className="text-[13px] text-neutral-400">{international
+                        ? 'Canada Post, tracked to your door'
+                        : fastChoice ? `Canada Post ${fastChoice.name}, tracked${signature ? ', signature on delivery' : ''}` : 'Shipping within Canada'}</div>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
@@ -208,6 +279,40 @@ export default function Checkout() {
                         )}
                       </div>
                     )}
+                    {!international && (
+                      <div className="mt-3 space-y-3" data-testid="checkout-canada-delivery">
+                        <fieldset className="space-y-2" data-testid="checkout-delivery-speed">
+                          <legend className="text-[13px] text-neutral-400 mb-1">Delivery speed</legend>
+                          <SpeedRow selected={speed === 'STANDARD'} onSelect={() => setSpeed('STANDARD')} title="Standard"
+                            detail="Canada Post, tracked · 3–6 business days after dispatch" price={Number(shipping || 0)} testId="checkout-speed-standard" />
+                          {fast.options.map((o) => (
+                            <SpeedRow key={o.serviceCode} selected={speed === o.serviceCode} onSelect={() => setSpeed(o.serviceCode)} title={o.name}
+                              detail={`${o.transitDays ? `About ${o.transitDays} business day${o.transitDays === 1 ? '' : 's'}` : 'Tracked'}${o.guaranteed ? ' · on-time guarantee' : ''}`}
+                              price={o.price} testId={`checkout-speed-${o.serviceCode}`} />
+                          ))}
+                        </fieldset>
+                        <div>
+                          <label htmlFor="checkout-postal-code" className="text-[13px] text-neutral-400">Want it faster? Enter your postal code</label>
+                          <div className="mt-1.5 flex items-center gap-2">
+                            <input id="checkout-postal-code" data-testid="checkout-postal-code" className="input w-32 uppercase tracking-wide" inputMode="text"
+                              autoComplete="postal-code" placeholder="M5V 2T6" maxLength={7} value={postal} onChange={(e) => setPostal(formatPostalCode(e.target.value))} />
+                            {fast.loading && <Loader2 size={14} className="animate-spin text-neutral-400" />}
+                          </div>
+                          {fast.error && <p className="mt-1.5 text-[13px] text-amber-500" role="alert">{fast.error}</p>}
+                          {fast.postalCode && !fast.loading && fast.options.length === 0 && (
+                            <p className="mt-1.5 text-[13px] text-neutral-500">No faster delivery to that postal code, so standard delivery applies.</p>
+                          )}
+                        </div>
+                        {Number.isFinite(fast.signaturePrice) && (
+                          <label className="flex items-start gap-2.5 text-[14px] cursor-pointer" data-testid="checkout-signature">
+                            <input type="checkbox" className="mt-1" checked={signature} onChange={(e) => setSignature(e.target.checked)} />
+                            <span>Signature required on delivery <span className="mono">+{formatStorePrice(fast.signaturePrice)}</span>
+                              <span className="block text-[12px] text-neutral-500">Someone has to sign for the parcel. Safer for a pricey module.</span>
+                            </span>
+                          </label>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <dl className="space-y-3 text-[15px]">
@@ -218,7 +323,11 @@ export default function Checkout() {
                     <div className="flex justify-between gap-4">
                       <dt className="text-neutral-400">Shipping <span className="block text-[13px]">{international
                         ? (chosen ? `Canada Post ${chosen.name}` : 'Choose a country and service')
-                        : 'Canada Post, tracked: $14 for 1–2 sticks, $25 for 3 or more'}</span></dt>
+                        : fastChoice
+                          ? `Canada Post ${fastChoice.name}${signature ? ' + signature' : ''}`
+                          : signature
+                            ? 'Canada Post, tracked, with signature on delivery'
+                            : 'Canada Post, tracked: $14 for 1–2 sticks, $25 for 3 or more'}</span></dt>
                       <dd className="mono">{shippingAmount === undefined ? '—' : formatStorePrice(shippingAmount)}</dd>
                     </div>
                     <div className="flex justify-between gap-4">

@@ -135,13 +135,16 @@ export const ordersApi = {
 export const shippingApi = {
   countries: () => api.get('/shipping/countries'),
   internationalQuote: (country) => api.post('/shipping/international-quote', { country }),
+  // Faster services inside Canada, priced by Canada Post for a postal code (the flat rate needs no quote).
+  canadaQuote: (postalCode) => api.post('/shipping/canada-quote', { postalCode }),
 };
 
 // ─── Stripe API ───────────────────────────────────────────────────────────────
 export const stripeApi = {
   // `analytics` ({ clientId, sessionId }) is optional; the server validates it and uses it
   // only to attribute the purchase it reports to GA4.
-  // `shipping` ({ country, serviceCode }) is only sent for orders outside Canada.
+  // `shipping` is only sent when the buyer chose something other than the flat rate: { country, serviceCode } outside
+  // Canada, { country: 'CA', postalCode, serviceCode?, signature? } for faster delivery or a signature inside it.
   createCheckoutSession: (analytics, shipping) => api.post('/stripe/create-checkout-session', {
     ...(analytics && Object.keys(analytics).length > 0 ? { analytics } : {}),
     ...(shipping ? { shipping } : {}),

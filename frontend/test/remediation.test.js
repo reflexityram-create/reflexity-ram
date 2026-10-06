@@ -201,7 +201,7 @@ test('checkout ships abroad with live Canada Post options and a duties notice', 
   assert.match(picker, /data-testid="checkout-country"/);
   assert.match(checkout, /data-testid="checkout-shipping-options"/);
   assert.match(checkout, /Import taxes and duties are charged by your country on delivery\./);
-  assert.match(checkout, /international \? \{ country, serviceCode \} : undefined/);
+  assert.match(checkout, /international\s*\? \{ country, serviceCode \}/);
   assert.match(checkout, /Shipping to the United States or a country not listed\?/);
   assert.match(api, /internationalQuote: \(country\) => api\.post\('\/shipping\/international-quote', \{ country \}\)/);
 });

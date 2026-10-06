@@ -11,6 +11,13 @@ const VALID_SLUG = /^[a-z0-9][a-z0-9-]{0,199}$/;
 // Google Merchant Center shipping and return settings.
 const STANDARD_SHIPPING_PRICE = 14;
 const SHIPPING_COUNTRIES = ["CA"];
+// The saved Returns policy has no country limit. These are the countries Google lists the shop in, the same ones the
+// Merchant Center return policies cover (created 2026-10-05); keep them in sync with the feed's data source.
+const RETURN_POLICY_COUNTRIES = [
+  "CA", "AE", "AR", "AU", "BR", "CH", "CL", "CO", "CR", "CY", "DZ", "EC", "EE", "ES", "ET", "GB", "GR", "HK", "HR", "HU",
+  "ID", "IE", "IL", "IN", "IT", "JP", "KE", "LB", "LI", "LK", "LT", "LV", "MA", "MT", "MU", "MX", "MY", "NL", "NO", "NZ",
+  "PH", "PL", "RO", "SA", "SE", "SG", "SK", "SV", "TH", "TR", "TW", "UA", "VN",
+];
 const HANDLING_DAYS = { min: 1, max: 3 };
 const TRANSIT_DAYS = { min: 3, max: 6 };
 const RETURN_WINDOW_DAYS = 30;
@@ -37,7 +44,7 @@ function offerShippingDetails(product) {
 
 const MERCHANT_RETURN_POLICY = {
   "@type": "MerchantReturnPolicy",
-  applicableCountry: SHIPPING_COUNTRIES,
+  applicableCountry: RETURN_POLICY_COUNTRIES,
   returnPolicyCategory: "https://schema.org/MerchantReturnFiniteReturnWindow",
   merchantReturnDays: RETURN_WINDOW_DAYS,
   returnMethod: "https://schema.org/ReturnByMail",
