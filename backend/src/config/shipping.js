@@ -80,17 +80,36 @@ const INTERNATIONAL_COUNTRIES = [
   'NL', 'NO', 'NZ', 'PH', 'PL', 'RO', 'RS', 'SA', 'SE', 'SG', 'SI', 'SK', 'SM',
   'SV', 'SX', 'TH', 'TR', 'TT', 'TW', 'UA', 'VN',
 ];
-// ─── Faster delivery inside Canada ─────────────────────────────────────────────
-// The flat rate above stays the default. A buyer who enters a postal code can pay
-// Canada Post's live price (before tax) for a faster service instead, with an optional
-// signature on delivery (utils/canadaShipping.js).
-const CANADA_SERVICES = {
-  'DOM.XP': 'Xpresspost',
-  'DOM.PC': 'Priority',
+// ─── Faster shipping inside Canada ─────────────────────────────────────────────
+// The flat rate above stays the default. A buyer can pay a FLAT extra for Canada Post Xpresspost
+// (tracked, typically 1–3 business days after dispatch): no postal code, no quote, instant.
+// Owner's idea (2026-10-05): "pay more, faster ship, so I make more", and no live prices for Canadian
+// buyers to pick from. Why +$12 and why only up to 6 sticks, from real Canada Post COMMERCIAL prices
+// (2026-10-05, from M1P3T7 to 14 cities, population-weighted, before tax):
+//   0.4 kg box (1-2 sticks): Xpresspost costs about $1.40 more than the Expedited Parcel the flat rate
+//     ships with (worst city +$6): +$12 earns about $8 on average and loses on ~1% of buyers.
+//   0.9 kg box (3-6 sticks): about $5 more (worst city +$21): +$12 earns about $13 on average but loses
+//     up to $9 in BC, Newfoundland and the territories.
+//   2 kg and up: Xpresspost to Vancouver is $52 (and $67 at 4 kg) against $25 for a parcel, so a flat
+//     extra loses money in the west: Faster is not offered above 6 sticks (those buyers email us).
+// The flat $25 itself stays profitable for big orders: Canada Post's parcel price barely moves with
+// weight here (about $19 average at 1-2.5 kg, $21 at 4 kg), so no extra tier is needed for those.
+const FASTER_SHIPPING_UPCHARGE = 12;
+const FASTER_SHIPPING_MAX_STICKS = 6;
+const FASTER_SHIPPING_LABEL = 'Faster shipping: Xpresspost, typically 1–3 business days after dispatch';
+// The slowest Xpresspost standard seen in any lane (Yellowknife); used for the survey date Google emails from.
+const FASTER_SHIPPING_TRANSIT_DAYS = 3;
+// Canada Post's Signature option: $2.00 in every lane quoted (Toronto, Vancouver, St. John's, ...).
+const SIGNATURE_PRICE = 2;
+
+const stickCount = (lines) => lines.reduce((total, line) => total + Math.max(0, Number(line.qty) || 0), 0);
+
+// Faster shipping for a cart, as [{ product, qty }]: the cart's flat rate plus the flat extra, or null
+// when it is not offered (empty cart, or more than FASTER_SHIPPING_MAX_STICKS sticks).
+const resolveFasterShippingPrice = (lines = []) => {
+  if (!lines.length || stickCount(lines) > FASTER_SHIPPING_MAX_STICKS) return null;
+  return resolveCartShippingPrice(lines) + FASTER_SHIPPING_UPCHARGE;
 };
-// Canadian postal code without the space; D, F, I, O, Q, U never appear, W and Z only after the first letter.
-const CANADA_POSTAL_CODE = /^[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z]\d[ABCEGHJ-NPRSTV-Z]\d$/;
-const normalizePostalCode = (value) => String(value || '').toUpperCase().replace(/[\s-]+/g, '');
 
 // Parcel used for quotes, by stick count: modules in ESD bags in a padded box.
 const parcelForSticks = (sticks) => {
@@ -140,7 +159,10 @@ module.exports = {
   INTERNATIONAL_COUNTRIES,
   parcelForSticks,
   SHIP_FROM_POSTAL_CODE,
-  CANADA_SERVICES,
-  CANADA_POSTAL_CODE,
-  normalizePostalCode,
+  FASTER_SHIPPING_UPCHARGE,
+  FASTER_SHIPPING_MAX_STICKS,
+  FASTER_SHIPPING_LABEL,
+  FASTER_SHIPPING_TRANSIT_DAYS,
+  SIGNATURE_PRICE,
+  resolveFasterShippingPrice,
 };

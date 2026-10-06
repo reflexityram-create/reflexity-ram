@@ -4,6 +4,12 @@ export const STANDARD_SHIPPING_PRICE = 14;
 // 3 or more sticks in one order ship for the higher flat rate (backend/src/config/shipping.js).
 export const LARGE_ORDER_MIN_STICKS = 3;
 export const LARGE_ORDER_SHIPPING_PRICE = 25;
+// Optional Faster shipping (Xpresspost) is a flat extra on orders of up to 6 sticks; a signature on delivery is $2.
+// The cart API returns the exact Faster price (`shippingFaster`, null when not offered); these are for wording and the
+// signature line. Mirrors backend/src/config/shipping.js (a test keeps them equal).
+export const FASTER_SHIPPING_UPCHARGE = 12;
+export const FASTER_SHIPPING_MAX_STICKS = 6;
+export const SIGNATURE_PRICE = 2;
 
 export function hasOwnShippingPrice(product) {
   const raw = product?.shippingPrice;
