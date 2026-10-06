@@ -59,6 +59,8 @@ function readOauthStateCookie(value, secret = process.env.JWT_SECRET) {
 async function resolveGoogleUser(profile, purpose, { UserModel = User, now = () => new Date() } = {}) {
   const email = typeof profile?.email === 'string' ? profile.email.toLowerCase() : '';
   if (!email || typeof profile?.id !== 'string' || !profile.id) return null;
+  // Google reports whether it has verified this address. An unverified one must not be matched to (or create) an account that is looked up by email.
+  if (profile.verified_email === false || profile.email_verified === false) return null;
   const identityFilter = { $or: [{ googleId: profile.id }, { email }] };
 
   if (purpose === 'admin') {
@@ -538,6 +540,7 @@ router.get('/google/callback', async (req, res) => {
 
     const profile = await getGoogleUserInfo(tokens.access_token);
     if (!profile.email) return fail('no_email');
+    if (profile.verified_email === false || profile.email_verified === false) return fail('email_not_verified');
 
     const user = await resolveGoogleUser(profile, storedState.purpose);
     if (!user) return fail(storedState.purpose === 'admin' ? 'admin_not_authorized' : 'account_deactivated');

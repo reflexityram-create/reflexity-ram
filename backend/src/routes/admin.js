@@ -11,6 +11,7 @@ const { scheduleReviewRequest } = require('../utils/reviewRequests');
 const { ensureStripePrice, syncStripeProductDetails } = require('../utils/stripeSync');
 const { cancelOrderAndRestoreStock } = require('../utils/stock');
 const { ORDER_STATUSES, canTransitionOrder } = require('../utils/orderTransitions');
+const { buildShippingPreparation } = require('../utils/shippingPreparation');
 
 const router = express.Router();
 
@@ -261,12 +262,40 @@ router.patch(
         return res.status(400).json({ error: 'No valid fields to update' });
       }
 
-      const product = await Product.findByIdAndUpdate(
-        req.params.id,
-        { $set: updates },
-        { returnDocument: 'after', runValidators: true }
-      );
-      if (!product) return res.status(404).json({ error: 'Product not found' });
+      // Stale-form guard. The product form sends the stock it was OPENED with next to a changed quantity; sales move stock in the meantime,
+      // so a save from an old form would put the old number back. With that number present the write only applies if stock is still it.
+      const guardStock = updates.stockQuantity !== undefined && req.body.expectedStockQuantity !== undefined;
+      let expectedStock;
+      if (guardStock) {
+        const raw = req.body.expectedStockQuantity;
+        expectedStock = typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : raw;      // null / booleans / '' are not "0"
+        if (typeof expectedStock !== 'number' || !Number.isInteger(expectedStock) || expectedStock < 0) {
+          return res.status(400).json({ error: 'expectedStockQuantity must be a whole number' });
+        }
+      }
+      const product = guardStock
+        ? await Product.findOneAndUpdate(
+          { _id: req.params.id, stockQuantity: expectedStock },
+          { $set: updates },
+          { returnDocument: 'after', runValidators: true }
+        )
+        : await Product.findByIdAndUpdate(
+          req.params.id,
+          { $set: updates },
+          { returnDocument: 'after', runValidators: true }
+        );
+      if (!product) {
+        if (guardStock) {
+          const current = await Product.findById(req.params.id).select('stockQuantity').lean();
+          if (current) {
+            return res.status(409).json({
+              error: `Stock changed since you opened this product (it is now ${current.stockQuantity}). Check the quantity and save again.`,
+              currentStock: current.stockQuantity,
+            });
+          }
+        }
+        return res.status(404).json({ error: 'Product not found' });
+      }
       if (updates.featured === true) await unfeatureOthers(product._id);
 
       // Re-sync Stripe: price changes create a new Price (prices are immutable),
@@ -396,7 +425,14 @@ router.get(
         .populate('user', 'firstName lastName email phone')
         .lean();
       if (!order) return res.status(404).json({ error: 'Order not found' });
-      res.json({ order });
+      let shippingPreparation = null;
+      try {
+        shippingPreparation = await buildShippingPreparation(order);
+      } catch (prepErr) {
+        // The panel is a convenience: log it and show the order without it rather than a 500 for the whole page.
+        console.error(`Shipping preparation failed for order ${order._id}:`, prepErr.message);
+      }
+      res.json({ order: { ...order, shippingPreparation } });
     } catch (err) {
       res.status(500).json({ error: 'Failed to fetch order' });
     }

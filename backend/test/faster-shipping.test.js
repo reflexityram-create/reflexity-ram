@@ -242,6 +242,51 @@ test('a paid order says which Canada Post service and option to buy, and dates d
   }
 });
 
+// Stripe hands back shipping_cost.shipping_rate as an ID unless the retrieve asks to expand it, so before 2026-10-06 every order recorded "Standard Shipping" whatever
+// the buyer chose (the test above gives the session an already-expanded rate, which real Stripe does not). This fake behaves like Stripe: the rate object comes back
+// only when the expansion is requested.
+test('the order records the shipping option the buyer paid for: the fulfilment asks Stripe to expand the rate', async () => {
+  const originals = [Product.findOne, Order.findOne, Order.create, Cart.findOneAndUpdate];
+  const created = [];
+  let asked = [];
+  try {
+    Product.findOne = async () => ({ _id: 'product-id', slug: 'ddr4-16gb', sku: 'DDR4-16', name: '16GB DDR4', images: [] });
+    Order.findOne = async () => null;
+    Order.create = async (values) => { created.push(values); return { ...values, _id: 'order-id', orderNumber: 'RFX-1', stockDecremented: true }; };
+    Cart.findOneAndUpdate = async () => undefined;
+    const label = `${FASTER_SHIPPING_LABEL} + signature on delivery`;
+    const retrieveSession = async (id, options = {}) => {
+      asked = options.expand || [];
+      return {
+        id, payment_status: 'paid',
+        metadata: { userId: 'guest', cartSessionId: 'session_0123456789', shippingCountry: 'CA', canadaPostService: 'DOM.XP', signature: 'yes', canadaPostTransitDays: '3' },
+        line_items: { data: [{ price: { id: 'price_ddr4_16gb', unit_amount: 17000 }, quantity: 1 }] },
+        amount_subtotal: 17000, amount_total: 19600,
+        total_details: { amount_discount: 0, amount_shipping: 2600, amount_tax: 0 },
+        shipping_cost: { shipping_rate: asked.includes('shipping_cost.shipping_rate') ? { id: 'shr_fast', display_name: label } : 'shr_fast' },
+        customer_details: { email: 'buyer@example.com', name: 'Buyer Test', address: { line1: '1 Main St', city: 'Vancouver', state: 'BC', postal_code: 'V6B 1A1', country: 'CA' } },
+        payment_intent: 'pi_expand',
+      };
+    };
+    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession, decrementStock: async () => true });
+    const server = http.createServer(app());
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const res = await fetch(`http://127.0.0.1:${server.address().port}/api/stripe/session-status?session_id=cs_expand`);
+      assert.equal(res.status, 200);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+    assert.ok(asked.includes('shipping_cost.shipping_rate'), `the retrieve must expand the shipping rate, it asked for ${asked.join(', ')}`);
+    assert.equal(created.length, 1);
+    assert.equal(created[0].shippingMethod, label, 'the stored label is the option the buyer paid for, not the "Standard Shipping" fallback');
+    assert.match(created[0].adminNotes, /^SHIPPING: the buyer paid for "Faster shipping[^"]*\+ signature on delivery"\./);
+  } finally {
+    stripeRouter.setCheckoutDependenciesForTest();
+    [Product.findOne, Order.findOne, Order.create, Cart.findOneAndUpdate] = originals;
+  }
+});
+
 test('the live-quote endpoint and its Canada Post rating code are gone', () => {
   assert.equal(typeof require('../src/utils/canadaPost').rateDomestic, 'undefined');
   const routes = shippingRouter.stack.map((layer) => layer.route?.path).filter(Boolean);
