@@ -33,7 +33,7 @@ export default function BusinessInfo() {
         {
           heading: "Order fulfilment",
           body: [
-            "Orders ship from Toronto. Website checkout is available for Canada at the flat shipping rate shown during checkout, and for the United States and many other countries at Canada Post's tracked price. United States orders include prepaid import duties and fees in the total. Other countries are quoted by email.",
+            "Orders ship from Toronto. Website checkout is available for Canada at the flat shipping rate shown during checkout, and for many other countries at Canada Post's tracked price. United States orders, when the United States is listed at checkout, include prepaid import duties and fees in the total. Anything not listed at checkout is quoted by email.",
             "Product condition, stock status, warranty coverage, and key specifications are shown on each product page. Used memory may have normal cosmetic wear that does not affect operation.",
           ],
         },

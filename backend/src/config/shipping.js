@@ -86,11 +86,16 @@ const INTERNATIONAL_COUNTRIES = [
 // discount it and the order's subtotal stays the goods.
 // Shipping is Canada Post Tracked Packet USA at the commercial rate. It costs the same to every ZIP (16 sampled ZIPs,
 // Alaska and Hawaii included, 2026-10-06: $16.70 for the 0.4 kg box, $24.72 for 0.9 kg, $30.37 at 2 kg), so one live
-// quote with a fixed ZIP prices any buyer, and it stops at 2 kg: 12 sticks in the boxes parcelForSticks picks.
+// quote with a fixed ZIP prices any buyer, and it stops at 2 kg. parcelForSticks models 12 sticks at 2.04 kg and ROUNDS that down
+// to 2.0, so the limit is 11 sticks (1.92 kg): a 12th would be rated as fitting and then be refused at label time.
 const US_SERVICE_CODE = 'USA.TP';
 const US_SERVICE_NAME = 'Tracked Packet – USA';
 const US_RATING_ZIP = '10001';
-const US_MAX_STICKS = 12;
+const US_MAX_STICKS = 11;
+// Goods value (CAD) the website will take to the US. Customs clears about US$2,500 on an informal entry; above that a formal
+// entry (a customs broker) is needed, which this checkout and a Tracked Packet label do not do. Nothing above CA$3,400 was
+// ever quoted or probed, so bigger orders are by email. Raise it only after a real larger label has been made.
+const US_MAX_GOODS_CAD = 3000;
 
 // ─── Faster shipping inside Canada ─────────────────────────────────────────────
 // The flat rate above stays the default. A buyer can pay a FLAT extra for Canada Post Xpresspost
@@ -173,6 +178,7 @@ module.exports = {
   US_SERVICE_NAME,
   US_RATING_ZIP,
   US_MAX_STICKS,
+  US_MAX_GOODS_CAD,
   parcelForSticks,
   SHIP_FROM_POSTAL_CODE,
   FASTER_SHIPPING_UPCHARGE,

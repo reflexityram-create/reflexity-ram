@@ -232,9 +232,9 @@ test('the product page and International metadata describe checkout abroad', asy
   const [product, metadata, international] = await Promise.all([read('../src/pages/Product.jsx'), read('../functions-shared/staticMetadata.js'), read('../src/pages/policies/International.jsx')]);
   assert.match(product, /Pick your country at checkout to see Canada Post's tracked price and delivery time/);
   assert.match(product, /Not on the website for this item yet\./);
-  assert.match(product, /Order here: Canada Post Tracked Packet – USA/);
+  assert.match(product, /Choose Another country, then United States, at checkout: Canada Post Tracked Packet – USA/);
   assert.doesNotMatch(product, /We ship worldwide as custom orders/);
-  assert.match(metadata, /Ship Reflexity RAM abroad with Canada Post: tracked, at Canada Post's price at checkout\. US orders include prepaid import duties\./);
+  assert.match(metadata, /Ship Reflexity RAM abroad with Canada Post: tracked, at Canada Post's price at checkout, with US import duties prepaid where the United States is offered\./);
   assert.match(international, /<h2>Checking out from outside Canada<\/h2>/);
 });
 

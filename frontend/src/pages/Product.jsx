@@ -782,7 +782,7 @@ function deliveryTiles(p) {
       icon: "🗽",
       title: "United States",
       body: usOnWebsite(p)
-        ? "Order here: Canada Post Tracked Packet – USA, and US import duties and fees are prepaid in your total, so nothing is due on delivery. Choose Another country, then United States, at checkout."
+        ? "Choose Another country, then United States, at checkout: Canada Post Tracked Packet – USA, with US import duties and fees prepaid in your total so nothing is due on delivery. If United States is not on the list, email us."
         : (
           <>
             Not on the website for this item yet.{" "}

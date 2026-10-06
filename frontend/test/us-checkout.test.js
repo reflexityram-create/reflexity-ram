@@ -22,6 +22,14 @@ test("the checkout page adds the prepaid US duties to the total and shows them a
   assert.doesNotMatch(source, /createCheckoutSession\([^)]*duties/);
 });
 
+test("a late quote for a country the buyer already left cannot overwrite the current one", async () => {
+  const source = await read("pages/Checkout.jsx");
+  assert.match(source, /const quoteRequestRef = useRef\(0\);/);
+  assert.match(source, /const request = \+\+quoteRequestRef\.current;/);
+  // both the answer and the failure are dropped when a newer pick has started
+  assert.equal((source.match(/if \(request !== quoteRequestRef\.current\) return;/g) || []).length, 2);
+});
+
 test("the US note says nothing is due on delivery and that promotion codes do not apply; other countries keep the old note", async () => {
   const source = await read("pages/Checkout.jsx");
   assert.match(source, /country === 'US'\s*\? \(\s*<p[^>]*data-testid="checkout-us-duties-note">[\s\S]*?prepaid in your total, so nothing is due when the parcel arrives[\s\S]*?Promotion codes cannot be used on US orders/);
@@ -39,7 +47,7 @@ test("typing United States only shows the 'email us' note while the US is not on
 test("the product page opens the US tile only for a product with its country of origin and HS code saved", async () => {
   const source = await read("pages/Product.jsx");
   assert.match(source, /const usOnWebsite = \(p\) => \/\^\[A-Za-z\]\{2\}\$\/\.test\(String\(p\?\.countryOfOrigin \|\| ""\)\) && \/\^\\d\{4\}\/\.test\(String\(p\?\.hsCode \|\| ""\)\);/);
-  assert.match(source, /body: usOnWebsite\(p\)\s*\? "Order here: Canada Post Tracked Packet – USA, and US import duties and fees are prepaid in your total/);
+  assert.match(source, /body: usOnWebsite\(p\)\s*\? "Choose Another country, then United States, at checkout: Canada Post Tracked Packet – USA, with US import duties and fees prepaid in your total so nothing is due on delivery\. If United States is not on the list, email us\."/);
   assert.match(source, /Not on the website for this item yet\./);
   assert.doesNotMatch(source, /By quote, because US duties must be prepaid/);
   // the public product API has to carry the HS code for that to work
@@ -58,10 +66,11 @@ test("the policy pages describe US checkout the way the server does, with the sa
   assert.doesNotMatch(intl, /so we arrange US orders directly/);
   assert.match(intl, /Outside the United States, prices and shipping do not include your country's import taxes/);
   const shipping = await read("pages/policies/Shipping.jsx");
-  assert.match(shipping, /The United States is the exception: its import duties and customs fees are prepaid in your total at checkout/);
+  assert.match(shipping, /The United States is the exception: when it is listed at checkout, its import duties and customs fees are prepaid in your total/);
   assert.doesNotMatch(shipping, /For the United States, or a country not listed at checkout, email us/);
   const info = await read("pages/policies/BusinessInfo.jsx");
-  assert.match(info, /United States orders include prepaid import duties and fees in the total\./);
+  assert.match(info, /United States orders, when the United States is listed at checkout, include prepaid import duties and fees in the total\./);
+  assert.doesNotMatch(info, /and for the United States and many other countries/, "the always-on business page must not promise the US while it is not offered");
   assert.doesNotMatch(info, /Orders to the United States and other countries are quoted by email/);
 });
 

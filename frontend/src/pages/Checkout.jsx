@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Lock, Loader2, ShieldCheck, Truck, ArrowRight, CreditCard, Package, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
@@ -77,16 +77,22 @@ export default function Checkout() {
       .finally(() => setCountriesLoading(false));
   }, [international]);
 
+  // Only the newest country's answer may land: a late one for the country the buyer already left would put its options and
+  // service code next to another country's total (the server refuses that mismatch, but the page should never show it).
+  const quoteRequestRef = useRef(0);
   const chooseCountry = async (code) => {
+    const request = ++quoteRequestRef.current;
     setCountry(code);
     setServiceCode('');
     if (!code) return setQuote({ loading: false, options: [], error: '', duties: null });
     setQuote({ loading: true, options: [], error: '', duties: null });
     try {
       const { data } = await shippingApi.internationalQuote(code);
+      if (request !== quoteRequestRef.current) return;
       setQuote({ loading: false, options: data.options, error: '', duties: data.duties || null });
       setServiceCode(data.options[0]?.serviceCode || '');
     } catch (err) {
+      if (request !== quoteRequestRef.current) return;
       setQuote({ loading: false, options: [], error: err.response?.data?.error || 'Could not get Canada Post prices right now.', duties: null });
     }
   };

@@ -155,6 +155,12 @@ test('the same cart reuses its quote for ten minutes; a changed cart or shipping
   }, { zonosBody: (request) => zonosAnswer({ items: goodsOf(request) }) });
 });
 
+const without = (field, over) => {
+  const body = zonosAnswer(over);
+  delete body.data.landedCostCalculateWorkflow[0].amountSubtotals[field];
+  return body;
+};
+
 test('a Zonos answer that is missing, in another currency, for other goods, out of range or does not add up is refused, never charged', async () => {
   const bad = {
     'no quote': { data: { landedCostCalculateWorkflow: [] } },
@@ -165,6 +171,12 @@ test('a Zonos answer that is missing, in another currency, for other goods, out 
     'absurd total (over twice the goods)': zonosAnswer({ duties: 900, fees: 10 }),
     'negative amount': zonosAnswer({ duties: -5, fees: 1 }),
     'not numbers': zonosAnswer({ duties: 'lots' }),
+    // A missing or null amount used to read as 0 and a missing check field used to skip its check: the quote was accepted and the
+    // buyer charged shipping only, with the shop paying the duties at label time.
+    'null duties (Number(null) is 0)': zonosAnswer({ duties: null, fees: 0, landedCostTotal: 0 }),
+    'a landed cost of zero': zonosAnswer({ duties: 0, fees: 0, taxes: 0 }),
+    'no items subtotal to compare with the cart': without('items'),
+    'no landed cost total to compare with its parts': without('landedCostTotal'),
   };
   for (const [name, body] of Object.entries(bad)) {
     await withNetwork(async () => {
@@ -190,8 +202,22 @@ test('Zonos being down, slow or unconfigured fails closed', async () => {
   } finally { process.env.ZONOS_API_KEY = key; }
 });
 
+test('an answer that stalls after its headers is cut off at the deadline, for Zonos and for Canada Post', async () => {
+  await withNetwork(async () => {
+    const started = Date.now();
+    await assert.rejects(zonos.quoteUsDuties({ lines: LINES, shippingCad: 16.7, shipServiceCode: 'x', shipServiceName: 'x', timeoutMs: 40 }), /did not answer in time/);
+    assert.ok(Date.now() - started < 2000, 'it gave up at the deadline instead of waiting for the body');
+  }, { zonosBody: () => new Promise(() => {}) });
+  canadaPost.resetTokenCacheForTest();
+  const stalled = async (url) => (String(url).endsWith('/oauth2/token')
+    ? { ok: true, json: async () => ({ access_token: 'tok', expires_in: 3600 }) }
+    : { ok: true, json: () => new Promise(() => {}) });
+  await assert.rejects(canadaPost.rateUnitedStates({ zipCode: '10001', parcel: parcelForSticks(2), originPostalCode: 'M5H2N2', fetchImpl: stalled, timeoutMs: 40 }), /timed out/);
+  canadaPost.resetTokenCacheForTest();
+});
+
 // ── 2. Canada Post Tracked Packet USA ────────────────────────────────────────────────────────────
-test('shipping is Tracked Packet USA at Canada Post\'s price, one fixed ZIP for every buyer, cached by box size, up to 12 sticks', async () => {
+test('shipping is Tracked Packet USA at Canada Post\'s price, one fixed ZIP for every buyer, cached by box size, up to 11 sticks', async () => {
   let calls = 0;
   let asked;
   const rate = async (args) => {
@@ -209,8 +235,12 @@ test('shipping is Tracked Packet USA at Canada Post\'s price, one fixed ZIP for 
   assert.equal(calls, 2, 'a bigger box is its own quote');
   assert.equal(await unitedStatesOption({ sticks: US_MAX_STICKS + 1, rate }), null, 'over 2 kg Canada Post has no Tracked Packet');
   assert.equal(calls, 2, '...and it does not even ask');
-  assert.equal(parcelForSticks(US_MAX_STICKS).weight, 2, 'the sticks limit is the 2 kg limit');
-  assert.equal(parcelForSticks(US_MAX_STICKS + 1).weight > 2, true);
+  // parcelForSticks rounds to 0.1 kg, which once let a 2.04 kg parcel (12 sticks) pass as 2.0 kg. The limit is about the REAL weight
+  // (the model behind parcelForSticks: 0.6 kg of box and padding plus 0.12 kg a stick), so check that, not the rounded one.
+  const realKg = (sticks) => 0.6 + 0.12 * sticks;
+  assert.equal(realKg(US_MAX_STICKS) <= 2, true, 'the biggest US order really fits Tracked Packet USA\'s 2 kg');
+  assert.equal(realKg(US_MAX_STICKS + 1) > 2, true, 'and one more stick really does not');
+  assert.equal(parcelForSticks(US_MAX_STICKS).weight <= 2, true);
   clearQuoteCacheForTest();
   assert.equal(await unitedStatesOption({ sticks: 2, rate: async () => [{ serviceCode: 'USA.XP', price: 33.81 }] }), null, 'no tracked service quoted');
 });
@@ -252,9 +282,20 @@ test('a cart that cannot honestly go to the US is refused with something the buy
   await refusal([{ product: { ...PRODUCT, hsCode: '' }, qty: 1 }], 422, /cannot be ordered/);
   await refusal([{ product: { ...PRODUCT, hsCode: 'abc' }, qty: 1 }], 422, /cannot be ordered/);
   await refusal([{ product: { ...PRODUCT, price: 0 }, qty: 1 }], 422, /cannot be ordered/);
-  await refusal([{ product: PRODUCT, qty: US_MAX_STICKS + 1 }], 422, /up to 12 sticks/);
+  await refusal([{ product: PRODUCT, qty: US_MAX_STICKS + 1 }], 422, new RegExp(`up to ${US_MAX_STICKS} sticks`));
   // one good line does not rescue a bad one
   await refusal([{ product: PRODUCT, qty: 1 }, { product: { ...PRODUCT, slug: 'other', sku: 'OTHER', name: 'Other stick', hsCode: undefined }, qty: 1 }], 422, /"Other stick" cannot be ordered/);
+});
+
+test('a US order above the goods cap is refused for email, and one at the cap is quoted', async () => {
+  const deps = {
+    zonos: { isConfigured: () => true, quoteUsDuties: async () => ({ quoteId: 'q', duties: 90, fees: 10, taxes: 0, total: 100 }) },
+    unitedStatesOption: async () => ({ serviceCode: 'USA.TP', name: 'Tracked Packet – USA', price: 20, transitDays: 6 }),
+  };
+  const cart = (price, qty) => [{ product: { ...PRODUCT, price }, qty }];
+  await assert.rejects(quoteUnitedStates({ lines: cart(500.01, 6), deps }), (err) => err instanceof UsCheckoutError && err.status === 422 && /up to \$3,000/.test(err.publicMessage));
+  const quote = await quoteUnitedStates({ lines: cart(500, 6), deps });
+  assert.equal(quote.total, 120, '$3,000.00 of goods is still quoted');
 });
 
 test('Canada Post or Zonos failing is a 502 with a retry message, and a missing key means the US is simply not open', async (t) => {
@@ -369,7 +410,17 @@ test('the US session charges shipping plus duties as ONE shipping rate, to US ad
         assert.equal(payload.metadata.zonosLandedCostId, 'landed_cost_test-1');
         assert.equal(payload.metadata.canadaPostTransitDays, '6');
 
-        // The server decides every price: no client-sent price, and a service that is not the one on offer is refused.
+        // The server decides every price. Client-sent price fields next to the RIGHT service code change nothing (the first version of
+        // this check sent the wrong code, so it only proved the service check)...
+        const tampered = await call('POST', '/api/stripe/create-checkout-session', { shipping: { country: 'US', serviceCode: 'USA.TP', price: 1, duties: 0, amount: 1, shippingCost: 0 }, price: 1, duties: 0 });
+        assert.equal(tampered.status, 200);
+        assert.equal(payload.shipping_options[0].shipping_rate_data.fixed_amount.amount, 11620, 'the charge is still shipping + duties, whatever the browser claims');
+        assert.equal(payload.line_items[0].quantity, 2);
+        const lower = await call('POST', '/api/stripe/create-checkout-session', { shipping: { country: 'us', serviceCode: 'USA.TP' } });
+        assert.equal(lower.status, 200);
+        assert.equal(payload.shipping_options[0].shipping_rate_data.fixed_amount.amount, 11620, 'a lower-case country is the US, priced the same');
+        assert.deepEqual(payload.shipping_address_collection, { allowed_countries: ['US'] });
+        // ...and a service that is not the one on offer is refused.
         const wrong = await call('POST', '/api/stripe/create-checkout-session', { shipping: { country: 'US', serviceCode: 'USA.XP', price: 1, duties: 0 } });
         assert.equal(wrong.status, 400);
         const none = await call('POST', '/api/stripe/create-checkout-session', { shipping: { country: 'US' } });
@@ -401,8 +452,8 @@ test('a US session is never created for a cart that cannot be declared, nor when
     await withCart(async () => {
       const res = await call('POST', '/api/stripe/create-checkout-session', { shipping: { country: 'US', serviceCode: 'USA.TP' } });
       assert.equal(res.status, 422);
-      assert.match(res.body.error, /up to 12 sticks/);
-    }, { qty: 13 });
+      assert.match(res.body.error, new RegExp(`up to ${US_MAX_STICKS} sticks`));
+    }, { qty: US_MAX_STICKS + 1 });
   });
   await withNetwork(async () => {
     await withCart(async () => {

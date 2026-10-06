@@ -4,7 +4,7 @@
 // States", for why duties are prepaid and how they travel (inside the shipping rate).
 
 const Product = require('../models/Product');
-const { US_MAX_STICKS } = require('../config/shipping');
+const { US_MAX_STICKS, US_MAX_GOODS_CAD } = require('../config/shipping');
 const { isConfigured: canadaPostConfigured } = require('./canadaPost');
 const { unitedStatesOption } = require('./internationalShipping');
 const zonos = require('./zonos');
@@ -48,6 +48,10 @@ const quoteUnitedStates = async ({ lines, deps = {} }) => {
     throw new UsCheckoutError(422, `United States checkout takes up to ${US_MAX_STICKS} sticks per order. Email us for a bigger order.`);
   }
   const items = customsLines(lines);
+  const goods = money(items.reduce((sum, item) => sum + item.unitPriceCad * item.qty, 0));
+  if (goods > US_MAX_GOODS_CAD) {
+    throw new UsCheckoutError(422, `United States checkout takes orders up to $${US_MAX_GOODS_CAD.toLocaleString('en-CA')} (bigger shipments need a formal customs entry). Email us and we will arrange it.`);
+  }
 
   let service;
   try {

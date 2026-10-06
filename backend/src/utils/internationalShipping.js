@@ -31,7 +31,7 @@ const internationalOptions = async ({ country, sticks, rate = rateInternational,
   return options;
 };
 
-// Tracked Packet USA for the cart's box, or null when Canada Post does not quote it (more than 12 sticks is over its
+// Tracked Packet USA for the cart's box, or null when Canada Post does not quote it (more than US_MAX_STICKS is over its
 // 2 kg limit). The price does not depend on the ZIP, so a fixed one stands in for the buyer's.
 const unitedStatesOption = async ({ sticks, rate = rateUnitedStates, now = Date.now }) => {
   if (!(sticks >= 1) || sticks > US_MAX_STICKS) return null;

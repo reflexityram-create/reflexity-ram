@@ -14,19 +14,40 @@ const isConfigured = () => Boolean(process.env.CANADA_POST_API_KEY && process.en
 let cachedToken = null;
 let pendingToken = null; // shared by lookups that start together
 
-const requestToken = async (fetchImpl) => {
-  const res = await fetchImpl(TOKEN_URL, {
-    method: 'POST',
-    headers: {
-      'X-IBM-Client-Id': process.env.CANADA_POST_API_KEY,
-      'X-IBM-Client-Secret': process.env.CANADA_POST_API_SECRET,
-      Accept: 'application/json',
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: 'scope=merchant&grant_type=client_credentials',
+// A Canada Post answer that never comes must not hang a buyer's checkout (or every lookup waiting on the shared token
+// request). One deadline covers the request and its body; the race ends the wait even when fetch ignores the abort signal.
+const REQUEST_TIMEOUT_MS = 20 * 1000;
+const withDeadline = async (run, label, ms = REQUEST_TIMEOUT_MS) => {
+  const controller = new AbortController();
+  let timer;
+  const deadline = new Promise((_, reject) => {
+    timer = setTimeout(() => { controller.abort(); reject(new Error(`${label} timed out`)); }, ms);
   });
-  if (!res.ok) throw new Error(`Canada Post token request failed (${res.status})`);
-  const body = await res.json();
+  const work = run(controller.signal);
+  try {
+    return await Promise.race([work, deadline]);
+  } finally {
+    clearTimeout(timer);
+    work.catch(() => {}); // a failure that lands after the deadline is not an unhandled rejection
+  }
+};
+
+const requestToken = async (fetchImpl) => {
+  const body = await withDeadline(async (signal) => {
+    const res = await fetchImpl(TOKEN_URL, {
+      method: 'POST',
+      headers: {
+        'X-IBM-Client-Id': process.env.CANADA_POST_API_KEY,
+        'X-IBM-Client-Secret': process.env.CANADA_POST_API_SECRET,
+        Accept: 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: 'scope=merchant&grant_type=client_credentials',
+      signal,
+    });
+    if (!res.ok) throw new Error(`Canada Post token request failed (${res.status})`);
+    return res.json();
+  }, 'Canada Post token request');
   // Refresh a minute early so a token never expires mid-request.
   cachedToken = { token: body.access_token, expiresAt: Date.now() + (Number(body.expires_in || 3600) - 60) * 1000 };
   return cachedToken.token;
@@ -95,26 +116,30 @@ const trackParcel = async (pin, fetchImpl = fetch) => {
 // { international: { countryCode } } or { unitedStates: { zipCode } }). With
 // CANADA_POST_CUSTOMER_NUMBER set, Canada Post returns the account's discounted
 // (commercial) price.
-const ratePrices = async ({ destination, parcel, originPostalCode, fetchImpl = fetch }) => {
+const ratePrices = async ({ destination, parcel, originPostalCode, fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS }) => {
   const customerNumber = process.env.CANADA_POST_CUSTOMER_NUMBER;
-  const res = await fetchImpl(`${RATING_URL}/prices`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${await accessToken(fetchImpl)}`,
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      'Accept-Language': 'en-CA',
-    },
-    body: JSON.stringify({
-      quoteType: customerNumber ? 'commercial' : 'counter',
-      ...(customerNumber ? { customerNumber } : {}),
-      parcelCharacteristics: parcel,
-      originPostalCode,
-      destination,
-    }),
-  });
-  if (!res.ok) throw new Error(`Canada Post rating request failed (${res.status})`);
-  const quotes = await res.json();
+  const token = await accessToken(fetchImpl);
+  const quotes = await withDeadline(async (signal) => {
+    const res = await fetchImpl(`${RATING_URL}/prices`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'Accept-Language': 'en-CA',
+      },
+      body: JSON.stringify({
+        quoteType: customerNumber ? 'commercial' : 'counter',
+        ...(customerNumber ? { customerNumber } : {}),
+        parcelCharacteristics: parcel,
+        originPostalCode,
+        destination,
+      }),
+      signal,
+    });
+    if (!res.ok) throw new Error(`Canada Post rating request failed (${res.status})`);
+    return res.json();
+  }, 'Canada Post rating request', timeoutMs);
   return (Array.isArray(quotes) ? quotes : []).map((q) => ({
     serviceCode: q.serviceCode,
     serviceName: q.serviceName,
