@@ -80,6 +80,18 @@ const INTERNATIONAL_COUNTRIES = [
   'NL', 'NO', 'NZ', 'PH', 'PL', 'RO', 'RS', 'SA', 'SE', 'SG', 'SI', 'SK', 'SM',
   'SV', 'SX', 'TH', 'TR', 'TT', 'TW', 'UA', 'VN',
 ];
+// ─── Faster delivery inside Canada ─────────────────────────────────────────────
+// The flat rate above stays the default. A buyer who enters a postal code can pay
+// Canada Post's live price (before tax) for a faster service instead, with an optional
+// signature on delivery (utils/canadaShipping.js).
+const CANADA_SERVICES = {
+  'DOM.XP': 'Xpresspost',
+  'DOM.PC': 'Priority',
+};
+// Canadian postal code without the space; D, F, I, O, Q, U never appear, W and Z only after the first letter.
+const CANADA_POSTAL_CODE = /^[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z]\d[ABCEGHJ-NPRSTV-Z]\d$/;
+const normalizePostalCode = (value) => String(value || '').toUpperCase().replace(/[\s-]+/g, '');
+
 // Parcel used for quotes, by stick count: modules in ESD bags in a padded box.
 const parcelForSticks = (sticks) => {
   if (sticks <= 2) return { weight: 0.4, dimensions: { length: 23, width: 15, height: 5 } };
@@ -128,4 +140,7 @@ module.exports = {
   INTERNATIONAL_COUNTRIES,
   parcelForSticks,
   SHIP_FROM_POSTAL_CODE,
+  CANADA_SERVICES,
+  CANADA_POSTAL_CODE,
+  normalizePostalCode,
 };

@@ -5,6 +5,7 @@ const DISPATCH_BUSINESS_DAYS = 3; // "ships in 1–3 business days"
 const CANADA_TRANSIT_BUSINESS_DAYS = 6; // "3–6 business days after dispatch"
 const ABROAD_TRANSIT_FALLBACK = 15; // used only when the checkout quote's transit days are unknown
 const ABROAD_BUFFER_BUSINESS_DAYS = 3; // customs and the last leg abroad run late more often than not
+const CANADA_BUFFER_BUSINESS_DAYS = 1; // on top of a transit time Canada Post quoted for a faster service
 
 // `days` weekdays after `from` (Saturdays and Sundays do not count; holidays are ignored).
 function addBusinessDays(from, days) {
@@ -22,7 +23,7 @@ function estimateDeliveryDate({ placedAt = new Date(), country = 'CA', transitDa
   const inCanada = String(country || 'CA').toUpperCase() === 'CA';
   const quoted = Math.ceil(Number(transitDays));
   const transit = inCanada
-    ? CANADA_TRANSIT_BUSINESS_DAYS
+    ? (quoted > 0 ? quoted + CANADA_BUFFER_BUSINESS_DAYS : CANADA_TRANSIT_BUSINESS_DAYS)
     : (quoted > 0 ? quoted : ABROAD_TRANSIT_FALLBACK) + ABROAD_BUFFER_BUSINESS_DAYS;
   return addBusinessDays(placedAt, DISPATCH_BUSINESS_DAYS + transit);
 }

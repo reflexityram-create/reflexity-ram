@@ -10,10 +10,15 @@ const {
   resolveCartShippingPrice,
   ALLOWED_SHIPPING_COUNTRIES,
   CURRENCY,
+  SHIPPING_OPTIONS,
+  CANADA_POSTAL_CODE,
+  normalizePostalCode,
 } = require('../config/shipping');
 const { analyticsOrder } = require('../utils/analyticsOrder');
 const { INTERNATIONAL_COUNTRIES } = require('../config/shipping');
 const { internationalOptions, optionLabel } = require('../utils/internationalShipping');
+const { canadaOptions, canadaOptionLabel } = require('../utils/canadaShipping');
+const { isConfigured: canadaPostConfigured } = require('../utils/canadaPost');
 const { isServerPurchaseTrackingEnabled, sanitizeAnalyticsIds } = require('../utils/ga4');
 const { reportPaidOrderToGa4 } = require('../utils/purchaseAnalytics');
 const { decrementStockForOrder, shouldDecrementStockForFulfillment } = require('../utils/stock');
@@ -129,6 +134,41 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
       allowedCountries = [country];
     }
 
+    // ── Inside Canada: the flat rate unless the buyer chose a faster Canada Post service
+    // and/or a signature on delivery. Re-quoted here for their postal code; the price is
+    // never taken from the client. ──────────────────────────────────────────────────────
+    let canadaChoice;
+    const requestedShipping = req.body?.shipping || {};
+    if (country === 'CA' && (requestedShipping.serviceCode || requestedShipping.signature)) {
+      const postalCode = normalizePostalCode(requestedShipping.postalCode);
+      if (!canadaPostConfigured() || !CANADA_POSTAL_CODE.test(postalCode)) {
+        return res.status(400).json({ error: 'Enter your postal code again to choose faster delivery or a signature.' });
+      }
+      const wantsSignature = requestedShipping.signature === true;
+      const wantsService = requestedShipping.serviceCode && requestedShipping.serviceCode !== 'STANDARD';
+      const sticks = shippingLines.reduce((n, line) => n + line.qty, 0);
+      const { options, signaturePrice } = await canadaOptions({ postalCode, sticks });
+      const service = wantsService ? options.find((o) => o.serviceCode === requestedShipping.serviceCode) : null;
+      if (wantsService && !service) return res.status(400).json({ error: 'Choose a delivery option again.' });
+      if (wantsSignature && !Number.isFinite(signaturePrice)) {
+        return res.status(400).json({ error: 'A signature on delivery is not available for that postal code.' });
+      }
+      const amount = (service ? service.price : resolveCartShippingPrice(shippingLines)) + (wantsSignature ? signaturePrice : 0);
+      const label = service
+        ? canadaOptionLabel(service, { signature: wantsSignature })
+        : `${SHIPPING_OPTIONS.standard.label} + signature on delivery`;
+      shippingOptions = [{
+        shipping_rate_data: {
+          type: 'fixed_amount',
+          display_name: label,
+          fixed_amount: { amount: Math.round(amount * 100), currency: CURRENCY },
+          tax_behavior: 'exclusive',
+          metadata: { canadaPostService: service?.serviceCode || 'STANDARD', signature: wantsSignature ? 'yes' : 'no', country: 'CA' },
+        },
+      }];
+      canadaChoice = { service, signature: wantsSignature };
+    }
+
     const frontendUrl = process.env.FRONTEND_URL || 'https://reflexityram.com';
     // GA identifiers let the server attribute the purchase to the buyer's browsing
     // session. They are optional, untrusted, and validated before use.
@@ -170,6 +210,12 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
           canadaPostService: internationalService.serviceCode,
           ...(internationalService.transitDays ? { canadaPostTransitDays: String(internationalService.transitDays) } : {}),
         } : {}),
+        ...(canadaChoice ? {
+          shippingCountry: 'CA',
+          canadaPostService: canadaChoice.service?.serviceCode || 'STANDARD',
+          signature: canadaChoice.signature ? 'yes' : 'no',
+          ...(canadaChoice.service?.transitDays ? { canadaPostTransitDays: String(canadaChoice.service.transitDays) } : {}),
+        } : {}),
         ...(gaIds.clientId ? { gaClientId: gaIds.clientId } : {}),
         ...(gaIds.sessionId ? { gaSessionId: gaIds.sessionId } : {}),
       },
@@ -192,6 +238,18 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
 // Called from BOTH the webhook (checkout.session.completed) and the success
 // page fallback (GET /session-status). The unique index on
 // stripeCheckoutSessionId makes this safe to call any number of times.
+// The buyer paid for a specific Canada Post service (and maybe a signature). The label has to match what was
+// charged, so say so on the order where the owner makes the label. Plain flat-rate orders need no note.
+const shippingChoiceNote = (metadata = {}, label) => {
+  const service = metadata.canadaPostService;
+  const signature = metadata.signature === 'yes';
+  if (!signature && (!service || service === 'STANDARD')) return null;
+  const extras = [];
+  if (service && service !== 'STANDARD') extras.push(`buy ${service}`);
+  if (signature) extras.push('add the Signature option');
+  return `SHIPPING: the buyer paid for "${label}". When you make the label, ${extras.join(' and ')}.`;
+};
+
 const ensureCriticalFulfillmentEffects = async (order) => {
   if (!order) return order;
 
@@ -314,9 +372,12 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
       }),
       // Guest emails aren't seen until Stripe hands them back post-payment, so a
       // disposable address can't be blocked upfront — flag it for manual review.
-      adminNotes: isDisposableEmail(customer.email)
-        ? 'REVIEW: disposable email detected after Stripe Checkout. Confirm before fulfillment.'
-        : undefined,
+      adminNotes: [
+        isDisposableEmail(customer.email)
+          ? 'REVIEW: disposable email detected after Stripe Checkout. Confirm before fulfillment.'
+          : null,
+        shippingChoiceNote(session.metadata, shippingMethodLabel),
+      ].filter(Boolean).join('\n') || undefined,
       statusHistory: [{ status: 'processing', note: 'Payment confirmed via Stripe Checkout' }],
     });
   } catch (createErr) {

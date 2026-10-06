@@ -219,9 +219,13 @@ export default function OrderSuccess() {
                         <span className="mono">-${order.discount.toFixed(2)}</span>
                       </div>
                     )}
-                    <div className="flex justify-between">
-                      <span className="text-neutral-400">Shipping</span>
-                      <span className="mono">{order.shippingCost === 0 ? 'Free' : `$${order.shippingCost?.toFixed(2)}`}</span>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-neutral-400">Shipping
+                        {order.shippingMethod && (
+                          <span className="block text-[12px] leading-snug" data-testid="order-shipping-method">{order.shippingMethod}</span>
+                        )}
+                      </span>
+                      <span className="mono shrink-0">{order.shippingCost === 0 ? 'Free' : `$${order.shippingCost?.toFixed(2)}`}</span>
                     </div>
                     {order.tax > 0 && (
                       <div className="flex justify-between">

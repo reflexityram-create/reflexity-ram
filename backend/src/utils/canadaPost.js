@@ -122,6 +122,46 @@ const rateInternational = async ({ countryCode, parcel, originPostalCode, fetchI
   }));
 };
 
+// Live prices for a parcel inside Canada. Taxes are taken out of Canada Post's `due`: Stripe Tax adds the buyer's tax to our
+// shipping charge, so passing the tax-inclusive amount on would tax it twice. The quote asks for the Signature option (SO) so
+// its price is known: `price` includes it and `signaturePrice` is what it adds (null when Canada Post did not price it).
+const rateDomestic = async ({ postalCode, parcel, originPostalCode, services, fetchImpl = fetch }) => {
+  const customerNumber = process.env.CANADA_POST_CUSTOMER_NUMBER;
+  const res = await fetchImpl(`${RATING_URL}/prices`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${await accessToken(fetchImpl)}`,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'Accept-Language': 'en-CA',
+    },
+    body: JSON.stringify({
+      quoteType: customerNumber ? 'commercial' : 'counter',
+      ...(customerNumber ? { customerNumber } : {}),
+      parcelCharacteristics: parcel,
+      originPostalCode,
+      destination: { domestic: { postalCode } },
+      ...(services?.length ? { services } : {}),
+      options: [{ optionCode: 'SO' }],
+    }),
+  });
+  if (!res.ok) throw new Error(`Canada Post rating request failed (${res.status})`);
+  const quotes = await res.json();
+  return (Array.isArray(quotes) ? quotes : []).map((q) => {
+    const details = q.priceDetails || {};
+    const taxes = ['gst', 'pst', 'hst'].reduce((sum, key) => sum + (Number(details.taxes?.[key]?.amt) || 0), 0);
+    const signature = (details.options || []).find((option) => option.optionCode === 'SO');
+    return {
+      serviceCode: q.serviceCode,
+      serviceName: q.serviceName,
+      price: Math.round((Number(details.due) - taxes) * 100) / 100,
+      signaturePrice: signature && Number.isFinite(Number(signature.optionPrice)) ? Number(signature.optionPrice) : null,
+      transitDays: q.serviceStandard?.expectedTransitTime ?? null,
+      guaranteed: Boolean(q.serviceStandard?.guaranteedDelivery),
+    };
+  });
+};
+
 const resetTokenCacheForTest = () => { cachedToken = null; pendingToken = null; };
 
-module.exports = { isConfigured, accessToken, trackParcel, normalizeTracking, rateInternational, resetTokenCacheForTest, BASE };
+module.exports = { isConfigured, accessToken, trackParcel, normalizeTracking, rateInternational, rateDomestic, resetTokenCacheForTest, BASE };
