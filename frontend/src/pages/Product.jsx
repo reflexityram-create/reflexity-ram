@@ -442,7 +442,7 @@ export default function Product() {
                 <button
                   onClick={addToCart}
                   disabled={soldOut}
-                  className="btn-primary flex-1 sm:flex-none"
+                  className="btn-primary flex-1 sm:flex-none min-w-[9.5rem] whitespace-nowrap"
                   data-testid="product-add-to-cart-btn"
                 >
                   <ShoppingCart size={15} /> Add to cart
@@ -450,7 +450,7 @@ export default function Product() {
                 <button
                   onClick={buyNow}
                   disabled={soldOut}
-                  className="btn-secondary flex-1 sm:flex-none disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="btn-secondary flex-1 sm:flex-none min-w-[7rem] whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                   data-testid="product-buy-now-btn"
                 >
                   Buy now
