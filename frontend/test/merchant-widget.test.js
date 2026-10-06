@@ -45,6 +45,26 @@ test('the badge stays off localhost, preview hosts and private pages', async () 
   }
 });
 
+// The browser runs classic scripts in ONE shared global scope. Both bootstraps once declared a top-level
+// `const privatePath`, so the second threw "Identifier 'privatePath' has already been declared" and the badge
+// never loaded on the live site (the per-script tests above each used a fresh scope and missed it).
+test('the badge bootstrap and the analytics bootstrap can run on the same page', async () => {
+  const [analytics, widget] = await Promise.all([read('../public/analytics-bootstrap.js'), read('../public/merchant-widget-bootstrap.js')]);
+  const appended = [];
+  const window = { location: { hostname: 'reflexityram.com', pathname: '/shop', search: '' }, merchantwidget: { start() {} } };
+  const document = {
+    head: { appendChild: (element) => appended.push(element) },
+    createElement: (tag) => ({ tag, addEventListener() {} }),
+  };
+  const page = vm.createContext({ window, document, URLSearchParams, Date });
+  new vm.Script(analytics).runInContext(page);
+  new vm.Script(widget).runInContext(page);
+  assert.deepEqual(
+    appended.map((element) => element.src.replace(/\?.*/, '')),
+    ['https://www.googletagmanager.com/gtag/js', 'https://www.gstatic.com/shopping/merchant/merchantwidget.js'],
+  );
+});
+
 test('the badge script is wired in, served as a static file, revalidated, and allowed by the CSP', async () => {
   const [html, headers, routes] = await Promise.all([read('../index.html'), read('../public/_headers'), read('../public/_routes.json')]);
   assert.match(html, /<script defer src="\/merchant-widget-bootstrap\.js"><\/script>/);
