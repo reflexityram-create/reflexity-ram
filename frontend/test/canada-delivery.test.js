@@ -41,3 +41,8 @@ test("GA4 hears which delivery the buyer chose (shipping_tier), so the owner can
   assert.match(checkout, /trackEvent\('add_shipping_info', \{[\s\S]*?shipping_tier: tier,/);
   assert.match(checkout, /`\$\{fastChoice \? fastChoice\.name : 'Standard'\}\$\{signature \? ' \+ signature' : ''\}`/);
 });
+
+test('the Shipping policy tells buyers about the faster services (the saved page and the built-in copy say the same)', async () => {
+  const policy = await read('../src/pages/policies/Shipping.jsx');
+  assert.match(policy, /enter your postal code at checkout to choose a faster Canada Post service \(Xpresspost or Priority\) at Canada Post's price for your address; a signature on delivery can be added to any choice for \$2\./);
+});
