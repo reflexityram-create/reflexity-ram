@@ -93,7 +93,7 @@ export default function Guides() {
         <Header />
         <main className="page" data-testid="guide-page">
           <article className="container-tight pt-14 pb-16 max-w-4xl">
-            <Link to="/guides" className="inline-flex items-center gap-2 text-[13px] text-neutral-400 hover:text-white mb-8">
+            <Link to="/guides" className="tap-target inline-flex items-center gap-2 text-[13px] text-neutral-400 hover:text-white mb-8">
               <ArrowRight size={14} className="rotate-180" /> All guides
             </Link>
             <div className="section-label mb-5"><span className="num">GUIDE</span> RAM BUYING GUIDE</div>

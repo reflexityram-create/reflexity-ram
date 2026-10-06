@@ -741,12 +741,14 @@ html.light .text-neutral-300 {
 html.light .text-neutral-400 {
     color: var(--fg-muted) !important;
 }
+/* The muted greys were #6e6e76 / #8a8a92: the second is only 3.3:1 on the page background (axe "color-contrast", serious; AA needs 4.5:1), and the
+   first drops under 4.5:1 on tinted cards. Both now clear 4.7:1 on every light surface and keep their order (500 is darker than 600/700). */
 html.light .text-neutral-500 {
-    color: #6e6e76 !important;
+    color: #62626a !important;
 }
 html.light .text-neutral-600,
 html.light .text-neutral-700 {
-    color: #8a8a92 !important;
+    color: #666670 !important;
 }
 
 html.light .border-white\/5,
@@ -858,3 +860,12 @@ html.light .admin-label {
 .policy-content strong { color: var(--policy-strong); font-weight: 600; }
 .policy-editor h2 { margin-top: 1rem; }
 .policy-editor:empty::before { content: "Start typing…"; color: #4b5563; }
+
+/* Phones: header logo, back links and footer links were 17-22px tall. WCAG 2.2 AA asks for 24px (axe accepts the spacing exception); this gives a
+   comfortable 40px hit area without moving the layout much. Desktop is untouched. */
+@media (max-width: 767px) {
+    .tap-min { min-height: 40px; }
+    .tap-target { display: inline-flex; align-items: center; min-height: 40px; }
+    .tap-list { gap: 0 !important; }
+    .tap-list > a { display: flex; align-items: center; min-height: 40px; }
+}

@@ -6,6 +6,7 @@ import AppLayout from '@/components/AppLayout';
 import AuthModal from '@/components/AuthModal';
 import EmptyState from '@/components/EmptyState';
 import useAuthStore from '@/lib/authStore';
+import { useSEO } from '@/lib/seo';
 import { ordersApi, authApi } from '@/lib/api';
 
 const STATUS_PILLS = {
@@ -18,6 +19,7 @@ const STATUS_PILLS = {
 };
 
 export default function Account() {
+  useSEO({ title: 'Your account', description: 'Your Reflexity RAM orders and account details.' });
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, logout, updateProfile, changePassword, isAuthenticated } = useAuthStore();
   const isAdmin = user?.role === 'admin';

@@ -51,6 +51,7 @@ export default function Cart() {
             ctaLabel="Browse memory"
             ctaTo="/shop"
             testId="cart-empty"
+            as="h2"
           />
         ) : (
           <div className="grid lg:grid-cols-[1fr_360px] gap-8">
@@ -94,7 +95,7 @@ export default function Cart() {
 
             {/* Summary */}
             <aside className="glass rounded-2xl p-6 lg:sticky lg:top-24 h-fit" data-testid="cart-summary">
-              <h3 className="font-semibold tracking-tight mb-5">Order summary</h3>
+              <h2 className="font-semibold tracking-tight mb-5">Order summary</h2>
               <p className="text-[11px] text-neutral-500 -mt-3 mb-4">All prices are in {STORE_CURRENCY_NAME}.</p>
               <div className="space-y-3 text-[13px] mb-5">
                 <div className="flex justify-between text-neutral-300">

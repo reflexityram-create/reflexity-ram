@@ -34,7 +34,7 @@ export default function Footer() {
           <div className="mono text-[10px] text-neutral-500 uppercase tracking-widest mb-4">
             Support
           </div>
-          <div className="flex flex-col gap-2.5 text-[13px]">
+          <div className="tap-list flex flex-col gap-2.5 text-[13px]">
             <Link to="/shipping" className="text-neutral-300 hover:text-white transition-colors">Shipping</Link>
             <Link to="/international" className="text-neutral-300 hover:text-white transition-colors">International Orders</Link>
             <Link to="/returns" className="text-neutral-300 hover:text-white transition-colors">Returns</Link>

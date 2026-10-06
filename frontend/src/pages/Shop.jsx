@@ -27,8 +27,8 @@ export default function Shop() {
   const [error, setError] = useState(null);
 
   useSEO({
-    title: "Server RAM — Reflexity RAM",
-    description: "Shop tested Server RAM at Reflexity RAM.",
+    title: "Shop Tested Server RAM in Canada — Reflexity RAM",
+    description: "Shop tested server memory in Canada: DDR4 ECC RDIMM and LRDIMM modules with part numbers, compatibility details, a warranty and tracked shipping from Toronto.",
   });
 
   useEffect(() => {
@@ -71,7 +71,7 @@ export default function Shop() {
         <div className="container-tight pt-10 pb-16">
           <Link
             to="/categories"
-            className="inline-flex items-center gap-1.5 text-[13px] text-neutral-500 hover:text-white transition-colors mb-6"
+            className="tap-target inline-flex items-center gap-1.5 text-[13px] text-neutral-500 hover:text-white transition-colors mb-6"
             data-testid="shop-back-to-categories"
           >
             <ArrowLeft size={13} /> All categories

@@ -12,6 +12,8 @@ async function visit({ hostname, pathname }) {
   const started = [];
   const window = { location: { hostname, pathname }, merchantwidget: { start: (options) => started.push(options) } };
   const document = {
+    getElementById: () => null,
+    documentElement: {},
     head: { appendChild: (element) => appended.push(element) },
     createElement: (tag) => {
       const listeners = {};
@@ -30,6 +32,45 @@ test("Google's store rating badge loads on the customer site and starts bottom-r
   appended[0].fire('load');
   // (the options object is built inside the script's own realm, so compare plain copies)
   assert.deepEqual(JSON.parse(JSON.stringify(started)), [{ position: 'RIGHT_BOTTOM', mobileBottomMargin: 84 }]);
+});
+
+// Google's script creates <iframe id="merchantwidgetiframe"> with no title, which screen readers announce as an unnamed frame (axe "frame-title").
+async function frameNaming({ existing = null } = {}) {
+  const code = await read('../public/merchant-widget-bootstrap.js');
+  const frames = existing ? { merchantwidgetiframe: existing } : {};
+  const observers = [];
+  const timers = [];
+  const window = {
+    location: { hostname: 'reflexityram.com', pathname: '/shop' },
+    merchantwidget: { start() {} },
+    setTimeout: (fn, ms) => timers.push({ fn, ms }),
+    MutationObserver: class { constructor(callback) { this.callback = callback; this.disconnected = false; observers.push(this); } observe() {} disconnect() { this.disconnected = true; } },
+  };
+  const document = { getElementById: (id) => frames[id] || null, documentElement: {}, head: { appendChild() {} }, createElement: () => ({ addEventListener() {} }) };
+  vm.runInNewContext(code, { window, document });
+  return { frames, observers, timers };
+}
+const fakeFrame = (title = null) => { const attrs = title ? { title } : {}; return { attrs, getAttribute: (name) => attrs[name] ?? null, setAttribute: (name, value) => { attrs[name] = value; } }; };
+
+test("the badge's iframe gets an accessible title the moment Google's script adds it, and the watcher then stops", async () => {
+  const { frames, observers, timers } = await frameNaming();
+  assert.equal(observers.length, 1, 'no frame yet: it waits for one');
+  const frame = fakeFrame();
+  frames.merchantwidgetiframe = frame;
+  observers[0].callback();
+  assert.equal(frame.attrs.title, 'Google customer reviews badge');
+  assert.equal(observers[0].disconnected, true);
+  assert.equal(timers[0].ms, 30000, 'and it never watches the page for ever');
+});
+
+test('an iframe that already exists is named at once, and one Google titled itself is left alone', async () => {
+  const early = fakeFrame();
+  const first = await frameNaming({ existing: early });
+  assert.equal(early.attrs.title, 'Google customer reviews badge');
+  assert.equal(first.observers.length, 0, 'nothing to wait for');
+  const titled = fakeFrame('Reviews from Google');
+  await frameNaming({ existing: titled });
+  assert.equal(titled.attrs.title, 'Reviews from Google');
 });
 
 test('the badge stays off localhost, preview hosts and private pages', async () => {
@@ -53,6 +94,8 @@ test('the badge bootstrap and the analytics bootstrap can run on the same page',
   const appended = [];
   const window = { location: { hostname: 'reflexityram.com', pathname: '/shop', search: '' }, merchantwidget: { start() {} } };
   const document = {
+    getElementById: () => null,
+    documentElement: {},
     head: { appendChild: (element) => appended.push(element) },
     createElement: (tag) => ({ tag, addEventListener() {} }),
   };

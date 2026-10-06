@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 
-export default function EmptyState({ icon: Icon, title, description, ctaLabel, ctaTo, secondaryLabel, secondaryTo, testId = "empty-state" }) {
+export default function EmptyState({ icon: Icon, title, description, ctaLabel, ctaTo, secondaryLabel, secondaryTo, testId = "empty-state", as: Heading = "h3" }) {
   return (
     <div
       className="glass rounded-2xl p-12 text-center flex flex-col items-center"
@@ -11,7 +11,7 @@ export default function EmptyState({ icon: Icon, title, description, ctaLabel, c
           <Icon size={26} className="text-neutral-400" />
         </div>
       )}
-      <h3 className="text-xl font-semibold tracking-tight mb-2">{title}</h3>
+      <Heading className="text-xl font-semibold tracking-tight mb-2">{title}</Heading>
       {description && (
         <p className="text-[14px] text-neutral-400 max-w-md mb-6 leading-relaxed">
           {description}
