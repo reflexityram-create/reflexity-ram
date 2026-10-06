@@ -106,6 +106,7 @@ export default function Shop() {
               ctaLabel="Refresh"
               ctaTo="/shop"
               testId="shop-error-state"
+              as="h2"
             />
           ) : publicProducts.length === 0 ? (
             <EmptyState
@@ -117,6 +118,7 @@ export default function Shop() {
               secondaryLabel="Email us"
               secondaryTo="/support"
               testId="shop-empty-state"
+              as="h2"
             />
           ) : (
             <ShopInventory products={products} />

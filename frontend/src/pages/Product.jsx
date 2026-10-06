@@ -208,6 +208,7 @@ export default function Product() {
               ctaTo="/shop"
               secondaryLabel="Email us"
               secondaryTo="/support"
+              as="h1"
             />
           </div>
         </main>

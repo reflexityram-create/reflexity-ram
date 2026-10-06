@@ -37,6 +37,11 @@ test("the cart's headings follow the page's h1 instead of skipping a level, with
   assert.match(cart, /testId="cart-empty"\s+as="h2"/);
   assert.match(empty, /as: Heading = "h3"/, "every other screen keeps the h3 it had");
   assert.match(empty, /<Heading className="text-xl font-semibold tracking-tight mb-2">\{title\}<\/Heading>/);
+  // the same message on the shop (error / no products) sits under the page's h1; the product "not found" page has no other heading at all
+  const [shop, product] = await Promise.all([read("../src/pages/Shop.jsx"), read("../src/pages/Product.jsx")]);
+  assert.match(shop, /testId="shop-error-state"\s+as="h2"/);
+  assert.match(shop, /testId="shop-empty-state"\s+as="h2"/);
+  assert.match(product, /secondaryTo="\/support"\s+as="h1"/);
 });
 
 test("phones get a comfortable hit area on the header logo, the back links and the footer lists", async () => {
