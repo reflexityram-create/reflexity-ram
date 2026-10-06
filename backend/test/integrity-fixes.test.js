@@ -1,4 +1,6 @@
-// Regression tests for the 2026-10-06 review of the checkout / admin / auth paths. Each test fails against the code as it was before the fix.
+// Regression tests for the 2026-10-06 review of the checkout / admin / auth paths. Each fix has a test that fails without it (mutation-checked);
+// a few tests are deliberate controls: behaviour that must NOT change (older clients, edits without a stock change).
+// Hermetic: the Stripe key is a placeholder, so utils/stripeSync stays off (it enables itself for sk_test_/sk_live_ keys) and the product PATCH makes no network call.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
@@ -18,7 +20,7 @@ require.cache[resendPath] = {
 };
 process.env.NODE_ENV ||= 'test';
 process.env.JWT_SECRET = 'integrity-fixes-test-secret';
-process.env.STRIPE_SECRET_KEY ||= 'sk_test_integrity_fixes_unit_test';
+process.env.STRIPE_SECRET_KEY = 'placeholder-not-a-stripe-key';
 
 const Cart = require('../src/models/Cart');
 const Order = require('../src/models/Order');
@@ -157,7 +159,6 @@ test('the international quote ignores a cart cookie that cookie-parser turned in
   const lookups = [];
   stub(t, Cart, { findOne: (filter) => { lookups.push(filter); return Promise.resolve(null); } });
   // cookie-parser decodes `j:{...}` cookies into objects; that object used to reach the Mongo filter as operators
-  const parsed = cookieParser()({ headers: { cookie: 'cartSessionId=j:{"$regex":"^a"}' } }, {}, () => {});
   const req = { headers: {}, cookies: { cartSessionId: { $regex: '^a' } } };
   assert.equal(await cartStickCount(req), 0);
   assert.deepEqual(lookups, [], 'no query ran for an invalid session id');
@@ -165,7 +166,6 @@ test('the international quote ignores a cart cookie that cookie-parser turned in
   assert.equal(lookups.length, 0);
   await cartStickCount({ headers: {}, cookies: { cartSessionId: 'session_0123456789abcdef' } });
   assert.deepEqual(lookups, [{ sessionId: 'session_0123456789abcdef' }], 'a well-formed id still finds the cart');
-  assert.equal(parsed, undefined);
 });
 
 test('checkout refuses a cart cookie that is not a plain session id, before any cart lookup', async (t) => {
@@ -200,24 +200,23 @@ test('a Google profile whose email Google reports as unverified resolves to no a
 });
 
 // ── 5. a paid line item no product matches is put on the order, not just in a log ─────────────
-test('an order made from a session with an unmatched paid line item says so in its admin notes', async (t) => {
+const stripeSession = (overrides = {}) => ({
+  id: 'cs_fulfil', payment_status: 'paid',
+  metadata: { userId: 'guest', cartSessionId: 'session_0123456789' },
+  line_items: { data: [{ price: { id: 'price_known', unit_amount: 17000, product: {} }, quantity: 1 }] },
+  amount_subtotal: 17000, amount_total: 17000, total_details: { amount_discount: 0, amount_shipping: 0, amount_tax: 0 },
+  shipping_cost: { shipping_rate: { display_name: 'Flat-Rate Shipping' } },
+  customer_details: { email: 'buyer@example.com', name: 'Buyer Test', address: { line1: '1 Main St', city: 'Toronto', state: 'ON', postal_code: 'M1P 3T7', country: 'CA' } },
+  payment_intent: 'pi_fulfil',
+  ...overrides,
+});
+// Runs the real fulfilment (GET /session-status) for `session` against stubbed models and returns the order it created.
+async function fulfil(t, session) {
   quiet(t);
   const created = [];
   stub(t, Product, { findOne: async (q) => (q.stripePriceId === 'price_known' ? { _id: 'p1', slug: 'known', sku: 'RAM-1', name: 'Known stick', images: [] } : null) });
   stub(t, Order, { findOne: async () => null, create: async (values) => { created.push(values); return { ...values, _id: 'o1', orderNumber: 'RFX-9', stockDecremented: true }; } });
   stub(t, Cart, { findOneAndUpdate: async () => undefined });
-  const session = {
-    id: 'cs_unmatched', payment_status: 'paid',
-    metadata: { userId: 'guest', cartSessionId: 'session_0123456789' },
-    line_items: { data: [
-      { price: { id: 'price_known', unit_amount: 17000, product: {} }, quantity: 1 },
-      { price: { id: 'price_gone', unit_amount: 5000, product: {} }, quantity: 1 },
-    ] },
-    amount_subtotal: 22000, amount_total: 22000, total_details: { amount_discount: 0, amount_shipping: 0, amount_tax: 0 },
-    shipping_cost: { shipping_rate: { display_name: 'Flat-Rate Shipping' } },
-    customer_details: { email: 'buyer@example.com', name: 'Buyer Test', address: { line1: '1 Main St', city: 'Toronto', state: 'ON', postal_code: 'M1P 3T7', country: 'CA' } },
-    payment_intent: 'pi_unmatched',
-  };
   stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => session, decrementStock: async () => true });
   t.after(() => stripeRouter.setCheckoutDependenciesForTest());
   const app = express();
@@ -225,14 +224,74 @@ test('an order made from a session with an unmatched paid line item says so in i
   const server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   try {
-    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/stripe/session-status?session_id=cs_unmatched`);
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/stripe/session-status?session_id=${session.id}`);
     assert.equal(res.status, 200);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
   assert.equal(created.length, 1);
-  assert.equal(created[0].items.length, 1, 'only the matched item is on the order');
-  assert.match(created[0].adminNotes, /^REVIEW: 1 paid line item could not be matched to a product and is NOT on this order \(Stripe price price_gone\)\. Check the Stripe payment before shipping\.$/m);
+  return created[0];
+}
+
+test('an order made from a session with an unmatched paid line item says so in its admin notes', async (t) => {
+  const order = await fulfil(t, stripeSession({
+    id: 'cs_unmatched',
+    line_items: { data: [
+      { price: { id: 'price_known', unit_amount: 17000, product: {} }, quantity: 1 },
+      { price: { id: 'price_gone', unit_amount: 5000, product: {} }, quantity: 1 },
+    ] },
+    amount_subtotal: 22000, amount_total: 22000,
+  }));
+  assert.equal(order.items.length, 1, 'only the matched item is on the order');
+  assert.match(order.adminNotes, /^REVIEW: 1 paid line item could not be matched to a product and is NOT on this order \(Stripe price price_gone\)\. Check the Stripe payment before shipping\.$/m);
+});
+
+test('the note that says which service to buy names international services instead of showing Canada Post codes', async (t) => {
+  const order = await fulfil(t, stripeSession({
+    id: 'cs_intl',
+    metadata: { userId: 'guest', cartSessionId: 'session_0123456789', canadaPostService: 'INT.TP', signature: 'no', shippingCountry: 'DE' },
+    shipping_cost: { shipping_rate: { display_name: 'Tracked Packet – International (about 8 business days)' } },
+    customer_details: { email: 'buyer@example.com', name: 'Buyer Test', address: { line1: '1 Hauptstr', city: 'Berlin', postal_code: '10115', country: 'DE' } },
+  }));
+  assert.equal(order.adminNotes, 'SHIPPING: the buyer paid for "Tracked Packet – International (about 8 business days)". When you make the label, buy Tracked Packet – International.');
+  const unknown = await fulfil(t, stripeSession({ id: 'cs_odd', metadata: { userId: 'guest', cartSessionId: 'session_0123456789', canadaPostService: 'XYZ.NEW', signature: 'no' } }));
+  assert.match(unknown.adminNotes, /buy XYZ\.NEW\.$/, 'a code the shop does not know yet is shown as it is');
+});
+
+// ── 5b. the admin order page ──────────────────────────────────────────────────────────────────────
+const orderDoc = (over = {}) => ({
+  _id: PRODUCT_ID, orderNumber: 'RFX-1', status: 'processing', paymentStatus: 'paid', shippingMethod: 'Flat-Rate Shipping',
+  items: [{ product: PRODUCT_ID, sku: 'RAM-1', name: 'RAM', price: 10, qty: 1 }],
+  shippingAddress: { firstName: 'A', lastName: 'B', line1: '1 Main', city: 'Toronto', state: 'ON', zip: 'M1P 3T7', country: 'CA' },
+  ...over,
+});
+
+test('GET /admin/orders/:id returns the order with its shipping preparation', async (t) => {
+  const { app, headers } = adminApp(t);
+  stub(t, Order, { findById: () => query(orderDoc()) });
+  stub(t, Product, { find: () => query([]) });
+  const res = await request(app, 'GET', `/api/admin/orders/${PRODUCT_ID}`, undefined, headers);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.order.shippingPreparation.fulfillment.canCreateLabel, true);
+  assert.equal(res.body.order.shippingPreparation.recipient.city, 'Toronto');
+});
+
+test('...and still returns the order, without the panel, when the shipping helper fails', async (t) => {
+  quiet(t);
+  const { app, headers } = adminApp(t);
+  stub(t, Order, { findById: () => query(orderDoc()) });
+  stub(t, Product, { find: () => { throw new Error('catalog unavailable'); } });
+  const res = await request(app, 'GET', `/api/admin/orders/${PRODUCT_ID}`, undefined, headers);
+  assert.equal(res.status, 200, 'a failure in the convenience panel must not 500 the order page');
+  assert.equal(res.body.order.shippingPreparation, null);
+  assert.equal(res.body.order.orderNumber, 'RFX-1');
+});
+
+test('the Google callback refuses an unverified email with its own error code, and the page has a message for it', () => {
+  const auth = fs.readFileSync(path.join(__dirname, '../src/routes/auth.js'), 'utf8');
+  assert.match(auth, /if \(!profile\.email\) return fail\('no_email'\);\s+if \(profile\.verified_email === false \|\| profile\.email_verified === false\) return fail\('email_not_verified'\);/);
+  const page = fs.readFileSync(path.join(__dirname, '../../frontend/src/pages/AuthCallback.jsx'), 'utf8');
+  assert.match(page, /email_not_verified:\s+'Google has not verified this email address/);
 });
 
 // ── 6. startup says whether the duplicate-fulfilment indexes exist ───────────────────────────────

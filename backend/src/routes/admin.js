@@ -289,7 +289,7 @@ router.patch(
           const current = await Product.findById(req.params.id).select('stockQuantity').lean();
           if (current) {
             return res.status(409).json({
-              error: `Stock changed since you opened this product (it is now ${current.stockQuantity}). Close it, reopen it and save again.`,
+              error: `Stock changed since you opened this product (it is now ${current.stockQuantity}). Check the quantity and save again.`,
               currentStock: current.stockQuantity,
             });
           }

@@ -240,7 +240,13 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
 // stripeCheckoutSessionId makes this safe to call any number of times.
 // The buyer paid for a specific Canada Post service (and maybe a signature). The label has to match what was
 // charged, so say so on the order where the owner makes the label. Plain flat-rate orders need no note.
-const SERVICE_NAMES = { 'DOM.XP': 'Xpresspost' };
+// Canada Post service codes the checkout can sell, as the owner knows them when making the label (an unknown code is shown as it is).
+const SERVICE_NAMES = {
+  'DOM.XP': 'Xpresspost',
+  'USA.TP': 'Tracked Packet – USA', 'USA.EP': 'Expedited Parcel USA', 'USA.XP': 'Xpresspost USA',
+  'INT.TP': 'Tracked Packet – International', 'INT.XP': 'Xpresspost International',
+  'INT.IP.AIR': 'International Parcel Air', 'INT.SP.AIR': 'Small Packet International Air',
+};
 const shippingChoiceNote = (metadata = {}, label) => {
   const service = metadata.canadaPostService;
   const signature = metadata.signature === 'yes';

@@ -265,7 +265,12 @@ function ProductModal({ product, onClose, onSave }) {
     } catch (err) {
       const details = err.response?.data?.details;
       if (details) details.forEach(d => toast.error(d.message));
-      else toast.error(err.response?.data?.error || 'Save failed');
+      else if (err.response?.status === 409 && Number.isInteger(err.response.data?.currentStock)) {
+        // Stock moved since this form was opened (a sale). Nothing was overwritten. The form may be a snapshot from the product list, so closing and reopening
+        // it would not fetch anything: take the current number as the new baseline instead, and the same form saves once the quantity has been checked.
+        openedStock.current = err.response.data.currentStock;
+        toast.error(err.response.data.error);
+      } else toast.error(err.response?.data?.error || 'Save failed');
     } finally {
       setSaving(false);
     }

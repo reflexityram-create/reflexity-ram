@@ -55,3 +55,9 @@ test("amber and yellow text in the order modal has a dark-on-light and a light-o
   assert.match(panel, /text-\[#8a5a00\] dark:text-\[#ffcf24\] hover:underline/);
   assert.match(panel, /text-amber-700 dark:text-amber-300/);
 });
+
+test("a refused stock save (409) takes the current stock as the form's new baseline, so a form opened from the list can be saved again", async () => {
+  const source = await read("pages/admin/Products.jsx");
+  assert.match(source, /err\.response\?\.status === 409 && Number\.isInteger\(err\.response\.data\?\.currentStock\)/);
+  assert.match(source, /openedStock\.current = err\.response\.data\.currentStock;\s+toast\.error\(err\.response\.data\.error\);/);
+});
