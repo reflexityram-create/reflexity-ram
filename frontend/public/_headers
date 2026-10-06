@@ -22,6 +22,9 @@
 /error-bootstrap.js
   Cache-Control: public, max-age=0, must-revalidate
 
+/merchant-widget-bootstrap.js
+  Cache-Control: public, max-age=0, must-revalidate
+
 /og-image.jpg
   Cache-Control: public, max-age=86400
 

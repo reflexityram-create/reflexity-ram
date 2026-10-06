@@ -131,7 +131,7 @@ test("Pages route manifest invokes Functions for public crawlable routes", async
   assert.deepEqual(routes, {
     version: 1,
     include: ["/*"],
-    exclude: ["/assets/*", "/.well-known/*", "/LICENSE.txt", "/analytics-bootstrap.js", "/error-bootstrap.js", "/favicon.svg", "/feed-images/*", "/font-bootstrap.js", "/og-image.jpg", "/og-image.svg", "/robots.txt", "/security.txt", "/theme-bootstrap.js"],
+    exclude: ["/assets/*", "/.well-known/*", "/LICENSE.txt", "/analytics-bootstrap.js", "/error-bootstrap.js", "/favicon.svg", "/feed-images/*", "/font-bootstrap.js", "/merchant-widget-bootstrap.js", "/og-image.jpg", "/og-image.svg", "/robots.txt", "/security.txt", "/theme-bootstrap.js"],
   });
 });
 

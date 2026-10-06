@@ -39,6 +39,7 @@ export default function Privacy() {
           body: [
             "After checkout, the order confirmation page may show a Google Customer Reviews box asking whether Google can email you a short survey about your purchase. To show that box, we pass Google your email address, order number, delivery country, and estimated delivery date.",
             "Google only emails you the survey if you agree. Your answers are handled under Google's privacy policy at policies.google.com/privacy.",
+            "Our pages may also show Google's store rating badge. It loads from Google, so Google receives the usual request details (such as your IP address and the page you are on) when it appears; we send it nothing else.",
           ],
         },
         {
@@ -50,7 +51,7 @@ export default function Privacy() {
               "The shipping carrier — delivers your order.",
               "Resend — sends our order and review emails.",
               "Google Analytics — measures site traffic.",
-              "Google Customer Reviews — as described above.",
+              "Google Customer Reviews and its store rating badge — as described above.",
               "Cloudflare, Render, and MongoDB Atlas — host the website and store order records.",
             ] },
             "We do not run cross-site behavioral advertising.",
