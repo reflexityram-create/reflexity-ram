@@ -181,6 +181,9 @@ function ProductModal({ product, onClose, onSave }) {
   const isEdit = !!product?._id;
   const [form, setForm] = useState(() => normalizeProduct(product));
   const [saving, setSaving] = useState(false);
+  // The stock this form was opened with. Sales change stock while the form is open, so an edit sends the quantity only when it was
+  // changed here, together with this number, and the server refuses the write if stock is no longer it (HTTP 409) instead of putting the old value back.
+  const openedStock = useRef(isEdit && Number.isInteger(Number(product.stockQuantity)) ? Number(product.stockQuantity) : null);
 
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -240,7 +243,6 @@ function ProductModal({ product, onClose, onSave }) {
         shippingPrice: form.shippingPrice === '' || form.shippingPrice === null
           ? null
           : Number(form.shippingPrice),
-        stockQuantity: Number(form.stockQuantity),
         // Blank "Made in" is stored as unknown, not as an empty code.
         countryOfOrigin: form.countryOfOrigin || null,
         hsCode: form.hsCode || null,
@@ -250,6 +252,10 @@ function ProductModal({ product, onClose, onSave }) {
       if (!isEdit) {
         data.slug = makeSlug(form.name);
         data.sku = makeSku(form.name);
+        data.stockQuantity = Number(form.stockQuantity);
+      } else if (openedStock.current === null || Number(form.stockQuantity) !== openedStock.current) {
+        data.stockQuantity = Number(form.stockQuantity);
+        if (openedStock.current !== null) data.expectedStockQuantity = openedStock.current;
       }
       const result = isEdit
         ? await adminApi.updateProduct(form._id, data)
@@ -259,7 +265,12 @@ function ProductModal({ product, onClose, onSave }) {
     } catch (err) {
       const details = err.response?.data?.details;
       if (details) details.forEach(d => toast.error(d.message));
-      else toast.error(err.response?.data?.error || 'Save failed');
+      else if (err.response?.status === 409 && Number.isInteger(err.response.data?.currentStock)) {
+        // Stock moved since this form was opened (a sale). Nothing was overwritten. The form may be a snapshot from the product list, so closing and reopening
+        // it would not fetch anything: take the current number as the new baseline instead, and the same form saves once the quantity has been checked.
+        openedStock.current = err.response.data.currentStock;
+        toast.error(err.response.data.error);
+      } else toast.error(err.response?.data?.error || 'Save failed');
     } finally {
       setSaving(false);
     }

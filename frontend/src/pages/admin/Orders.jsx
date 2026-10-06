@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import AppLayout from '@/components/AppLayout';
 import { adminApi } from '@/lib/api';
 import { imageUrl } from '@/lib/imageUrl';
+import ShippingPreparationPanel from '@/components/admin/ShippingPreparationPanel';
 
 const NEXT_STATUS = Object.freeze({
   pending: ['processing', 'cancelled'],
@@ -132,12 +133,23 @@ function OrderDetailModal({ orderId, onClose }) {
     };
   }, [orderId]);
 
+  // Only GET /orders/:id carries `shippingPreparation`; the status and review-email responses are plain orders, so replacing the order with them made the
+  // shipping panel vanish after any action. Read the order again instead (and fall back to what the action returned if that read fails).
+  const reloadOrder = async (fallback) => {
+    try {
+      const { data } = await adminApi.getOrder(orderId);
+      setOrder(data.order);
+    } catch {
+      if (fallback) setOrder(fallback);
+    }
+  };
+
   const handleStatusUpdate = async (e) => {
     e.preventDefault();
     setUpdating(true);
     try {
       const { data } = await adminApi.updateOrderStatus(orderId, statusForm);
-      setOrder(data.order);
+      await reloadOrder(data.order);
       toast.success('Order status updated');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Update failed');
@@ -173,6 +185,18 @@ function OrderDetailModal({ orderId, onClose }) {
               <div>{order.user ? `${order.user.firstName} ${order.user.lastName}` : 'Guest'}</div>
               <div className="text-neutral-400">{order.user?.email || order.guestEmail}</div>
             </div>
+
+            {/* Notes the system left on the order: which Canada Post service to buy, an oversold item, an email or payment that needs a look */}
+            {order.adminNotes && (
+              <div className="rounded-xl p-4 text-[13px] border border-amber-500/30 bg-amber-500/5" role="note" data-testid="order-admin-notes">
+                <div className="text-amber-700 dark:text-amber-300 text-[11px] uppercase tracking-widest mb-2">Notes on this order</div>
+                <ul className="space-y-1.5 leading-relaxed break-words">
+                  {order.adminNotes.split('\n').filter(Boolean).map((line, i) => (
+                    <li key={i} className={/^(OVERSOLD|REVIEW)/.test(line) ? 'text-amber-800 dark:text-amber-200 font-medium' : 'text-neutral-200'}>{line}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {/* Items */}
             <div className="glass rounded-xl p-4">
@@ -216,7 +240,9 @@ function OrderDetailModal({ orderId, onClose }) {
               )}
             </div>
 
-            <ReviewEmailPanel order={order} onUpdated={setOrder} />
+            <ShippingPreparationPanel preparation={order.shippingPreparation} />
+
+            <ReviewEmailPanel order={order} onUpdated={(next) => reloadOrder(next)} />
 
             {/* Update status */}
             <form onSubmit={handleStatusUpdate} className="glass rounded-xl p-4 space-y-3">

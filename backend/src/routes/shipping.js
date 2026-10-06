@@ -5,13 +5,14 @@ const { optionalAuth } = require('../middleware/auth');
 const { INTERNATIONAL_COUNTRIES } = require('../config/shipping');
 const { isConfigured } = require('../utils/canadaPost');
 const { internationalOptions } = require('../utils/internationalShipping');
+const { validGuestSessionId } = require('../utils/guestSession');
 
 const router = express.Router();
 
 // Sticks in the buyer's cart that website checkout would charge for.
 const cartStickCount = async (req) => {
   const userId = req.user?._id;
-  const sessionId = req.headers['x-session-id'] || req.cookies?.cartSessionId;
+  const sessionId = validGuestSessionId(req.headers['x-session-id'] || req.cookies?.cartSessionId);   // a `j:{...}` cookie parses to an object: never a raw query value
   if (!userId && !sessionId) return 0;
   const cart = await Cart.findOne(userId ? { user: userId } : { sessionId });
   if (!cart?.items?.length) return 0;

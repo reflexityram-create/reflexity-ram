@@ -28,6 +28,8 @@ const { isFullyRefundedCharge } = require('../utils/refunds');
 const { cancelReviewRequest } = require('../utils/reviewRequests');
 const { estimateDeliveryDate } = require('../utils/deliveryEstimate');
 
+const { validGuestSessionId } = require('../utils/guestSession');
+
 const router = express.Router();
 
 // Stripe's hosted page takes its name from the Stripe account's public business
@@ -56,7 +58,8 @@ let stockDecrementer = decrementStockForOrder;
 // ─── POST /api/stripe/create-checkout-session ──────────────────────────────────
 router.post('/create-checkout-session', optionalAuth, async (req, res) => {
   try {
-    const sessionId = req.headers['x-session-id'] || req.cookies?.cartSessionId;
+    // Validated like cart.js and auth.js do: cookie-parser turns a `j:{...}` cookie into an OBJECT, which would reach the query below as operators.
+    const sessionId = validGuestSessionId(req.headers['x-session-id'] || req.cookies?.cartSessionId);
     const userId = req.user?._id;
 
     if (!userId && !sessionId) {
@@ -237,7 +240,13 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
 // stripeCheckoutSessionId makes this safe to call any number of times.
 // The buyer paid for a specific Canada Post service (and maybe a signature). The label has to match what was
 // charged, so say so on the order where the owner makes the label. Plain flat-rate orders need no note.
-const SERVICE_NAMES = { 'DOM.XP': 'Xpresspost' };
+// Canada Post service codes the checkout can sell, as the owner knows them when making the label (an unknown code is shown as it is).
+const SERVICE_NAMES = {
+  'DOM.XP': 'Xpresspost',
+  'USA.TP': 'Tracked Packet – USA', 'USA.EP': 'Expedited Parcel USA', 'USA.XP': 'Xpresspost USA',
+  'INT.TP': 'Tracked Packet – International', 'INT.XP': 'Xpresspost International',
+  'INT.IP.AIR': 'International Parcel Air', 'INT.SP.AIR': 'Small Packet International Air',
+};
 const shippingChoiceNote = (metadata = {}, label) => {
   const service = metadata.canadaPostService;
   const signature = metadata.signature === 'yes';
@@ -271,8 +280,9 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
   const existing = await Order.findOne({ stripeCheckoutSessionId: checkoutSessionId });
   if (existing) return ensureCriticalFulfillmentEffects(existing);
 
+  // shipping_cost.shipping_rate is only an ID unless it is expanded; without it every order read "Standard Shipping" (the label below).
   const session = await checkoutSessionRetriever(checkoutSessionId, {
-    expand: ['line_items.data.price.product', 'payment_intent'],
+    expand: ['line_items.data.price.product', 'payment_intent', 'shipping_cost.shipping_rate'],
   });
 
   // Only fulfill paid sessions (async payment methods stay 'unpaid' until later)
@@ -280,6 +290,7 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
 
   // ── Map Stripe line items back to our products via stored Price IDs ────────
   const orderItems = [];
+  const unmappedPrices = [];   // paid line items no product could be found for: the buyer was charged, so the order must say so
   for (const li of session.line_items.data) {
     const product = await Product.findOne({ stripePriceId: li.price.id });
     if (!product) {
@@ -288,6 +299,7 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
       const bySlug = slug ? await Product.findOne({ slug }) : null;
       if (!bySlug) {
         console.error(`Fulfillment: no product for Stripe price ${li.price.id}`);
+        unmappedPrices.push(li.price.id);
         continue;
       }
       orderItems.push({
@@ -375,6 +387,9 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
           ? 'REVIEW: disposable email detected after Stripe Checkout. Confirm before fulfillment.'
           : null,
         shippingChoiceNote(session.metadata, shippingMethodLabel),
+        unmappedPrices.length
+          ? `REVIEW: ${unmappedPrices.length} paid line item${unmappedPrices.length === 1 ? '' : 's'} could not be matched to a product and ${unmappedPrices.length === 1 ? 'is' : 'are'} NOT on this order (Stripe price ${unmappedPrices.join(', ')}). Check the Stripe payment before shipping.`
+          : null,
       ].filter(Boolean).join('\n') || undefined,
       statusHistory: [{ status: 'processing', note: 'Payment confirmed via Stripe Checkout' }],
     });
