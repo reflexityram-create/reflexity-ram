@@ -88,7 +88,7 @@ export default function Shop() {
           {loading ? (
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4" data-testid="shop-loading">
               {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="border border-white/8 rounded-xl overflow-hidden">
+                <div key={i} className="box rounded-xl overflow-hidden">
                   <div className="skeleton aspect-[2/1]" />
                   <div className="p-3 sm:p-4 space-y-3">
                     <div className="skeleton h-3 w-1/3" />

@@ -30,6 +30,9 @@ const PUBLIC_PRODUCT_PROJECTION = Object.freeze({
   compareAt: 1,
   stock: 1,
   stockLabel: 1,
+  // The count the product page stops the quantity picker at ("Only 2 available"). The cart API
+  // already reveals it to anyone who asks for more than is in stock.
+  stockQuantity: 1,
   estimatedDispatch: 1,
   'images.url': 1,
   'images.alt': 1,

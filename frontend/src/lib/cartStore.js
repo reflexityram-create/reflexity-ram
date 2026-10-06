@@ -65,9 +65,11 @@ const useCartStore = create((set, get) => ({
         itemCount: data.cart.itemCount,
         isLoading: false,
       });
+      return { success: true };
     } catch (err) {
       set({ isLoading: false });
       console.error('updateItem error:', err?.response?.data || err?.message);
+      return { success: false, message: err.response?.data?.error || 'Could not update the quantity' };
     }
   },
 

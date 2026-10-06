@@ -131,8 +131,8 @@ export default function Categories() {
               <Link
                 key={cat.id}
                 to={cat.to}
-                className="group relative border border-white/8 rounded-2xl p-7 flex flex-col gap-5 overflow-hidden
-                           hover:border-white/20 transition-all duration-300
+                className="group relative box rounded-2xl p-7 flex flex-col gap-5 overflow-hidden
+                           transition-all duration-300
                            hover:shadow-[0_0_30px_0px_var(--cat-glow)]"
                 style={{ "--cat-glow": cat.glow }}
                 data-testid={`category-card-${cat.id}`}
@@ -171,7 +171,7 @@ export default function Categories() {
                 </div>
 
                 {/* Badge */}
-                <span className="relative inline-block font-mono text-[10px] text-neutral-600 border border-white/8 rounded-md px-2 py-1 self-start group-hover:border-white/14 group-hover:text-neutral-500 transition-all duration-200">
+                <span className="relative inline-block font-mono text-[10px] text-neutral-600 border border-[var(--card-border)] rounded-md px-2 py-1 self-start group-hover:border-[var(--border-strong)] group-hover:text-neutral-500 transition-all duration-200">
                   {cat.badge}
                 </span>
               </Link>
@@ -179,7 +179,7 @@ export default function Categories() {
           </div>
 
           {/* Wholesale / custom inquiry */}
-          <div className="mt-10 border border-white/8 rounded-xl p-6 flex flex-col sm:flex-row sm:items-center gap-4 hover:border-white/14 transition-colors duration-300">
+          <div className="mt-10 box rounded-xl p-6 flex flex-col sm:flex-row sm:items-center gap-4">
             <div className="flex-1">
               <div className="text-[14px] font-semibold mb-1">
                 Need a specific part number?
