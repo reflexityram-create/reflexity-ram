@@ -69,6 +69,101 @@ function normalizeText(value, maxLength) {
   return `${plain.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
 }
 
+const SITE_NAME = "Reflexity RAM";
+
+// Brand for a product that has none stored: the guess the product page has always made.
+function manufacturerOf(product) {
+  if (product?.brand) return normalizeText(product.brand, 60);
+  const name = String(product?.name || "");
+  if (/^sk[ -]?hynix\b/i.test(name)) return "SK hynix";
+  return name.split(" ")[0] || "";
+}
+
+// The same rule the page's useSEO applies, so the HTML a crawler fetches and the page it renders carry one title.
+export function withSiteName(title) {
+  const text = String(title || "").trim();
+  if (!text) return "";
+  return text.endsWith(SITE_NAME) ? text : `${text} — ${SITE_NAME}`;
+}
+
+const speedLabelFor = (product) => {
+  const speed = Number(product?.speed);
+  return product?.generation ? (speed > 0 ? `${product.generation}-${speed}` : product.generation) : "";
+};
+
+// What a buyer types into a search box: "SK hynix 16GB DDR4-3200 ECC RDIMM HMA82GR7DJR8N-XN". The long product name stays the page heading
+// and the Merchant Center title; a stored metaTitle always wins, and a product without the full set of spec fields keeps its name.
+export function productSeoTitle(product) {
+  const stored = normalizeText(product?.metaTitle, 120);
+  if (stored) return stored;
+  const complete = product?.brand && product?.capacityLabel && product?.generation && product?.formFactor && product?.mpn;
+  if (complete) {
+    const composed = [manufacturerOf(product), product.capacityLabel, speedLabelFor(product), product.ecc ? "ECC" : "", product.formFactor, product.mpn]
+      .map((part) => normalizeText(String(part || ""), 60)).filter(Boolean).join(" ");
+    if (composed.length <= 75) return composed;
+  }
+  return normalizeText(product?.name, 120);
+}
+
+// A stored metaDescription wins, then the written description; both are cut at a word boundary so a snippet never ends mid-word.
+// Without either, a complete sentence is composed from the spec fields.
+export function productSeoDescription(product, maxLength = 160) {
+  const written = normalizeText(product?.metaDescription, 400) || normalizeText(product?.description, 400);
+  if (written) {
+    if (written.length <= maxLength) return written;
+    // Prefer ending on a whole sentence; otherwise cut at a word and say so.
+    const window = written.slice(0, maxLength + 1);
+    const sentenceEnd = window.lastIndexOf(". ");
+    if (sentenceEnd >= maxLength * 0.5) return window.slice(0, sentenceEnd + 1);
+    const cut = written.slice(0, maxLength - 1);
+    const at = cut.lastIndexOf(" ");
+    return `${(at > maxLength * 0.6 ? cut.slice(0, at) : cut).replace(/[\s,;:.—-]+$/, "")}…`;
+  }
+  const spec = [product?.capacityLabel, speedLabelFor(product), product?.ecc ? "ECC" : "", product?.formFactor].filter(Boolean).join(" ");
+  if (!spec) return "";
+  return normalizeText([
+    `${manufacturerOf(product)} ${spec} server memory${product?.mpn ? `, part number ${product.mpn}` : ""}.`,
+    product?.condition ? `${product.condition}.` : "",
+    product?.warranty ? `${product.warranty} warranty.` : "",
+    "Tracked shipping from Toronto, Canada.",
+  ].filter(Boolean).join(" "), maxLength);
+}
+
+// ONE Product schema for the HTML the edge serves and for the page after React renders. The page used to remove the edge's block and put in a
+// poorer one (no shipping details, no return policy, and "Used" where the Merchant Center feed says refurbished), and Google reads the rendered page.
+export function buildProductSchema(product, { url, description, images, now = Date.now() } = {}) {
+  const canonical = url || `${STOREFRONT_ORIGIN}/shop/${encodeURIComponent(product?.slug || "")}`;
+  const imageList = Array.isArray(images) && images.length ? images : [safeImageUrl(product)];
+  const manufacturer = manufacturerOf(product);
+  const properties = [
+    ["Generation", product?.generation], ["Form Factor", product?.formFactor], ["Capacity", product?.capacityLabel],
+    ["Speed", product?.speedLabel], ["CAS Latency", product?.cas], ["ECC", product?.ecc ? "Yes" : "No"],
+  ].filter(([, value]) => value).map(([name, value]) => ({ "@type": "PropertyValue", name, value: normalizeText(String(value), 60) }));
+  return {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: normalizeText(product?.name, 160),
+    description: description || productSeoDescription(product, 180),
+    image: imageList,
+    sku: normalizeText(product?.sku, 80) || undefined,
+    mpn: normalizeText(product?.mpn, 80) || undefined,
+    brand: manufacturer ? { "@type": "Brand", name: manufacturer } : undefined,
+    offers: {
+      "@type": "Offer",
+      url: canonical,
+      priceCurrency: "CAD",
+      price: Number(product?.price || 0),
+      priceValidUntil: new Date(now + 30 * 86400000).toISOString().slice(0, 10),
+      availability: product?.stock === "out" ? "https://schema.org/OutOfStock" : "https://schema.org/InStock",
+      itemCondition: itemConditionFor(product?.condition),
+      seller: { "@type": "Organization", name: SITE_NAME, url: STOREFRONT_ORIGIN },
+      shippingDetails: offerShippingDetails(product),
+      hasMerchantReturnPolicy: MERCHANT_RETURN_POLICY,
+    },
+    additionalProperty: properties.length ? properties : undefined,
+  };
+}
+
 function escapeHtml(value) {
   return value
     .replaceAll("&", "&amp;")
@@ -130,7 +225,7 @@ function safeImageUrl(product) {
 }
 
 function productMetadata(product, requestedSlug) {
-  const title = normalizeText(product.metaTitle || product.name, 120);
+  const title = withSiteName(productSeoTitle(product));
   const fallbackDescription = [
     product.name,
     product.generation,
@@ -141,10 +236,7 @@ function productMetadata(product, requestedSlug) {
   ]
     .filter(Boolean)
     .join(" · ");
-  const description = normalizeText(
-    product.metaDescription || product.description || fallbackDescription,
-    180,
-  );
+  const description = productSeoDescription(product) || normalizeText(fallbackDescription, 160);
   const canonicalSlug = VALID_SLUG.test(product.slug || "") ? product.slug : requestedSlug;
 
   return {
@@ -175,28 +267,7 @@ export function injectProductMetadata(html, product, requestedSlug) {
   const sku = normalizeText(product.sku, 80);
   const generation = normalizeText(product.generation, 30);
   const formFactor = normalizeText(product.formFactor, 40);
-  const availability = product.stock === "out" ? "https://schema.org/OutOfStock" : "https://schema.org/InStock";
-  const schema = {
-    "@context": "https://schema.org",
-    "@type": "Product",
-    name,
-    description: metadata.description,
-    image: [metadata.imageUrl],
-    sku: sku || undefined,
-    mpn: normalizeText(product.mpn, 80) || undefined,
-    brand: product.brand ? { "@type": "Brand", name: normalizeText(product.brand, 60) } : undefined,
-    offers: {
-      "@type": "Offer",
-      url: metadata.canonicalUrl,
-      priceCurrency: "CAD",
-      price: Number(product.price || 0),
-      availability,
-      itemCondition: itemConditionFor(product.condition),
-      seller: { "@type": "Organization", name: "Reflexity RAM", url: STOREFRONT_ORIGIN },
-      shippingDetails: offerShippingDetails(product),
-      hasMerchantReturnPolicy: MERCHANT_RETURN_POLICY,
-    },
-  };
+  const schema = buildProductSchema(product, { url: metadata.canonicalUrl, description: metadata.description, images: [metadata.imageUrl] });
   output = insertBeforeHeadClose(output, `<script type="application/ld+json" data-edge-product>${safeJson(schema)}</script>`);
   const details = [generation, formFactor, normalizeText(product.capacityLabel, 40), normalizeText(product.speedLabel, 40)].filter(Boolean).join(" · ");
   const body = `<div id="root"><main data-edge-content="product"><nav><a href="/">Reflexity RAM</a> · <a href="/shop">Shop tested RAM</a> · <a href="/guides">Compatibility guides</a></nav><article><h1>${escapeHtml(name)}</h1><p>${escapeHtml(metadata.description)}</p>${details ? `<p>${escapeHtml(details)}</p>` : ""}${sku ? `<p>SKU: ${escapeHtml(sku)}</p>` : ""}<p><a href="${escapeHtml(metadata.canonicalUrl)}">View product details</a> · <a href="/support">Ask about compatibility</a></p></article></main></div>`;

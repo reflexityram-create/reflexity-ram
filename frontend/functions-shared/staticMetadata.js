@@ -29,7 +29,7 @@ const PAGES = {
   },
   "/shop": {
     title: "Shop Tested Server RAM in Canada — Reflexity RAM",
-    description: "Browse tested Server RAM with clear compatibility details and warranty coverage.",
+    description: "Shop tested server memory in Canada: DDR4 ECC RDIMM and LRDIMM modules with part numbers, compatibility details, a warranty and tracked shipping from Toronto.",
     heading: "Shop tested Server RAM",
     links: [["Browse RAM categories", "/categories"], ["RAM compatibility guides", "/guides"]],
     productList: true,

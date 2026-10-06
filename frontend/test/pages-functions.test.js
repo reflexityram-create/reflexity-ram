@@ -193,7 +193,7 @@ test("product edge metadata uses the exact live API contract and escapes values"
   );
   assert.equal(response.headers.get("content-security-policy-report-only"), null);
   assert.equal(response.headers.get("etag"), null);
-  assert.match(html, /<title>Tested &quot;64GB&quot;<\/title>/);
+  assert.match(html, /<title>Tested &quot;64GB&quot; — Reflexity RAM<\/title>/);
   assert.doesNotMatch(html, /&lt;RAM&gt;|<RAM>/);
   assert.match(html, /content="Fast &amp; individually tested server memory\."/);
   assert.match(html, /property="og:type" content="product"/);
@@ -559,7 +559,7 @@ test("product edge text containing $ sequences is injected verbatim (String.repl
     }),
   });
   const html = await response.text();
-  assert.match(html, /<title>Kit costs \$1 less than \$2<\/title>/);
+  assert.match(html, /<title>Kit costs \$1 less than \$2 — Reflexity RAM<\/title>/);
   assert.match(html, /content="Only \$135 each — save \$1 on a pair, \$&amp; more, \$\$ total"/);
   assert.match(html, /<h1>Kit costs \$1 less than \$2<\/h1>/);
 });

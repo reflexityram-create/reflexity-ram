@@ -15,5 +15,18 @@
       window.merchantwidget.start({ position: "RIGHT_BOTTOM", mobileBottomMargin: 84 });
     });
     document.head.appendChild(widgetScript);
+    // Google's script creates this iframe without a title, which screen readers announce as an unnamed frame (axe "frame-title").
+    const nameFrame = () => {
+      const frame = document.getElementById("merchantwidgetiframe");
+      if (!frame) return false;
+      if (!frame.getAttribute("title")) frame.setAttribute("title", "Google customer reviews badge");
+      return true;
+    };
+    const Observer = window.MutationObserver;
+    if (!nameFrame() && Observer) {
+      const watcher = new Observer(() => { if (nameFrame()) watcher.disconnect(); });
+      watcher.observe(document.documentElement, { childList: true, subtree: true });
+      window.setTimeout(() => watcher.disconnect(), 30000);
+    }
   }
 })();

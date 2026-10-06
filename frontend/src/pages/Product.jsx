@@ -27,6 +27,8 @@ import { reviewsApi } from "@/lib/api";
 import { isPublicServerRam } from "@/lib/catalog";
 import { clampQuantity, limitNote, quantityLimit } from "@/lib/quantity";
 import { serializeJsonLd } from "@/lib/safeJsonLd";
+// The edge function (functions-shared) and this page build the Product schema, title and description with the SAME code.
+import { buildProductSchema, productSeoDescription, productSeoTitle } from "../../functions-shared/productMetadata.js";
 import { ecommerceItem, trackEvent } from "@/lib/analytics";
 import {
   formatStorePrice,
@@ -79,10 +81,8 @@ export default function Product() {
   const recentSlugs = useRecentlyViewed((s) => s.slugs);
 
   useSEO({
-    title: p?.metaTitle || p?.name,
-    description: p
-      ? p.metaDescription || `${p.name} — ${p.generation} ${p.formFactor} · ${p.speedLabel} · ${p.cas} · ${p.condition}. Tested RAM with ${p.warranty} warranty, shipped tracked from Toronto to Canada and abroad.`
-      : null,
+    title: p ? productSeoTitle(p) : undefined,
+    description: p ? productSeoDescription(p) : null,
   });
 
   // Fetch product from API on every slug change — always fresh data
@@ -155,37 +155,11 @@ export default function Product() {
   // JSON-LD structured data for Google rich results
   const jsonLd = useMemo(() => {
     if (!p) return null;
-    const manufacturer = p.brand || (/^sk[ -]?hynix\b/i.test(p.name) ? "SK hynix" : p.name.split(" ")[0]);
-    const data = {
-      "@context": "https://schema.org",
-      "@type": "Product",
-      name: p.name,
-      image: (p.images || []).map(imageUrl).filter(Boolean),
-      description: p.description || `${p.name} — ${p.generation} ${p.formFactor} ${p.speedLabel} ${p.cas} ${p.condition}. ${p.warranty} warranty.`,
-      sku: p.sku,
-      brand: { "@type": "Brand", name: manufacturer },
-      offers: {
-        "@type": "Offer",
-        url: `https://reflexityram.com/shop/${p.slug}`,
-        priceCurrency: STORE_CURRENCY_CODE,
-        price: p.price,
-        priceValidUntil: new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0],
-        itemCondition: p.condition === "New" ? "https://schema.org/NewCondition" : "https://schema.org/UsedCondition",
-        availability: p.stock === "out"
-          ? "https://schema.org/OutOfStock"
-          : "https://schema.org/InStock",
-        seller: { "@type": "Organization", name: "Reflexity RAM" },
-      },
-      additionalProperty: [
-        { "@type": "PropertyValue", name: "Generation", value: p.generation },
-        { "@type": "PropertyValue", name: "Form Factor", value: p.formFactor },
-        { "@type": "PropertyValue", name: "Capacity", value: p.capacityLabel },
-        { "@type": "PropertyValue", name: "Speed", value: p.speedLabel },
-        { "@type": "PropertyValue", name: "CAS Latency", value: p.cas },
-        { "@type": "PropertyValue", name: "ECC", value: p.ecc ? "Yes" : "No" },
-      ].filter((v) => v.value),
-    };
-    if (p.mpn) data.mpn = p.mpn;
+    const data = buildProductSchema(p, {
+      url: `https://reflexityram.com/shop/${p.slug}`,
+      description: productSeoDescription(p, 180),
+      images: (p.images || []).map(imageUrl).filter(Boolean),
+    });
     if (reviewData.summary.count > 0) {
       data.aggregateRating = {
         "@type": "AggregateRating",
@@ -234,6 +208,7 @@ export default function Product() {
               ctaTo="/shop"
               secondaryLabel="Email us"
               secondaryTo="/support"
+              as="h1"
             />
           </div>
         </main>
@@ -307,7 +282,7 @@ export default function Product() {
         <div className="container-tight pt-8">
           <Link
             to="/shop"
-            className="inline-flex items-center gap-1.5 text-[12px] text-neutral-400 hover:text-white mb-6"
+            className="tap-target inline-flex items-center gap-1.5 text-[12px] text-neutral-400 hover:text-white mb-6"
             data-testid="product-back-link"
           >
             <ChevronLeft size={14} /> Back to shop

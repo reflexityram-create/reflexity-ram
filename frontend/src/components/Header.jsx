@@ -57,7 +57,7 @@ export default function Header() {
           {/* ── Logo ───────────────────────────────────── */}
           <Link
             to="/"
-            className="flex items-center gap-3 shrink-0 mr-8"
+            className="tap-min flex items-center gap-3 shrink-0 mr-8"
             data-testid="header-logo-link"
           >
             <ReflexityMark size={22} />

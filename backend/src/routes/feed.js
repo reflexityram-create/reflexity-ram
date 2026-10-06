@@ -93,6 +93,20 @@ const abroadShippingXml = ({ country, name, price, transitDays }) => `<g:shippin
     ? `<g:min_transit_time>${transitDays}</g:min_transit_time><g:max_transit_time>${transitDays + 3}</g:max_transit_time>`
     : '')
   + `<g:price>${price.toFixed(2)} ${STORE_CURRENCY}</g:price></g:shipping>`;
+// A few plain facts for Google's product page ("product_highlight"): only what the spec fields and the listing already say, no promotion.
+const withUnit = (value, unit) => (value ? (new RegExp(`${unit}$`, 'i').test(String(value)) ? String(value) : `${value}${unit}`) : '');
+const productHighlights = (product) => {
+  const speed = Number(product.speed);
+  const memory = [product.capacityLabel, product.generation && (speed > 0 ? `${product.generation}-${speed}` : product.generation), product.ecc ? 'ECC' : '', product.formFactor]
+    .filter(Boolean).join(' ');
+  const electrical = [product.rank, withUnit(product.voltage, 'V'), product.cas].filter(Boolean).join(', ');
+  return [
+    memory,
+    electrical,
+    product.mpn ? `Manufacturer part number ${product.mpn}` : '',
+    product.condition ? `Condition: ${product.condition}${product.warranty ? `, ${product.warranty} warranty` : ''}` : '',
+  ].filter((text) => text && text.length >= 6).map((text) => text.slice(0, 150)).slice(0, 6);
+};
 const description = (product) => {
   const supplied = (product.description || '').trim();
   return supplied.length >= 20 && !/^\d+$/.test(supplied)
@@ -124,6 +138,7 @@ router.get('/feed.xml', async (_req, res) => {
       for (const [name, value] of productDetails(product)) {
         xml += `<g:product_detail><g:section_name>Specifications</g:section_name><g:attribute_name>${xmlEscape(name)}</g:attribute_name><g:attribute_value>${xmlEscape(value)}</g:attribute_value></g:product_detail>`;
       }
+      for (const highlight of productHighlights(product)) xml += `<g:product_highlight>${xmlEscape(highlight)}</g:product_highlight>`;
       const shippingPrice = shippingPriceForProduct(product);
       for (const country of ALLOWED_SHIPPING_COUNTRIES) xml += shippingXml(country, shippingPrice);
       for (const line of abroad) xml += abroadShippingXml(line);

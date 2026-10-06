@@ -69,6 +69,30 @@ async function feedItems(items, path = '/feed.xml') {
   }
 }
 
+test('each item carries plain-fact product highlights built from its spec fields, and nothing is invented', async () => {
+  const xml = await feedItems([
+    product({ speed: 3200, cas: 'CL22', warranty: '30 Days' }),
+    product({ sku: 'RFX-SPARSE', slug: 'rfx-sparse', brand: '', mpn: '', condition: '', generation: '', formFactor: '', capacityLabel: '', rank: '', voltage: '', ecc: false }),
+  ]);
+  const items = xml.split('<item>').slice(1);
+  const highlights = (item) => [...item.matchAll(/<g:product_highlight>([^<]*)<\/g:product_highlight>/g)].map((m) => m[1]);
+  assert.deepEqual(highlights(items[0]), [
+    '16GB DDR4-3200 ECC RDIMM',
+    '2Rx8, 1.2V, CL22',
+    'Manufacturer part number HMA82GR7DJR8N-XN',
+    'Condition: Refurbished — Tested, 30 Days warranty',
+  ]);
+  assert.deepEqual(highlights(items[1]), [], 'a product with no spec fields gets no highlights rather than made-up ones');
+  assert.equal((xml.match(/<g:product_highlight>/g) || []).length, 4);
+});
+
+test('a voltage stored with or without its unit is shown once', async () => {
+  for (const [stored, shown] of [['1.2', '1.2V'], ['1.2V', '1.2V'], ['1.35v', '1.35v']]) {
+    const xml = await feedItems([product({ voltage: stored, rank: '2Rx8', speed: 0 })]);
+    assert.match(xml, new RegExp(`<g:product_highlight>2Rx8, ${shown}</g:product_highlight>`), stored);
+  }
+});
+
 test('every shipping line states handling and transit days that match the saved policy', async () => {
   assert.deepEqual(HANDLING_DAYS, { min: 1, max: 3 });
   assert.equal(SHIPPING_OPTIONS.standard.minDays, 3);
