@@ -6,7 +6,7 @@ const { validate } = require('../middleware/validate');
 const { optionalAuth } = require('../middleware/auth');
 const { validGuestSessionId } = require('../utils/guestSession');
 const { CartMutationError, mutateCartWithRetry } = require('../utils/cartConcurrency');
-const { resolveCartShippingPrice } = require('../config/shipping');
+const { resolveCartShippingPrice, resolveFasterShippingPrice } = require('../config/shipping');
 
 const router = express.Router();
 const guestSessionIdFrom = (req) => validGuestSessionId(req.headers['x-session-id'] || req.cookies?.cartSessionId);
@@ -38,6 +38,8 @@ const publicCartView = async (cart) => {
     itemCount: items.reduce((sum, item) => sum + item.qty, 0),
     // The flat rate Stripe Checkout will charge for this cart (same function).
     shipping: items.length ? resolveCartShippingPrice(items.map((item) => ({ product: productsBySlug.get(item.slug), qty: item.qty }))) : 0,
+    // What Faster shipping would cost for this cart, or null when it is not offered (more than 6 sticks).
+    shippingFaster: resolveFasterShippingPrice(items.map((item) => ({ product: productsBySlug.get(item.slug), qty: item.qty }))),
   };
 };
 
@@ -76,6 +78,7 @@ router.get('/', optionalAuth, async (req, res) => {
     const itemCount = items.reduce((sum, i) => sum + i.qty, 0);
     // The flat rate Stripe Checkout will charge for this cart (same function).
     const shipping = items.length ? resolveCartShippingPrice(items.map((i) => ({ product: i.product, qty: i.qty }))) : 0;
+    const shippingFaster = resolveFasterShippingPrice(items.map((i) => ({ product: i.product, qty: i.qty })));
 
     res.json({
       cart: {
@@ -84,6 +87,7 @@ router.get('/', optionalAuth, async (req, res) => {
         subtotal,
         itemCount,
         shipping,
+        shippingFaster,
         discount: cart.discount,
         couponCode: cart.couponCode,
       },

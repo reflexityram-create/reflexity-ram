@@ -169,7 +169,7 @@ test('cart responses and checkout only expose purchasable Server items', async (
     const updated = await jsonRequest(cartApp, '/api/cart/update', { slug: 'server-sodimm', qty: 2 }, 'PATCH');
     assert.deepEqual({ items: updated.body.cart.items.map((item) => item.slug), subtotal: updated.body.cart.subtotal, itemCount: updated.body.cart.itemCount }, { items: ['server-sodimm'], subtotal: 80, itemCount: 2 });
     const removed = await jsonRequest(cartApp, '/api/cart/remove/server-sodimm', undefined, 'DELETE');
-    assert.deepEqual(removed.body.cart, { items: [], subtotal: 0, itemCount: 0, shipping: 0 });
+    assert.deepEqual(removed.body.cart, { items: [], subtotal: 0, itemCount: 0, shipping: 0, shippingFaster: null });
 
     staleCart.items.push({ slug: 'server-sodimm', name: 'Server SO-DIMM', qty: 2 });
     stripeRouter.setCheckoutDependenciesForTest({

@@ -35,6 +35,7 @@ import {
   hasOwnShippingPrice,
   LARGE_ORDER_MIN_STICKS,
   LARGE_ORDER_SHIPPING_PRICE,
+  FASTER_SHIPPING_UPCHARGE,
   STORE_CURRENCY_CODE,
 } from "@/lib/currency";
 
@@ -792,7 +793,7 @@ function deliveryTiles(p) {
     {
       icon: "🍁",
       title: "Canada",
-      body: `${canada} flat rate${large}. Tracked, ESD-safe packing, estimated 3–6 business days after dispatch.`,
+      body: `${canada} flat rate${large}. Tracked, ESD-safe packing, estimated 3–6 business days after dispatch. Want it sooner? Faster shipping is +${formatStorePriceWithCode(FASTER_SHIPPING_UPCHARGE, 0)} at checkout.`,
     },
     {
       icon: "🌍",

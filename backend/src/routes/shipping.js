@@ -2,10 +2,9 @@ const express = require('express');
 const Cart = require('../models/Cart');
 const Product = require('../models/Product');
 const { optionalAuth } = require('../middleware/auth');
-const { INTERNATIONAL_COUNTRIES, CANADA_POSTAL_CODE, normalizePostalCode } = require('../config/shipping');
+const { INTERNATIONAL_COUNTRIES } = require('../config/shipping');
 const { isConfigured } = require('../utils/canadaPost');
 const { internationalOptions } = require('../utils/internationalShipping');
-const { canadaOptions } = require('../utils/canadaShipping');
 
 const router = express.Router();
 
@@ -44,28 +43,6 @@ router.post('/international-quote', optionalAuth, async (req, res) => {
   } catch (err) {
     console.error('International quote error:', err.message);
     res.status(502).json({ error: 'Could not get Canada Post prices right now. Please try again.' });
-  }
-});
-
-// ─── POST /api/shipping/canada-quote { postalCode } ───────────────────────────
-// Faster services inside Canada, priced by Canada Post for this postal code and the
-// sticks in the buyer's cart. Standard delivery (the flat rate) never depends on this.
-router.post('/canada-quote', optionalAuth, async (req, res) => {
-  const postalCode = normalizePostalCode(req.body?.postalCode);
-  if (!CANADA_POSTAL_CODE.test(postalCode)) {
-    return res.status(400).json({ error: 'Enter a Canadian postal code, like M5V 2T6.' });
-  }
-  if (!isConfigured()) {
-    return res.status(503).json({ error: 'Faster delivery is not available right now. Standard delivery still works.' });
-  }
-  try {
-    const sticks = await cartStickCount(req);
-    if (!sticks) return res.status(400).json({ error: 'Your cart is empty' });
-    const { options, signaturePrice } = await canadaOptions({ postalCode, sticks });
-    res.json({ postalCode, sticks, options, signaturePrice });
-  } catch (err) {
-    console.error('Canada quote error:', err.message);
-    res.status(502).json({ error: 'Could not get Canada Post prices right now. Standard delivery still works.' });
   }
 });
 

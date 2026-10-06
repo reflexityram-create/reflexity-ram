@@ -4,6 +4,7 @@ import { cartApi } from './api';
 const useCartStore = create((set, get) => ({
   items: [],
   shipping: 0,
+  shippingFaster: null, // price of Faster shipping for this cart, null when not offered
   subtotal: 0,
   itemCount: 0,
   discount: 0,
@@ -20,6 +21,7 @@ const useCartStore = create((set, get) => ({
         items: data.cart.items || [],
         subtotal: data.cart.subtotal || 0,
         shipping: data.cart.shipping || 0,
+        shippingFaster: data.cart.shippingFaster ?? null,
         itemCount: data.cart.itemCount || 0,
         discount: data.cart.discount || 0,
         couponCode: data.cart.couponCode || null,
@@ -41,6 +43,7 @@ const useCartStore = create((set, get) => ({
         items: data.cart.items,
         subtotal: data.cart.subtotal,
         shipping: data.cart.shipping || 0,
+        shippingFaster: data.cart.shippingFaster ?? null,
         itemCount: data.cart.itemCount,
         isLoading: false,
       });
@@ -62,6 +65,7 @@ const useCartStore = create((set, get) => ({
         items: data.cart.items,
         subtotal: data.cart.subtotal,
         shipping: data.cart.shipping || 0,
+        shippingFaster: data.cart.shippingFaster ?? null,
         itemCount: data.cart.itemCount,
         isLoading: false,
       });
@@ -82,6 +86,7 @@ const useCartStore = create((set, get) => ({
         items: data.cart.items,
         subtotal: data.cart.subtotal,
         shipping: data.cart.shipping || 0,
+        shippingFaster: data.cart.shippingFaster ?? null,
         itemCount: data.cart.itemCount,
         isLoading: false,
       });
@@ -95,7 +100,7 @@ const useCartStore = create((set, get) => ({
   clearCart: async () => {
     try {
       await cartApi.clear();
-      set({ items: [], subtotal: 0, shipping: 0, itemCount: 0, discount: 0, couponCode: null });
+      set({ items: [], subtotal: 0, shipping: 0, shippingFaster: null, itemCount: 0, discount: 0, couponCode: null });
     } catch (err) {
       console.error('clearCart error:', err?.response?.data || err?.message);
     }
@@ -103,7 +108,7 @@ const useCartStore = create((set, get) => ({
 
   // Clear cart locally only (after order placed)
   clearCartLocal: () => {
-    set({ items: [], subtotal: 0, shipping: 0, itemCount: 0, discount: 0, couponCode: null });
+    set({ items: [], subtotal: 0, shipping: 0, shippingFaster: null, itemCount: 0, discount: 0, couponCode: null });
   },
 
   // Cart drawer
