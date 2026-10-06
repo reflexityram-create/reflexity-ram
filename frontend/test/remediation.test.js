@@ -171,7 +171,7 @@ test('the product page, checkout and shipping policies state the stick-count shi
   ]);
   assert.match(currency, /export const LARGE_ORDER_MIN_STICKS = 3;/);
   assert.match(currency, /export const LARGE_ORDER_SHIPPING_PRICE = 25;/);
-  assert.match(product, /hasOwnShippingPrice\(p\) \? '' : ` \(\$\{formatStorePriceWithCode\(LARGE_ORDER_SHIPPING_PRICE, 0\)\} for \$\{LARGE_ORDER_MIN_STICKS\}\+ sticks\)`/);
+  assert.match(product, /hasOwnShippingPrice\(p\)\s*\? ""\s*: ` \(\$\{formatStorePriceWithCode\(LARGE_ORDER_SHIPPING_PRICE, 0\)\} for \$\{LARGE_ORDER_MIN_STICKS\}\+ sticks\)`/);
   assert.match(checkout, /\$14 for 1–2 sticks, \$25 for 3 or more/);
   for (const policy of [shipping, international]) assert.match(policy, /\$14 CAD for 1–2 sticks and \$25 CAD for 3 or more/);
 });
@@ -190,7 +190,8 @@ test('the admin product form asks where the module was made and the product page
   assert.match(admin, /data-testid="product-country-of-origin"/);
   assert.match(admin, /\['KR', 'Korea'\]/);
   assert.match(admin, /countryOfOrigin: form\.countryOfOrigin \|\| null/);
-  assert.match(product, /\["Made in", p\.countryOfOrigin \?/);
+  assert.match(product, /\["Made in", madeInLabel\(p\)\]/);
+  assert.match(product, /p\.countryOfOrigin \? new Intl\.DisplayNames/);
 });
 
 // Outside Canada buyers pick their country and a Canada Post service priced live.
@@ -228,7 +229,8 @@ test('sealed listings say "Factory sealed, unopened" instead of "Individually te
 // Checkout ships abroad now, so the product page and the International page's search text stop saying "custom orders".
 test('the product page and International metadata describe checkout abroad', async () => {
   const [product, metadata, international] = await Promise.all([read('../src/pages/Product.jsx'), read('../functions-shared/staticMetadata.js'), read('../src/pages/policies/International.jsx')]);
-  assert.match(product, /Many countries check out here at Canada Post's price, tracked\. US orders by quote\./);
+  assert.match(product, /Pick your country at checkout to see Canada Post's tracked price and delivery time/);
+  assert.match(product, /By quote, because US duties must be prepaid/);
   assert.doesNotMatch(product, /We ship worldwide as custom orders/);
   assert.match(metadata, /Ship Reflexity RAM abroad with Canada Post: tracked, at Canada Post's price at checkout\. US orders by quote\./);
   assert.match(international, /<h2>Checking out from outside Canada<\/h2>/);
@@ -263,7 +265,10 @@ test('the product page shows key specs near the top, signals the details below a
   assert.match(product, /data-testid="product-jump-links"/);
   assert.match(product, /More below:/);
   assert.match(product, /ref=\{detailsRef\} id="product-details"/);
-  assert.match(product, /Ships worldwide from Toronto/);
+  // One tile per audience, with emoji icons (flags show as letters on Windows), across the full width.
+  assert.match(product, /data-testid="product-delivery"/);
+  for (const title of ['"Canada"', '"Worldwide"', '"United States"', '"30-day returns"']) assert.match(product, new RegExp(`title: ${title}`));
+  for (const icon of ['🍁', '🌍', '🗽', '↩️']) assert.ok(product.includes(`icon: "${icon}"`), icon);
   assert.doesNotMatch(product, /Canada-wide shipping|Shipping outside Canada\?/);
   assert.match(product, /Dispatch: \{p\.estimatedDispatch \|\| "1–3 business days"\}/);
   assert.match(product, /imageUrl\(imageUrls\[imgIdx\], \{ width: 1200, trim: true \}\)/);

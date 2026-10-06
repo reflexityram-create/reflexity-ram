@@ -2,10 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   ChevronLeft,
-  Minus,
-  Plus,
   ShoppingCart,
-  Truck,
   Copy,
   Check,
   AlertTriangle,
@@ -19,6 +16,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import ImageModal from "@/components/ImageModal";
 import ProductCard from "@/components/ProductCard";
+import QuantityStepper from "@/components/QuantityStepper";
 import { DETAIL_IMAGE_WIDTHS, imageSrcSet, imageUrl } from "@/lib/imageUrl";
 import EmptyState from "@/components/EmptyState";
 import { useCart, useRecentlyViewed } from "@/lib/store";
@@ -27,6 +25,7 @@ import { useSEO } from "@/lib/seo";
 import { productsApi } from "@/lib/api";
 import { reviewsApi } from "@/lib/api";
 import { isPublicServerRam } from "@/lib/catalog";
+import { clampQuantity, limitNote, quantityLimit } from "@/lib/quantity";
 import { serializeJsonLd } from "@/lib/safeJsonLd";
 import { ecommerceItem, trackEvent } from "@/lib/analytics";
 import {
@@ -58,6 +57,9 @@ export default function Product() {
   const [notFound, setNotFound] = useState(false);
 
   const [qty, setQty] = useState(1);
+  // The picker stops at the stock on hand (the product arrives with its count).
+  const limit = quantityLimit(p?.stockQuantity);
+  const soldOut = limit < 1;
   const [imgIdx, setImgIdx] = useState(0);
   const [tab, setTab] = useState("specs");
   // "More below" links and "All specifications" open a tab and scroll to it.
@@ -78,7 +80,7 @@ export default function Product() {
   useSEO({
     title: p?.metaTitle || p?.name,
     description: p
-      ? p.metaDescription || `${p.name} — ${p.generation} ${p.formFactor} · ${p.speedLabel} · ${p.cas} · ${p.condition}. Tested RAM with ${p.warranty} warranty, shipping from Toronto across Canada.`
+      ? p.metaDescription || `${p.name} — ${p.generation} ${p.formFactor} · ${p.speedLabel} · ${p.cas} · ${p.condition}. Tested RAM with ${p.warranty} warranty, shipped tracked from Toronto to Canada and abroad.`
       : null,
   });
 
@@ -138,6 +140,10 @@ export default function Product() {
     if (!p?.slug) return;
     document.querySelectorAll("script[data-edge-product]").forEach((node) => node.remove());
   }, [p?.slug]);
+
+  // A new product starts at one stick; a stock count below the choice pulls the choice down to it.
+  useEffect(() => { setQty(1); }, [slug]);
+  useEffect(() => { setQty((q) => clampQuantity(q, limit).qty || 1); }, [limit]);
 
   const recentlyViewed = useMemo(() => {
     return recentSlugs
@@ -236,6 +242,7 @@ export default function Product() {
   }
 
   const addToCart = async () => {
+    if (soldOut) return;
     const result = await addItem(p.slug, qty);
     if (result && !result.success) {
       toast.error(result.message || "Failed to add to cart");
@@ -253,6 +260,7 @@ export default function Product() {
   };
 
   const buyNow = async () => {
+    if (soldOut) return;
     const result = await addItem(p.slug, qty);
     if (result && !result.success) {
       toast.error(result.message || "Failed to add to cart");
@@ -308,7 +316,7 @@ export default function Product() {
             {/* Gallery */}
             <div>
               <button
-                className="block w-full glass rounded-2xl overflow-hidden aspect-[16/9] mb-3 cursor-zoom-in bg-white p-5 sm:p-8"
+                className="block w-full glass rounded-2xl overflow-hidden aspect-[2/1] sm:aspect-[16/9] mb-3 cursor-zoom-in !bg-white p-4 sm:p-8"
                 onClick={() => setModalOpen(true)}
                 data-testid="product-main-image-btn"
               >
@@ -423,27 +431,17 @@ export default function Product() {
 
               {/* Qty + add to cart */}
               <div className="flex flex-wrap items-stretch gap-3 mb-5">
-                <div className="flex items-center glass rounded-full overflow-hidden" data-testid="product-qty-stepper">
-                  <button
-                    onClick={() => setQty((q) => Math.max(1, q - 1))}
-                    className="px-4 py-2.5 hover:bg-white/5"
-                    data-testid="product-qty-decrease"
-                  >
-                    <Minus size={14} />
-                  </button>
-                  <div className="px-4 mono text-sm min-w-[2ch] text-center" data-testid="product-qty-value">
-                    {qty}
-                  </div>
-                  <button
-                    onClick={() => setQty((q) => q + 1)}
-                    className="px-4 py-2.5 hover:bg-white/5"
-                    data-testid="product-qty-increase"
-                  >
-                    <Plus size={14} />
-                  </button>
-                </div>
+                <QuantityStepper
+                  value={qty}
+                  onChange={setQty}
+                  limit={limit}
+                  note={limitNote(p.stockQuantity)}
+                  noteClassName="order-last basis-full"
+                  testId="product-qty"
+                />
                 <button
                   onClick={addToCart}
+                  disabled={soldOut}
                   className="btn-primary flex-1 sm:flex-none"
                   data-testid="product-add-to-cart-btn"
                 >
@@ -451,7 +449,8 @@ export default function Product() {
                 </button>
                 <button
                   onClick={buyNow}
-                  className="btn-secondary flex-1 sm:flex-none"
+                  disabled={soldOut}
+                  className="btn-secondary flex-1 sm:flex-none disabled:opacity-50 disabled:cursor-not-allowed"
                   data-testid="product-buy-now-btn"
                 >
                   Buy now
@@ -461,28 +460,13 @@ export default function Product() {
               <KeySpecs p={p} onMore={() => openTab("specs")} className="lg:hidden mb-5" />
 
               {/* Trust strip — quick reassurance at the point of decision */}
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mb-4 text-[12px] text-neutral-600 dark:text-neutral-400">
+              <ul className="grid grid-cols-2 gap-x-4 gap-y-2 mb-5 text-[13px] text-neutral-600 dark:text-neutral-300">
                 {[conditionBadge(p), `${p.warranty} warranty`, "Ships from Toronto", "Secure checkout"].map((t) => (
-                  <span key={t} className="inline-flex items-center gap-1.5">
+                  <li key={t} className="inline-flex items-center gap-2">
                     <span className="text-emerald-600 dark:text-emerald-400">✓</span> {t}
-                  </span>
+                  </li>
                 ))}
-              </div>
-
-              {/* Shipping (the warranty is in the trust strip above) */}
-              <div className="mb-4">
-                <div className="glass-soft rounded-xl p-4 flex items-start gap-3">
-                  <Truck size={18} className="text-neutral-300 mt-0.5 shrink-0" />
-                  <div>
-                    <div className="text-[13px] font-medium">Ships worldwide from Toronto</div>
-                    <div className="text-[12px] text-neutral-500">
-                      Canada: {formatStorePriceWithCode(shippingPriceFor(p), 0)} flat rate{hasOwnShippingPrice(p) ? '' : ` (${formatStorePriceWithCode(LARGE_ORDER_SHIPPING_PRICE, 0)} for ${LARGE_ORDER_MIN_STICKS}+ sticks)`} · ESD-safe · tracked.
-                      {" "}Many countries check out here at Canada Post's price, tracked. US orders by quote.{" "}
-                      <Link to="/international" className="underline underline-offset-2">Read more</Link>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              </ul>
 
               {/* A visible signal that the details continue below the fold */}
               <nav aria-label="Product details" className="flex flex-wrap items-center gap-2" data-testid="product-jump-links">
@@ -506,8 +490,29 @@ export default function Product() {
             </div>
           </div>
 
+          {/* Where it ships and what it costs, one tile per audience, across the full width */}
+          <section className="glass rounded-2xl p-4 sm:p-5 mt-8" aria-label="Shipping and returns" data-testid="product-delivery">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div className="mono text-[11px] tracking-widest text-neutral-500">SHIPPING &amp; RETURNS</div>
+              <Link to="/international" className="text-[12px] font-medium underline underline-offset-4">
+                Shipping details →
+              </Link>
+            </div>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {deliveryTiles(p).map(({ icon, title, body }) => (
+                <div key={title} className="flex items-start gap-3 rounded-xl bg-white/5 p-3.5">
+                  <span className="text-[22px] leading-none mt-0.5" aria-hidden="true">{icon}</span>
+                  <div className="min-w-0">
+                    <div className="text-[13.5px] font-semibold">{title}</div>
+                    <div className="text-[12.5px] leading-relaxed text-neutral-500 mt-0.5">{body}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
           {/* TABS */}
-          <div ref={detailsRef} id="product-details" className="mt-10 border-t border-white/5 pt-8 scroll-mt-20">
+          <div ref={detailsRef} id="product-details" className="mt-8 pt-2 scroll-mt-20">
             <div className="flex flex-wrap gap-1 mb-6" data-testid="product-tabs">
               {TABS.map((t) => (
                 <button
@@ -610,24 +615,26 @@ export default function Product() {
           className="fixed bottom-0 left-0 right-0 z-40 lg:hidden border-t border-white/10 bg-black/85 backdrop-blur-xl px-4 py-3 flex items-center gap-3"
           data-testid="mobile-buy-bar"
         >
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             <div className="text-lg font-bold leading-none">
               {formatStorePrice(p.price)} <span className="text-[10px] font-medium text-neutral-500">{STORE_CURRENCY_CODE}</span>
             </div>
             <div className="text-[11px] text-neutral-500 mt-1 truncate">{p.sku}</div>
           </div>
-          <div className="flex items-center glass rounded-full overflow-hidden">
-            <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="px-3 py-2">
-              <Minus size={12} />
-            </button>
-            <div className="px-2 mono text-[12px] min-w-[2ch] text-center">{qty}</div>
-            <button onClick={() => setQty((q) => q + 1)} className="px-3 py-2">
-              <Plus size={12} />
-            </button>
-          </div>
+          <QuantityStepper
+            size="sm"
+            value={qty}
+            onChange={setQty}
+            limit={limit}
+            note={limitNote(p.stockQuantity)}
+            notePlacement="above"
+            className="shrink-0"
+            testId="mobile-qty"
+          />
           <button
             onClick={addToCart}
-            className="btn-primary py-2.5 px-4 text-[13px]"
+            disabled={soldOut}
+            className="btn-primary shrink-0 py-2.5 px-4 text-[13px]"
             data-testid="mobile-add-to-cart"
           >
             Add
@@ -774,6 +781,50 @@ function conditionBadge(p) {
   return "Individually tested";
 }
 
+// One tile per audience: Canada, abroad, the US, and returns. The icons are emoji so they look the
+// same everywhere (flag emoji show as two letters on Windows).
+function deliveryTiles(p) {
+  const canada = formatStorePriceWithCode(shippingPriceFor(p), 0);
+  const large = hasOwnShippingPrice(p)
+    ? ""
+    : ` (${formatStorePriceWithCode(LARGE_ORDER_SHIPPING_PRICE, 0)} for ${LARGE_ORDER_MIN_STICKS}+ sticks)`;
+  return [
+    {
+      icon: "🍁",
+      title: "Canada",
+      body: `${canada} flat rate${large}. Tracked, ESD-safe packing, estimated 3–6 business days after dispatch.`,
+    },
+    {
+      icon: "🌍",
+      title: "Worldwide",
+      body: "Pick your country at checkout to see Canada Post's tracked price and delivery time. 70+ countries.",
+    },
+    {
+      icon: "🗽",
+      title: "United States",
+      body: (
+        <>
+          By quote, because US duties must be prepaid.{" "}
+          <Link to="/support" className="underline underline-offset-2">Email us</Link> for a price.
+        </>
+      ),
+    },
+    {
+      icon: "↩️",
+      title: "30-day returns",
+      body: (
+        <>
+          Return it within 30 days of delivery in its original condition.{" "}
+          <Link to="/returns" className="underline underline-offset-2">Returns policy</Link>
+        </>
+      ),
+    },
+  ];
+}
+
+// "South Korea" for a stored country code.
+const madeInLabel = (p) => (p.countryOfOrigin ? new Intl.DisplayNames(["en"], { type: "region" }).of(p.countryOfOrigin) : null);
+
 // The specs buyers check first, near the top of the page (the full table is in
 // the Specifications tab below).
 function KeySpecs({ p, onMore, className = "" }) {
@@ -785,6 +836,7 @@ function KeySpecs({ p, onMore, className = "" }) {
     ["Voltage", p.voltage ? `${p.voltage}${/v\s*$/i.test(String(p.voltage)) ? "" : " V"}` : null],
     ["ECC", p.ecc ? "Yes" : "No"],
     ["CAS latency", p.cas],
+    ["Made in", madeInLabel(p)],
     ["Part number", p.mpn],
   ].filter(([, v]) => v);
   return (
@@ -795,7 +847,7 @@ function KeySpecs({ p, onMore, className = "" }) {
           All specifications ↓
         </button>
       </div>
-      <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
+      <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4">
         {items.map(([k, v]) => (
           <div key={k} className="min-w-0">
             <dt className="text-[11.5px] text-neutral-500">{k}</dt>
@@ -811,7 +863,7 @@ function SpecsTable({ p }) {
   const rows = [
     ["Manufacturer", p.brand],
     ["Manufacturer Part Number", p.mpn],
-    ["Made in", p.countryOfOrigin ? new Intl.DisplayNames(["en"], { type: "region" }).of(p.countryOfOrigin) : null],
+    ["Made in", madeInLabel(p)],
     ["Generation", p.generation],
     ["Form Factor", p.formFactor],
     ["Capacity (kit)", p.capacityLabel],

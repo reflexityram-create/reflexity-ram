@@ -15,13 +15,23 @@ const sendCartError = (res, err, fallback) => {
   console.error(fallback, err);
   return res.status(500).json({ error: fallback.replace(/^Failed to /, 'Failed to ') });
 };
+// How many of a line the buyer could still hold, so the cart page can stop at the stock on hand.
+const withAvailable = (item, product) => {
+  const plain = typeof item.toObject === 'function' ? item.toObject() : { ...item };
+  const stock = Number(product?.stockQuantity);
+  return Number.isFinite(stock) ? { ...plain, available: Math.max(0, stock) } : plain;
+};
+const unitsMessage = (stock, inCart = 0) =>
+  `Only ${stock} units available${inCart > 0 ? ` (${inCart} already in your cart)` : ''}`;
 const publicCartView = async (cart) => {
   const slugs = [...new Set(cart.items.map((item) => item.slug).filter(Boolean))];
   const products = slugs.length
     ? await Product.find({ slug: { $in: slugs }, isActive: true, line: 'Server' }).lean()
     : [];
   const productsBySlug = new Map(products.map((product) => [product.slug, product]));
-  const items = cart.items.filter((item) => productsBySlug.has(item.slug));
+  const items = cart.items
+    .filter((item) => productsBySlug.has(item.slug))
+    .map((item) => withAvailable(item, productsBySlug.get(item.slug)));
   return {
     items,
     subtotal: items.reduce((sum, item) => sum + item.price * item.qty, 0),
@@ -70,7 +80,7 @@ router.get('/', optionalAuth, async (req, res) => {
     res.json({
       cart: {
         _id: cart._id,
-        items,
+        items: items.map((item) => withAvailable(item, item.product)),
         subtotal,
         itemCount,
         shipping,
@@ -117,11 +127,11 @@ router.post(
         const existingItem = draft.items.find(i => i.slug === slug);
         if (existingItem) {
           const newQty = existingItem.qty + qty;
-          if (newQty > product.stockQuantity) throw new CartMutationError(400, `Only ${product.stockQuantity} units available`);
+          if (newQty > product.stockQuantity) throw new CartMutationError(400, unitsMessage(product.stockQuantity, existingItem.qty));
           existingItem.qty = newQty;
           existingItem.price = product.price;
         } else {
-          if (qty > product.stockQuantity) throw new CartMutationError(400, `Only ${product.stockQuantity} units available`);
+          if (qty > product.stockQuantity) throw new CartMutationError(400, unitsMessage(product.stockQuantity));
           draft.items.push({
             product: product._id, slug: product.slug, sku: product.sku, name: product.name,
             price: product.price, image: product.images?.[0]?.url || '', qty,
@@ -167,7 +177,7 @@ router.patch(
         if (!item) throw new CartMutationError(404, 'Item not in cart');
         const product = await Product.findOne({ slug, isActive: true, line: 'Server' });
         if (!product) throw new CartMutationError(400, 'Product is no longer available');
-        if (qty > product.stockQuantity) throw new CartMutationError(400, `Only ${product.stockQuantity} units available`);
+        if (qty > product.stockQuantity) throw new CartMutationError(400, unitsMessage(product.stockQuantity));
         item.qty = qty;
         item.price = product.price;
       });

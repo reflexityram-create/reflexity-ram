@@ -220,6 +220,47 @@ test('the cart the checkout page loads carries the flat shipping rate Stripe wil
   }
 });
 
+test('cart lines carry the stock on hand so the cart page can stop at it, and a full cart is explained', async () => {
+  const originalProductFindOne = Product.findOne;
+  const originalProductFind = Product.find;
+  const originalCartFindOne = Cart.findOne;
+  const stick = new Product(product({ _id: undefined, slug: 'two-left', stockQuantity: 2, price: 100 }));
+  Product.findOne = async () => stick;
+  Product.find = () => productQuery([stick]);
+  const cart = { items: [{ slug: 'two-left', sku: 'TWO-LEFT', name: 'Two left', price: 100, qty: 1 }], save: async () => undefined };
+  Cart.findOne = async () => cart;
+  const app = express();
+  app.use(express.json());
+  app.use('/api/cart', cartRouter);
+  try {
+    // One is already in the cart, so two more would pass the two in stock.
+    const tooMany = await jsonRequest(app, '/api/cart/add', { slug: 'two-left', qty: 2 });
+    assert.equal(tooMany.status, 400);
+    assert.equal(tooMany.body.error, 'Only 2 units available (1 already in your cart)');
+    const added = await jsonRequest(app, '/api/cart/add', { slug: 'two-left', qty: 1 });
+    assert.equal(added.status, 200);
+    assert.equal(added.body.cart.items[0].qty, 2);
+    assert.equal(added.body.cart.items[0].available, 2);
+    const over = await jsonRequest(app, '/api/cart/update', { slug: 'two-left', qty: 3 }, 'PATCH');
+    assert.equal(over.status, 400);
+    assert.equal(over.body.error, 'Only 2 units available');
+    Cart.findOne = () => ({
+      populate: async () => ({
+        _id: 'cart-id',
+        items: [{ slug: 'two-left', name: 'Two left', price: 100, qty: 1, product: { line: 'Server', price: 100, stockQuantity: 2 } }],
+        save: async () => undefined,
+      }),
+    });
+    const loaded = await jsonRequest(app, '/api/cart', undefined, 'GET');
+    assert.equal(loaded.status, 200);
+    assert.equal(loaded.body.cart.items[0].available, 2);
+  } finally {
+    Product.findOne = originalProductFindOne;
+    Product.find = originalProductFind;
+    Cart.findOne = originalCartFindOne;
+  }
+});
+
 test('public product projection excludes provider and media-management metadata', () => {
   for (const field of [
     'stripeProductId',
@@ -227,7 +268,6 @@ test('public product projection excludes provider and media-management metadata'
     'stripePriceAmount',
     'stripePriceCurrency',
     'images.publicId',
-    'stockQuantity',
     'updatedAt',
     '__v',
   ]) {
@@ -235,6 +275,9 @@ test('public product projection excludes provider and media-management metadata'
   }
   assert.equal(PUBLIC_PRODUCT_PROJECTION['images.url'], 1);
   assert.equal(PUBLIC_PRODUCT_PROJECTION.slug, 1);
+  // The quantity picker stops at the stock on hand ("Only 2 available"); the cart API already tells
+  // anyone who asks for more than is in stock, so the count is public on purpose.
+  assert.equal(PUBLIC_PRODUCT_PROJECTION.stockQuantity, 1);
 });
 
 test('order ownership accepts both raw and populated ObjectIds', () => {

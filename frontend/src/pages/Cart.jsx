@@ -1,10 +1,13 @@
 import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Trash2, Plus, Minus, ShoppingCart, Loader2, ArrowRight } from 'lucide-react';
+import { Trash2, ShoppingCart, Loader2, ArrowRight } from 'lucide-react';
+import { toast } from 'sonner';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import EmptyState from '@/components/EmptyState';
+import QuantityStepper from '@/components/QuantityStepper';
 import useCartStore from '@/lib/cartStore';
+import { limitNote, quantityLimit } from '@/lib/quantity';
 import { imageUrl } from '@/lib/imageUrl';
 import { formatStorePrice, STORE_CURRENCY_CODE, STORE_CURRENCY_NAME } from '@/lib/currency';
 import { useSEO } from '@/lib/seo';
@@ -17,6 +20,12 @@ export default function Cart() {
   useEffect(() => {
     fetchCart();
   }, []);
+
+  // The picker stops at the stock on hand; the server has the last word and says why when it refuses.
+  const changeQty = async (slug, qty) => {
+    const result = await updateItem(slug, qty);
+    if (result && !result.success) toast.error(result.message);
+  };
 
   return (
     <>
@@ -67,22 +76,14 @@ export default function Cart() {
                     >
                       <Trash2 size={14} />
                     </button>
-                    <div className="flex items-center glass rounded-full overflow-hidden">
-                      <button
-                        onClick={() => updateItem(item.slug, item.qty - 1)}
-                        className="px-3 py-1.5 hover:bg-white/5 transition-colors"
-                        disabled={item.qty <= 1}
-                      >
-                        <Minus size={11} />
-                      </button>
-                      <span className="px-2 mono text-[12px] min-w-[2ch] text-center">{item.qty}</span>
-                      <button
-                        onClick={() => updateItem(item.slug, item.qty + 1)}
-                        className="px-3 py-1.5 hover:bg-white/5 transition-colors"
-                      >
-                        <Plus size={11} />
-                      </button>
-                    </div>
+                    <QuantityStepper
+                      size="sm"
+                      value={item.qty}
+                      onChange={(qty) => changeQty(item.slug, qty)}
+                      limit={quantityLimit(item.available)}
+                      note={limitNote(item.available)}
+                      testId={`cart-qty-${item.slug}`}
+                    />
                     <div className="mono text-[13px] text-neutral-300">
                       {formatStorePrice(item.price * item.qty)}
                     </div>
