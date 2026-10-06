@@ -21,6 +21,7 @@ const { ensureStripePrice } = require('../utils/stripeSync');
 const { isDisposableEmail } = require('../utils/disposableEmail');
 const { isFullyRefundedCharge } = require('../utils/refunds');
 const { cancelReviewRequest } = require('../utils/reviewRequests');
+const { estimateDeliveryDate } = require('../utils/deliveryEstimate');
 
 const router = express.Router();
 
@@ -164,7 +165,11 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
       metadata: {
         userId: userId ? userId.toString() : 'guest',
         cartSessionId: sessionId || '',
-        ...(internationalService ? { shippingCountry: country, canadaPostService: internationalService.serviceCode } : {}),
+        ...(internationalService ? {
+          shippingCountry: country,
+          canadaPostService: internationalService.serviceCode,
+          ...(internationalService.transitDays ? { canadaPostTransitDays: String(internationalService.transitDays) } : {}),
+        } : {}),
         ...(gaIds.clientId ? { gaClientId: gaIds.clientId } : {}),
         ...(gaIds.sessionId ? { gaSessionId: gaIds.sessionId } : {}),
       },
@@ -302,6 +307,11 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
       analyticsSessionId: gaIds.sessionId,
       paymentStatus: 'paid',
       status: 'processing',
+      // Google Customer Reviews sends its survey after this date, so it is the late end of what we promise.
+      estimatedDelivery: estimateDeliveryDate({
+        country: session.metadata?.shippingCountry || shippingAddress?.country,
+        transitDays: session.metadata?.canadaPostTransitDays,
+      }),
       // Guest emails aren't seen until Stripe hands them back post-payment, so a
       // disposable address can't be blocked upfront — flag it for manual review.
       adminNotes: isDisposableEmail(customer.email)
