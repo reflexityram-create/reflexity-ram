@@ -252,6 +252,16 @@ mongoose
       toCreate: startupIndexDeclarations(model),
     })));
     console.log(`✅ MongoDB indexes ready (${startupModels.length} models)`);
+    // Read-only: the unique payment indexes are deliberately not built here (see above), but the duplicate-order guard depends on them, so say whether they exist.
+    try {
+      const orderIndexes = await Order.collection.indexes();
+      const hasUnique = (field) => orderIndexes.some((ix) => ix.unique && Object.keys(ix.key || {}).length === 1 && ix.key[field] !== undefined);
+      const missingUnique = [...paymentProviderOrderIndexFields].filter((field) => !hasUnique(field));
+      if (missingUnique.length) console.error(`🚨 Order collection has NO unique index on: ${missingUnique.join(', ')} (duplicate-fulfilment protection relies on it)`);
+      else console.log('✅ Order payment-id unique indexes present');
+    } catch (indexErr) {
+      console.warn('Order index check failed:', indexErr.message);
+    }
     try {
       await fixMerchantProductData();
     } catch (err) {

@@ -10,6 +10,7 @@ const ERROR_MESSAGES = {
   token_exchange_failed: 'Google sign-in failed. Please try again.',
   no_email:              'Could not retrieve your email from Google.',
   account_deactivated:   'This account has been deactivated.',
+  email_not_verified:    'Google has not verified this email address. Verify it with Google first, or sign in another way.',
   state_mismatch:        'Security check failed. Please try signing in again.',
   server_error:          'Something went wrong. Please try again.',
 };

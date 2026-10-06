@@ -123,10 +123,12 @@ const decrementStockForOrder = async (order) => {
     if (oversoldItems.length > 0) {
       const note = `OVERSOLD — needs manual review: ${oversoldItems.join('; ')}`;
       console.error(`🚨 Order ${claimed.orderNumber}: ${note}`);
+      // Add the flag to the notes the order already carries (which Canada Post service to buy, a disposable-email review); it used to replace them.
+      const notes = [claimed.adminNotes, note].filter(Boolean).join('\n');
       await Order.updateOne(
         { _id: claimed._id },
         {
-          $set: { adminNotes: note },
+          $set: { adminNotes: notes },
           $push: { statusHistory: { status: 'processing', note, timestamp: new Date() } },
         },
         { session }
