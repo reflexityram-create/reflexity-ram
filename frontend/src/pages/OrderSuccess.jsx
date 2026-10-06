@@ -222,11 +222,19 @@ export default function OrderSuccess() {
                     <div className="flex justify-between gap-4">
                       <span className="text-neutral-400">Shipping
                         {order.shippingMethod && (
-                          <span className="block text-[12px] leading-snug" data-testid="order-shipping-method">{order.shippingMethod}</span>
+                          <span className="block text-[12px] leading-snug" data-testid="order-shipping-method">{order.importDuties > 0 ? order.shippingMethod.replace(/ \+ prepaid US import duties and fees$/, '') : order.shippingMethod}</span>
                         )}
                       </span>
-                      <span className="mono shrink-0">{order.shippingCost === 0 ? 'Free' : `$${order.shippingCost?.toFixed(2)}`}</span>
+                      <span className="mono shrink-0">{order.shippingCost === 0 ? 'Free' : `$${(order.importDuties > 0 ? Math.round((order.shippingCost - order.importDuties) * 100) / 100 : order.shippingCost)?.toFixed(2)}`}</span>
                     </div>
+                    {order.importDuties > 0 && (
+                      <div className="flex justify-between gap-4" data-testid="order-us-duties">
+                        <span className="text-neutral-400">US import duties and fees
+                          <span className="block text-[12px] leading-snug">Prepaid, nothing due on delivery</span>
+                        </span>
+                        <span className="mono shrink-0">${order.importDuties.toFixed(2)}</span>
+                      </div>
+                    )}
                     {order.tax > 0 && (
                       <div className="flex justify-between">
                         <span className="text-neutral-400">Tax</span>

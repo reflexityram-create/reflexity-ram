@@ -91,9 +91,11 @@ const trackParcel = async (pin, fetchImpl = fetch) => {
   return normalizeTracking(Array.isArray(summaries) ? summaries[0] : summaries, details);
 };
 
-// Live prices for a parcel to another country. With CANADA_POST_CUSTOMER_NUMBER
-// set, Canada Post returns the account's discounted (commercial) price.
-const rateInternational = async ({ countryCode, parcel, originPostalCode, fetchImpl = fetch }) => {
+// Live prices for a parcel to another country (`destination` is Canada Post's own shape:
+// { international: { countryCode } } or { unitedStates: { zipCode } }). With
+// CANADA_POST_CUSTOMER_NUMBER set, Canada Post returns the account's discounted
+// (commercial) price.
+const ratePrices = async ({ destination, parcel, originPostalCode, fetchImpl = fetch }) => {
   const customerNumber = process.env.CANADA_POST_CUSTOMER_NUMBER;
   const res = await fetchImpl(`${RATING_URL}/prices`, {
     method: 'POST',
@@ -108,7 +110,7 @@ const rateInternational = async ({ countryCode, parcel, originPostalCode, fetchI
       ...(customerNumber ? { customerNumber } : {}),
       parcelCharacteristics: parcel,
       originPostalCode,
-      destination: { international: { countryCode } },
+      destination,
     }),
   });
   if (!res.ok) throw new Error(`Canada Post rating request failed (${res.status})`);
@@ -122,6 +124,9 @@ const rateInternational = async ({ countryCode, parcel, originPostalCode, fetchI
   }));
 };
 
+const rateInternational = ({ countryCode, ...rest }) => ratePrices({ ...rest, destination: { international: { countryCode } } });
+const rateUnitedStates = ({ zipCode, ...rest }) => ratePrices({ ...rest, destination: { unitedStates: { zipCode } } });
+
 const resetTokenCacheForTest = () => { cachedToken = null; pendingToken = null; };
 
-module.exports = { isConfigured, accessToken, trackParcel, normalizeTracking, rateInternational, resetTokenCacheForTest, BASE };
+module.exports = { isConfigured, accessToken, trackParcel, normalizeTracking, rateInternational, rateUnitedStates, resetTokenCacheForTest, BASE };

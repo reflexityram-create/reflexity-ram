@@ -47,7 +47,8 @@ export default function Checkout() {
   const [countries, setCountries] = useState([]);
   const [countriesLoading, setCountriesLoading] = useState(false);
   const [country, setCountry] = useState('');
-  const [quote, setQuote] = useState({ loading: false, options: [], error: '' });
+  // `duties` is set for the United States only: the prepaid import duties and fees (CAD) the server worked out with the shipping.
+  const [quote, setQuote] = useState({ loading: false, options: [], error: '', duties: null });
   const [serviceCode, setServiceCode] = useState('');
   // Inside Canada the flat rate is the default. Two optional extras, both with fixed prices the server works out:
   // Faster shipping (Xpresspost, orders of up to 6 sticks) and a signature on delivery. Nothing to look up, nothing to type.
@@ -60,7 +61,8 @@ export default function Checkout() {
   const shippingAmount = international
     ? chosen?.price
     : (useFaster ? shippingFaster : Number(shipping || 0)) + (signature ? SIGNATURE_PRICE : 0);
-  const totalBeforeTax = Number(subtotal || 0) + Number(shippingAmount || 0);
+  const dutiesAmount = international && country === 'US' ? Number(quote.duties?.amount || 0) : 0;
+  const totalBeforeTax = Number(subtotal || 0) + Number(shippingAmount || 0) + dutiesAmount;
 
   useEffect(() => { fetchCart(); }, []);
 
@@ -78,14 +80,14 @@ export default function Checkout() {
   const chooseCountry = async (code) => {
     setCountry(code);
     setServiceCode('');
-    if (!code) return setQuote({ loading: false, options: [], error: '' });
-    setQuote({ loading: true, options: [], error: '' });
+    if (!code) return setQuote({ loading: false, options: [], error: '', duties: null });
+    setQuote({ loading: true, options: [], error: '', duties: null });
     try {
       const { data } = await shippingApi.internationalQuote(code);
-      setQuote({ loading: false, options: data.options, error: '' });
+      setQuote({ loading: false, options: data.options, error: '', duties: data.duties || null });
       setServiceCode(data.options[0]?.serviceCode || '');
     } catch (err) {
-      setQuote({ loading: false, options: [], error: err.response?.data?.error || 'Could not get Canada Post prices right now.' });
+      setQuote({ loading: false, options: [], error: err.response?.data?.error || 'Could not get Canada Post prices right now.', duties: null });
     }
   };
 
@@ -221,10 +223,10 @@ export default function Checkout() {
                           loading={countriesLoading}
                           value={country}
                           onChange={chooseCountry}
-                          unavailableNote="United States: duties must be prepaid, so email us for a quote."
+                          unavailableNote="United States: orders are not open on the website yet, so email us for a quote."
                         />
                         <p className="text-[12px] text-neutral-500">
-                          Shipping to the United States or a country not listed? <a href="mailto:reflexityram@gmail.com?subject=Shipping%20quote" className="underline underline-offset-4">Email us</a> for a quote.
+                          Shipping to a country not listed? <a href="mailto:reflexityram@gmail.com?subject=Shipping%20quote" className="underline underline-offset-4">Email us</a> for a quote.
                         </p>
                         {quote.loading && (
                           <div className="flex items-center gap-2 text-[13px] text-neutral-400"><Loader2 size={14} className="animate-spin" /> Getting Canada Post prices…</div>
@@ -245,7 +247,14 @@ export default function Checkout() {
                                 <span className="mono text-[14px]">{formatStorePrice(o.price)}</span>
                               </label>
                             ))}
-                            <p className="text-[12px] text-neutral-500">Import taxes and duties are charged by your country on delivery.</p>
+                            {country === 'US'
+                              ? (
+                                <p className="text-[12px] text-neutral-500" data-testid="checkout-us-duties-note">
+                                  US import duties and customs fees are prepaid in your total, so nothing is due when the parcel arrives. US customs sets them; we pass them on at cost.
+                                  Promotion codes cannot be used on US orders.
+                                </p>
+                              )
+                              : <p className="text-[12px] text-neutral-500">Import taxes and duties are charged by your country on delivery.</p>}
                           </fieldset>
                         )}
                       </div>
@@ -292,6 +301,12 @@ export default function Checkout() {
                             : 'Canada Post, tracked: $14 for 1–2 sticks, $25 for 3 or more'}</span></dt>
                       <dd className="mono">{shippingAmount === undefined ? '—' : formatStorePrice(shippingAmount)}</dd>
                     </div>
+                    {dutiesAmount > 0 && (
+                      <div className="flex justify-between gap-4" data-testid="checkout-us-duties">
+                        <dt className="text-neutral-400">US import duties and fees <span className="block text-[13px]">Prepaid, nothing due on delivery</span></dt>
+                        <dd className="mono">{formatStorePrice(dutiesAmount)}</dd>
+                      </div>
+                    )}
                     <div className="flex justify-between gap-4">
                       <dt className="text-neutral-400">Tax</dt>
                       <dd className="text-[14px] text-neutral-400 text-right">Added by Stripe from your address</dd>

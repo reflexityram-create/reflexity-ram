@@ -140,3 +140,25 @@ test('the email sent for a paid Stripe session shows its discount and tax', asyn
     [Product.findOne, Order.findOne, Order.create, Cart.findOneAndUpdate] = originals;
   }
 });
+
+// US orders (2026-10-06): the shipping charge includes the prepaid import duties, and the receipt shows them on their own row.
+const rowsOf = (html) =>
+  [...html.matchAll(/<span[^>]*>(Subtotal|Discount|Shipping|US import duties and fees \(prepaid\)|Tax|Total)<\/span>\s*<span[^>]*>([^<]*)<\/span>/g)]
+    .map(([, label, value]) => [label, value.trim()]);
+
+test('confirmation email splits a US order\'s prepaid import duties out of the shipping charge', async () => {
+  const message = await sendFor({ subtotal: 340, shippingCost: 116.2, importDuties: 99.5, total: 456.2 });
+  assert.deepEqual(rowsOf(message.html), [
+    ['Subtotal', money(340)],
+    ['Shipping', money(16.7)],
+    ['US import duties and fees (prepaid)', money(99.5)],
+    ['Total', money(456.2)],
+  ]);
+});
+
+test('confirmation email has no duties row for an order without prepaid duties', async () => {
+  for (const values of [{}, { importDuties: 0 }, { importDuties: undefined }]) {
+    const message = await sendFor(values);
+    assert.deepEqual(rowsOf(message.html).map(([label]) => label), ['Subtotal', 'Shipping', 'Total']);
+  }
+});

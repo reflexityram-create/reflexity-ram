@@ -7,9 +7,11 @@ const DEFAULT_HTML = `<p>We ship Reflexity RAM from Toronto to many countries wi
 <p>At checkout, choose "Another country" and type your country. You'll see Canada Post's current price and delivery time for your parcel: Tracked Packet – International and, where available, Xpresspost – International (guaranteed). You pay what Canada Post charges for your parcel, at checkout with your order.</p>
 <p>Checkout lists every country where Canada Post offers tracked delivery, including the United Kingdom, Australia, Japan, Mexico and many European countries.</p>
 <h2>Import taxes and duties</h2>
-<p>Prices and shipping do not include your country's import taxes or duties. If your country charges them, they are collected when the parcel arrives.</p>
-<h2>United States and countries not listed</h2>
-<p>Parcels to the United States currently need duties paid before they ship, so we arrange US orders directly. For the United States, or a country not listed at checkout, email us at reflexityram@gmail.com with the product(s) you want and your country, and we'll reply with a shipping quote.</p>
+<p>Outside the United States, prices and shipping do not include your country's import taxes or duties. If your country charges them, they are collected when the parcel arrives.</p>
+<h2>United States</h2>
+<p>US parcels need their import duties paid before they cross the border, so for the United States we do it for you: choose "Another country" and "United States" at checkout and you'll see Canada Post Tracked Packet – USA plus the US import duties and customs fees, worked out for your order. Both are prepaid in your total, so nothing is due when the parcel arrives. US customs sets the duties and we pass them on at cost; they depend on what you buy, so they are shown before you pay. Promotion codes cannot be used on US orders. Up to 12 sticks per order; for more, email us.</p>
+<h2>Countries not listed</h2>
+<p>For a country not listed at checkout, email us at reflexityram@gmail.com with the product(s) you want and your country, and we'll reply with a shipping quote.</p>
 <h2>Customers in Canada</h2>
 <p>If you're in Canada, there's nothing extra to do: shipping is a flat $14 CAD for 1–2 sticks and $25 CAD for 3 or more (a few listings ship at their own flat rate, shown on the product page and at checkout).</p>
 <h2>Questions</h2>

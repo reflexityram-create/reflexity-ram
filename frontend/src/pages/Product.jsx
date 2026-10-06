@@ -757,6 +757,9 @@ function conditionBadge(p) {
   return "Individually tested";
 }
 
+// US checkout declares the product's country of origin and HS code to customs, so it is open for a product once both are saved.
+const usOnWebsite = (p) => /^[A-Za-z]{2}$/.test(String(p?.countryOfOrigin || "")) && /^\d{4}/.test(String(p?.hsCode || ""));
+
 // One tile per audience: Canada, abroad, the US, and returns. The icons are emoji so they look the
 // same everywhere (flag emoji show as two letters on Windows).
 function deliveryTiles(p) {
@@ -778,12 +781,14 @@ function deliveryTiles(p) {
     {
       icon: "🗽",
       title: "United States",
-      body: (
-        <>
-          By quote, because US duties must be prepaid.{" "}
-          <Link to="/support" className="underline underline-offset-2">Email us</Link> for a price.
-        </>
-      ),
+      body: usOnWebsite(p)
+        ? "Order here: Canada Post Tracked Packet – USA, and US import duties and fees are prepaid in your total, so nothing is due on delivery. Choose Another country, then United States, at checkout."
+        : (
+          <>
+            Not on the website for this item yet.{" "}
+            <Link to="/support" className="underline underline-offset-2">Email us</Link> for a price.
+          </>
+        ),
     },
     {
       icon: "↩️",

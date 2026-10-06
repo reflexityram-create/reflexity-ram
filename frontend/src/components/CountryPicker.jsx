@@ -29,7 +29,9 @@ export default function CountryPicker({ countries, value, onChange, unavailableN
     const contains = countries.filter((c) => !starts.includes(c) && fold(c.name).includes(q));
     return [...starts, ...contains];
   }, [countries, query]);
-  const wantsUnavailable = ['US'].includes(ALIASES[fold(query)]) || /^united states/.test(fold(query));
+  // The note for a buyer typing "United States" only shows while the US is NOT on the list (it is listed once the shop can quote US duties).
+  const wantsUnavailable = !countries.some((c) => c.code === 'US')
+    && (['US'].includes(ALIASES[fold(query)]) || /^united states/.test(fold(query)));
 
   useEffect(() => { setActive(0); }, [query]);
   useEffect(() => {

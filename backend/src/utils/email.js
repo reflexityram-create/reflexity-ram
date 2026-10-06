@@ -147,8 +147,12 @@ const sendOrderConfirmationEmail = async ({ email, firstName, order }) => {
               </div>` : ''}
               <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
                 <span style="color:#a0a0aa;font-size:13px;">Shipping</span>
-                <span style="font-family:monospace;font-size:13px;">${order.shippingCost === 0 ? 'Free' : '$' + order.shippingCost.toFixed(2) + ' ' + DISPLAY_CURRENCY}</span>
+                <span style="font-family:monospace;font-size:13px;">${order.shippingCost === 0 ? 'Free' : '$' + (order.importDuties > 0 ? Math.round((order.shippingCost - order.importDuties) * 100) / 100 : order.shippingCost).toFixed(2) + ' ' + DISPLAY_CURRENCY}</span>
               </div>
+              ${order.importDuties > 0 ? `<div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+                <span style="color:#a0a0aa;font-size:13px;">US import duties and fees (prepaid)</span>
+                <span style="font-family:monospace;font-size:13px;">$${order.importDuties.toFixed(2)} ${DISPLAY_CURRENCY}</span>
+              </div>` : ''}
               ${order.tax > 0 ? `<div style="display:flex;justify-content:space-between;margin-bottom:8px;">
                 <span style="color:#a0a0aa;font-size:13px;">Tax</span>
                 <span style="font-family:monospace;font-size:13px;">$${order.tax.toFixed(2)} ${DISPLAY_CURRENCY}</span>

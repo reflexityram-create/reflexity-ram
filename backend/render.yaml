@@ -59,6 +59,10 @@ services:
         sync: false
       - key: CANADA_POST_ORIGIN_POSTAL_CODE
         sync: false
+      # Zonos API credential: quotes the US import duties and fees a US buyer prepays at checkout. Without it the
+      # United States is simply not offered (utils/zonos.js).
+      - key: ZONOS_API_KEY
+        sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET

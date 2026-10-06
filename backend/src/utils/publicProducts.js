@@ -6,6 +6,7 @@ const PUBLIC_PRODUCT_PROJECTION = Object.freeze({
   brand: 1,
   mpn: 1,
   countryOfOrigin: 1,
+  hsCode: 1,
   featured: 1,
   line: 1,
   generation: 1,
