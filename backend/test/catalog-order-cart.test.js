@@ -239,9 +239,9 @@ test('removing one line retains another line whose stored slug is stale', async 
     ],
     save: async () => undefined,
   };
-  Product.find = (filter) => productQuery([remaining, removed].filter((candidate) => (
-    filter._id?.$in?.map(String).includes(String(candidate._id)) || filter.slug?.$in?.includes(candidate.slug)
-  )));
+  Product.find = (filter) => productQuery([remaining, removed].filter((candidate) => (filter.$or || [filter]).some((clause) => (
+    clause._id?.$in?.map(String).includes(String(candidate._id)) || clause.slug?.$in?.includes(candidate.slug)
+  ))));
   Product.findOne = async (filter) => (String(filter._id) === String(remaining._id) ? remaining : null);
   Cart.findOne = async () => cart;
   const app = express();

@@ -7,6 +7,7 @@ const { optionalAuth } = require('../middleware/auth');
 const { validGuestSessionId } = require('../utils/guestSession');
 const { CartMutationError, mutateCartWithRetry } = require('../utils/cartConcurrency');
 const { resolveCartShippingPrice, resolveFasterShippingPrice } = require('../config/shipping');
+const { lineProductId, resolveCartLines } = require('../utils/cartLines');
 
 const router = express.Router();
 const guestSessionIdFrom = (req) => validGuestSessionId(req.headers['x-session-id'] || req.cookies?.cartSessionId);
@@ -23,33 +24,22 @@ const withAvailable = (item, product) => {
 };
 const unitsMessage = (stock, inCart = 0) =>
   `Only ${stock} units available${inCart > 0 ? ` (${inCart} already in your cart)` : ''}`;
-const itemProductId = (item) => item?.product?._id || item?.product || null;
-// All cart endpoints expose the same purchasable view. Product IDs survive a slug
-// rename; the stored slug is only a fallback for legacy lines with no product ID.
-// Gone, inactive, or non-Server products stay in the persisted cart but are omitted
-// everywhere until they become purchasable again.
-const publicCartView = async (cart) => {
-  const cartItems = cart.items || [];
-  const productIds = [...new Set(cartItems.map(itemProductId).filter(Boolean).map(String))];
-  const legacySlugs = [...new Set(cartItems
-    .filter((item) => !itemProductId(item))
-    .map((item) => item.slug)
-    .filter(Boolean))];
-  const [productsById, legacyProducts] = await Promise.all([
-    productIds.length
-      ? Product.find({ _id: { $in: productIds }, isActive: true, line: 'Server' }).lean()
-      : [],
-    legacySlugs.length
-      ? Product.find({ slug: { $in: legacySlugs }, isActive: true, line: 'Server' }).lean()
-      : [],
-  ]);
-  const products = new Map(productsById.map((product) => [String(product._id), product]));
-  const legacyProductsBySlug = new Map(legacyProducts.map((product) => [product.slug, product]));
-  const lines = cartItems.map((item) => ({
-    item,
-    product: products.get(String(itemProductId(item))) || (!itemProductId(item) && legacyProductsBySlug.get(item.slug)),
-  })).filter(({ product }) => product);
-  const items = lines.map(({ item, product }) => withAvailable(item, product));
+// What the cart page shows is exactly what checkout and the shipping quotes work from: utils/cartLines.js finds each line's product
+// (by id, so a renamed slug cannot lose a line) and leaves out lines whose product is gone or inactive, the same way everywhere.
+// The price shown is the product's current one; the line keeps its own stored slug, which is what the cart page sends back.
+// `heal` also writes the product's current slug, sku, name and price into the stored lines, so slug-based code never meets a stale one.
+const publicCartView = async (cart, { heal = false } = {}) => {
+  const lines = await resolveCartLines(cart.items, { lean: true });
+  let stale = false;
+  const items = lines.map(({ item, product }) => {
+    if (heal) {
+      for (const [field, value] of [['slug', product.slug], ['sku', product.sku], ['name', product.name], ['price', product.price]]) {
+        if (value !== undefined && item[field] !== value) { item[field] = value; stale = true; }
+      }
+    }
+    return withAvailable({ ...(typeof item.toObject === 'function' ? item.toObject() : item), price: product.price }, product);
+  });
+  if (stale) await cart.save().catch(() => {}); // best effort: the next read heals it if a concurrent change won
   return {
     _id: cart._id || null,
     items,
@@ -81,7 +71,7 @@ router.get('/', optionalAuth, async (req, res) => {
       return res.json({ cart: await publicCartView({}) });
     }
 
-    res.json({ cart: await publicCartView(cart) });
+    res.json({ cart: await publicCartView(cart, { heal: true }) });
   } catch (err) {
     console.error('Cart get error:', err);
     res.status(500).json({ error: 'Failed to fetch cart' });
@@ -118,7 +108,7 @@ router.post(
 
       const filter = userId ? { user: userId } : { sessionId };
       const cart = await mutateCartWithRetry(filter, async (draft) => {
-        const existingItem = draft.items.find((item) => item.slug === slug || String(itemProductId(item)) === String(product._id));
+        const existingItem = draft.items.find((item) => item.slug === slug || String(lineProductId(item)) === String(product._id));
         if (existingItem) {
           const newQty = existingItem.qty + qty;
           if (newQty > product.stockQuantity) throw new CartMutationError(400, unitsMessage(product.stockQuantity, existingItem.qty));
@@ -170,8 +160,8 @@ router.patch(
         const item = draft.items.find(i => i.slug === slug);
         if (!item) throw new CartMutationError(404, 'Item not in cart');
         const product = await Product.findOne(
-          itemProductId(item)
-            ? { _id: itemProductId(item), isActive: true, line: 'Server' }
+          lineProductId(item)
+            ? { _id: lineProductId(item), isActive: true, line: 'Server' }
             : { slug, isActive: true, line: 'Server' },
         );
         if (!product) throw new CartMutationError(400, 'Product is no longer available');
