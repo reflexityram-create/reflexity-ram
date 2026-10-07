@@ -32,6 +32,14 @@ const { cartStickCount } = require('../src/routes/shipping');
 const { resolveGoogleUser } = require('../src/routes/auth');
 const { decrementStockForOrder } = require('../src/utils/stock');
 
+// Node 22's isolated test-file IPC can mistake non-ASCII application stdout
+// for a serialized runner frame (nodejs/node#65934). The routes under test
+// log diagnostic banners containing emoji; silence only that diagnostic stream
+// for this file and restore it after the suite so the assertions stay intact.
+const originalConsoleLog = console.log;
+test.before(() => { console.log = () => {}; });
+test.after(() => { console.log = originalConsoleLog; });
+
 const PRODUCT_ID = '64b7f0c2a1b2c3d4e5f60719';
 
 const query = (value) => {
