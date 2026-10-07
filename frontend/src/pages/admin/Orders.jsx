@@ -5,24 +5,7 @@ import AppLayout from '@/components/AppLayout';
 import { adminApi } from '@/lib/api';
 import { imageUrl } from '@/lib/imageUrl';
 import ShippingPreparationPanel from '@/components/admin/ShippingPreparationPanel';
-
-const NEXT_STATUS = Object.freeze({
-  pending: ['processing', 'cancelled'],
-  processing: ['shipped', 'cancelled'],
-  shipped: ['delivered'],
-  delivered: [],
-  cancelled: [],
-  refunded: [],
-});
-function statusOptions(order) {
-  const current = order?.status;
-  if (!current) return [];
-  const next = NEXT_STATUS[current] || [];
-  const allowed = order.paymentStatus === 'paid' ? next.filter((status) => status !== 'cancelled') : next;
-  // Keep the current value visible for read-only terminal/refunded states,
-  // but never present refunded as an admin transition.
-  return [current, ...allowed.filter((status) => status !== current && status !== 'refunded')];
-}
+import { NEXT_STATUS, statusOptions } from '@/lib/adminOrderStatus';
 // The status filter's options. Kept in the same order as NEXT_STATUS and
 // matching the values the admin orders API accepts.
 const STATUS_OPTIONS = Object.keys(NEXT_STATUS);
@@ -150,7 +133,11 @@ function OrderDetailModal({ orderId, onClose }) {
     try {
       const { data } = await adminApi.updateOrderStatus(orderId, statusForm);
       await reloadOrder(data.order);
-      toast.success('Order status updated');
+      if (data.shippingNotification?.status === 'failed' || data.shippingNotification?.status === 'skipped') {
+        toast.warning(data.shippingNotification.message);
+      } else {
+        toast.success('Order status updated');
+      }
     } catch (err) {
       toast.error(err.response?.data?.error || 'Update failed');
     } finally {
@@ -258,8 +245,9 @@ function OrderDetailModal({ orderId, onClose }) {
               </select>
               <input
                 className="input"
-                placeholder="Tracking number (optional)"
+                placeholder={statusForm.status === 'shipped' ? 'Tracking number (required)' : 'Tracking number (optional)'}
                 value={statusForm.trackingNumber}
+                required={statusForm.status === 'shipped' && !order.trackingNumber}
                 onChange={e => setStatusForm(f => ({ ...f, trackingNumber: e.target.value }))}
               />
               <input

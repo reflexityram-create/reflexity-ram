@@ -454,10 +454,19 @@ router.patch(
   async (req, res) => {
     try {
       const { status, trackingNumber, note } = req.body;
-      const current = await Order.findById(req.params.id).select('status paymentStatus');
+      const current = await Order.findById(req.params.id).select('status paymentStatus trackingNumber');
       if (!current) return res.status(404).json({ error: 'Order not found' });
       if (!canTransitionOrder(current.status, status, current.paymentStatus)) {
         return res.status(409).json({ error: `Cannot change order from ${current.status} to ${status}` });
+      }
+      // A shipped order must give the buyer a carrier number they can follow.
+      // Keep an already-saved number usable for legacy/admin retries, while
+      // refusing a first shipment update that would send an untrackable email.
+      const cleanTrackingNumber = typeof trackingNumber === 'string' ? trackingNumber.trim() : '';
+      const existingTrackingNumber = typeof current.trackingNumber === 'string' ? current.trackingNumber.trim() : '';
+      const shippedTrackingNumber = cleanTrackingNumber || existingTrackingNumber;
+      if (status === 'shipped' && !shippedTrackingNumber) {
+        return res.status(422).json({ error: 'Tracking number is required before marking an order shipped' });
       }
       const updates = {
         status,
@@ -470,7 +479,8 @@ router.patch(
         },
       };
 
-      if (trackingNumber) updates.trackingNumber = trackingNumber;
+      if (status === 'shipped') updates.trackingNumber = shippedTrackingNumber;
+      else if (cleanTrackingNumber) updates.trackingNumber = cleanTrackingNumber;
       if (status === 'shipped') updates.shippedAt = new Date();
       if (status === 'delivered') updates.deliveredAt = new Date();
       if (status === 'cancelled') updates.cancelledAt = new Date();
@@ -496,15 +506,20 @@ router.patch(
       if (!order) return res.status(409).json({ error: 'Order changed while this update was being applied' });
 
       // Send shipping notification
+      let shippingNotification;
       if (status === 'shipped') {
         const email = order.user?.email || order.guestEmail;
         const firstName = order.user?.firstName || order.shippingAddress?.firstName;
         if (email) {
           try {
             await sendShippingNotificationEmail({ email, firstName, order });
+            shippingNotification = { status: 'sent' };
           } catch (emailErr) {
             console.error('Shipping notification email failed:', emailErr.message);
+            shippingNotification = { status: 'failed', message: 'Order shipped, but the buyer notification could not be sent' };
           }
+        } else {
+          shippingNotification = { status: 'skipped', message: 'Order shipped, but no buyer email address is on the order' };
         }
         // Queue the "how was your order?" email for after delivery.
         try {
@@ -522,7 +537,7 @@ router.patch(
       const fresh = status === 'shipped'
         ? await Order.findById(order._id).populate('user', 'firstName lastName email')
         : null;
-      res.json({ order: fresh || order });
+      res.json({ order: fresh || order, ...(shippingNotification ? { shippingNotification } : {}) });
     } catch (err) {
       res.status(500).json({ error: 'Failed to update order status' });
     }
