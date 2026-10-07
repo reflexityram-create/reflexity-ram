@@ -13,6 +13,7 @@ const Product = require('../src/models/Product');
 const cartRouter = require('../src/routes/cart');
 const stripeRouter = require('../src/routes/stripe');
 const { resolveCartLines } = require('../src/utils/cartLines');
+const { mergeCartItems, mergeGuestCartForUser } = require('../src/utils/guestCartMerge');
 
 const HYNIX = { _id: '64b7f0c2a1b2c3d4e5f60711', slug: 'rfx-sk-hynix-16gb', sku: 'HYNIX-16', name: 'SK hynix 16GB', price: 135, stock: 'in', stockQuantity: 9, isActive: true, line: 'Server' };
 const SAMSUNG = { _id: '64b7f0c2a1b2c3d4e5f60712', slug: 'rfx-samsung-64gb', sku: 'SAM-64', name: 'Samsung 64GB', price: 585, stock: 'in', stockQuantity: 1, isActive: true, line: 'Server' };
@@ -121,4 +122,64 @@ test('checkout charges the line a stale slug used to hide, and counts it like th
       assert.equal(payload.shipping_options[0].shipping_rate_data.fixed_amount.amount, 2500);
     } finally { stripeRouter.setCheckoutDependenciesForTest(); }
   });
+});
+
+test('adding a stick whose line carries an old slug joins that line instead of starting a second one, and refreshes its stored price', async () => {
+  const cart = { _id: 'cart-4', async save() {}, items: [{ product: HYNIX._id, slug: 'the-old-hynix-slug', sku: 'HYNIX-16', name: 'x', price: 99, qty: 1 }] };
+  await withStubs([HYNIX], cart, async () => {
+    const added = await call(appWith('/api/cart', cartRouter), 'POST', '/api/cart/add', { slug: HYNIX.slug, qty: 2 });
+    assert.equal(added.status, 200);
+    assert.deepEqual(added.body.cart.items.map((i) => [i.sku, i.qty]), [['HYNIX-16', 3]], 'one line for one product');
+    assert.equal(cart.items.length, 1);
+    assert.equal(cart.items[0].price, HYNIX.price, 'the stored price follows the product');
+  });
+});
+
+test('the stock limit counts the whole line even when it carries an old slug, so splitting a quantity across two lines is impossible', async () => {
+  const cart = { _id: 'cart-5', async save() {}, items: [{ product: HYNIX._id, slug: 'the-old-hynix-slug', sku: 'HYNIX-16', name: 'x', price: 135, qty: 8 }] };
+  await withStubs([HYNIX], cart, async () => {
+    const refused = await call(appWith('/api/cart', cartRouter), 'POST', '/api/cart/add', { slug: HYNIX.slug, qty: 2 });
+    assert.equal(refused.status, 400);
+    assert.match(refused.body.error, /Only 9 units available \(8 already in your cart\)/);
+    assert.deepEqual(cart.items.map((i) => i.qty), [8]);
+  });
+});
+
+test('the login merge keeps one line per stick when one of the carts holds an old slug for it, capped by stock like any merge', () => {
+  const stale = (qty) => [{ product: HYNIX._id, slug: 'the-old-hynix-slug', sku: 'OLD', name: 'old', price: 99, qty }];
+  const guest = [{ product: HYNIX._id, slug: HYNIX.slug, sku: 'HYNIX-16', name: 'x', price: 135, qty: 2 }];
+  assert.deepEqual(mergeCartItems(stale(1), guest, [HYNIX]).map((l) => [l.slug, l.qty, l.price]), [[HYNIX.slug, 3, 135]]);
+  assert.equal(mergeCartItems(stale(8), guest, [HYNIX])[0].qty, 9, 'stock is 9');
+  const staleGuest = [{ product: HYNIX._id, slug: 'the-old-hynix-slug', qty: 4 }];   // the guest's own line is the old one
+  assert.deepEqual(mergeCartItems([{ product: HYNIX._id, slug: HYNIX.slug, qty: 1 }], staleGuest, [HYNIX]).map((l) => [l.slug, l.qty]), [[HYNIX.slug, 5]]);
+});
+
+test('a line whose product is gone is kept as it is and never merges into a different product that now has its slug', () => {
+  const GONE = '64b7f0c2a1b2c3d4e5f60799';
+  const newcomer = { ...SAMSUNG, slug: 'reused-slug' };
+  const merged = mergeCartItems(
+    [{ product: GONE, slug: 'reused-slug', sku: 'GONE', name: 'gone', price: 1, qty: 1 }],
+    [{ product: SAMSUNG._id, slug: 'reused-slug', qty: 1 }],
+    [newcomer],
+  );
+  assert.deepEqual(merged.map((l) => [String(l.product), l.qty]), [[GONE, 1], [SAMSUNG._id, 1]]);
+  assert.equal(mergeCartItems([{ product: GONE, slug: 'x', qty: 1 }, { product: GONE, slug: 'x', qty: 1 }], [], []).length, 1, 'the same kept line is not repeated');
+});
+
+test('logging in merges the guest cart by product id: the lookup asks for ids, one line results, the guest cart is removed', async () => {
+  const guestCart = { _id: 'g1', items: [{ product: HYNIX._id, slug: HYNIX.slug, qty: 2 }] };
+  const userCart = { _id: 'u1', saved: 0, async save() { this.saved += 1; }, items: [{ product: HYNIX._id, slug: 'the-old-hynix-slug', qty: 1 }] };
+  const original = { find: Product.find, findOne: Cart.findOne, deleteOne: Cart.deleteOne };
+  const filters = [];
+  let deleted;
+  Product.find = (filter) => { filters.push(filter); return catalog([HYNIX])(filter); };
+  Cart.findOne = async (filter) => (filter.sessionId ? guestCart : userCart);
+  Cart.deleteOne = async (filter) => { deleted = filter; };
+  try {
+    await mergeGuestCartForUser('user-1', 'session_0123456789');
+  } finally { Product.find = original.find; Cart.findOne = original.findOne; Cart.deleteOne = original.deleteOne; }
+  assert.deepEqual(userCart.items.map((l) => [l.slug, l.qty]), [[HYNIX.slug, 3]]);
+  assert.equal(userCart.saved, 1);
+  assert.deepEqual(deleted, { _id: 'g1' });
+  assert.deepEqual(filters.map((f) => [f.$or, f.isActive]), [[[{ _id: { $in: [HYNIX._id] } }], true]], 'products are asked for by id, not by the slugs that may be stale');
 });
