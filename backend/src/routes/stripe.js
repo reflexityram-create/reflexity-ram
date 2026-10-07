@@ -30,6 +30,7 @@ const { cancelReviewRequest } = require('../utils/reviewRequests');
 const { estimateDeliveryDate } = require('../utils/deliveryEstimate');
 
 const { validGuestSessionId } = require('../utils/guestSession');
+const { resolveCartLines } = require('../utils/cartLines');
 
 const router = express.Router();
 
@@ -74,12 +75,8 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
       return res.status(400).json({ error: 'Cart is empty' });
     }
 
-    const cartSlugs = [...new Set(cart.items.map((item) => item.slug).filter(Boolean))];
-    const products = cartSlugs.length
-      ? await Product.find({ slug: { $in: cartSlugs }, isActive: true, line: 'Server' })
-      : [];
-    const productsBySlug = new Map(products.map((product) => [product.slug, product]));
-    const eligibleItems = cart.items.filter((item) => productsBySlug.has(item.slug));
+    // The same lines the cart page shows (found by product id, so a slug edit cannot drop one): utils/cartLines.js.
+    const eligibleItems = await resolveCartLines(cart.items);
     if (eligibleItems.length === 0) {
       return res.status(400).json({ error: 'Cart has no purchasable Server RAM' });
     }
@@ -89,8 +86,7 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
     // What the session actually charges for: the stick count and the products'
     // own rates (server-side, never anything the client sent) set the shipping.
     const shippingLines = [];
-    for (const item of eligibleItems) {
-      const product = productsBySlug.get(item.slug);
+    for (const { item, product } of eligibleItems) {
       if (product.stockQuantity <= 0 || product.stock === 'out') {
         return res.status(400).json({ error: `"${product.name}" is out of stock` });
       }
