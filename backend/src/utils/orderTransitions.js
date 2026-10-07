@@ -1,7 +1,7 @@
 const ORDER_STATUSES = ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'];
 
 const ALLOWED_ORDER_TRANSITIONS = Object.freeze({
-  pending: new Set(['processing', 'cancelled']),
+  pending: new Set(['processing', 'shipped', 'cancelled']),
   processing: new Set(['shipped', 'cancelled']),
   shipped: new Set(['delivered']),
   delivered: new Set(),
