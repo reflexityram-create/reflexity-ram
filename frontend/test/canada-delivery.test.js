@@ -44,7 +44,8 @@ test('a big order sees why there is no Faster option, with a way to ask', async 
 test('the cart store keeps the Faster price from every cart response', async () => {
   const store = await read('../src/lib/cartStore.js');
   assert.match(store, /shippingFaster: null,/);
-  assert.equal((store.match(/shippingFaster: data\.cart\.shippingFaster \?\? null,/g) || []).length, 4, 'fetch, add, update and remove');
+  assert.match(store, /shippingFaster: cart\.shippingFaster \?\? null,/);
+  assert.equal((store.match(/\.\.\.cartState\(data\.cart\)/g) || []).length, 4, 'fetch, add, update and remove');
   assert.equal((store.match(/shippingFaster: null, itemCount: 0/g) || []).length, 2, 'both ways of clearing');
 });
 

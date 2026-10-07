@@ -7,6 +7,7 @@ const { isConfigured } = require('../utils/canadaPost');
 const { internationalOptions } = require('../utils/internationalShipping');
 const { quoteUnitedStates, usCheckoutAvailable, UsCheckoutError } = require('../utils/usCheckout');
 const { validGuestSessionId } = require('../utils/guestSession');
+const { resolveCartLines } = require('../utils/cartLines');
 
 const router = express.Router();
 
@@ -17,12 +18,7 @@ const cartLines = async (req) => {
   if (!userId && !sessionId) return [];
   const cart = await Cart.findOne(userId ? { user: userId } : { sessionId });
   if (!cart?.items?.length) return [];
-  const slugs = [...new Set(cart.items.map((item) => item.slug).filter(Boolean))];
-  const products = await Product.find({ slug: { $in: slugs }, isActive: true, line: 'Server' });
-  const bySlug = new Map(products.map((p) => [p.slug, p]));
-  return cart.items
-    .filter((item) => bySlug.has(item.slug))
-    .map((item) => ({ product: bySlug.get(item.slug), qty: Number(item.qty) || 0 }));
+  return (await resolveCartLines(cart.items)).map(({ item, product }) => ({ product, qty: Number(item.qty) || 0 }));
 };
 
 // Sticks in the buyer's cart that website checkout would charge for.

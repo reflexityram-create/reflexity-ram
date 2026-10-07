@@ -169,7 +169,9 @@ test('cart responses and checkout only expose purchasable Server items', async (
     const updated = await jsonRequest(cartApp, '/api/cart/update', { slug: 'server-sodimm', qty: 2 }, 'PATCH');
     assert.deepEqual({ items: updated.body.cart.items.map((item) => item.slug), subtotal: updated.body.cart.subtotal, itemCount: updated.body.cart.itemCount }, { items: ['server-sodimm'], subtotal: 80, itemCount: 2 });
     const removed = await jsonRequest(cartApp, '/api/cart/remove/server-sodimm', undefined, 'DELETE');
-    assert.deepEqual(removed.body.cart, { items: [], subtotal: 0, itemCount: 0, shipping: 0, shippingFaster: null });
+    assert.deepEqual(removed.body.cart, {
+      _id: null, items: [], subtotal: 0, itemCount: 0, shipping: 0, shippingFaster: null, discount: 0, couponCode: null,
+    });
 
     staleCart.items.push({ slug: 'server-sodimm', name: 'Server SO-DIMM', qty: 2 });
     stripeRouter.setCheckoutDependenciesForTest({
@@ -192,9 +194,10 @@ test('cart responses and checkout only expose purchasable Server items', async (
 
 test('the cart the checkout page loads carries the flat shipping rate Stripe will charge', async () => {
   const originalCartFindOne = Cart.findOne;
+  const originalProductFind = Product.find;
   const cartWith = (products) => ({
     _id: 'cart-id',
-    items: products.map((productDoc, i) => ({ slug: `module-${i}`, name: 'Server module', price: productDoc.price, qty: productDoc.qty || 1, product: productDoc })),
+    items: products.map((productDoc, i) => ({ slug: `module-${i}`, name: 'Server module', price: productDoc.price, qty: productDoc.qty || 1, product: `product-${i}` })),
     save: async () => undefined,
   });
   const app = express();
@@ -210,12 +213,50 @@ test('the cart the checkout page loads carries the flat shipping rate Stripe wil
       [[{ price: 135, line: 'Server', qty: 2 }, { price: 170, line: 'Server', qty: 1 }], 25],
       [[], 0],
     ]) {
-      Cart.findOne = () => ({ populate: async () => cartWith(products) });
+      Cart.findOne = () => cartWith(products);
+      Product.find = () => productQuery(products.map((productDoc, i) => ({ ...productDoc, _id: `product-${i}` })));
       const response = await jsonRequest(app, '/api/cart', undefined, 'GET');
       assert.equal(response.status, 200);
       assert.equal(response.body.cart.shipping, expected);
     }
   } finally {
+    Cart.findOne = originalCartFindOne;
+    Product.find = originalProductFind;
+  }
+});
+
+test('removing one line retains another line whose stored slug is stale', async () => {
+  const originalProductFind = Product.find;
+  const originalProductFindOne = Product.findOne;
+  const originalCartFindOne = Cart.findOne;
+  const remaining = product({ _id: '64b7f0c2a1b2c3d4e5f60711', slug: 'current-hynix', price: 135, stockQuantity: 9 });
+  const removed = product({ _id: '64b7f0c2a1b2c3d4e5f60712', slug: 'samsung-64', price: 585, stockQuantity: 1 });
+  const cart = {
+    _id: 'cart-id', discount: 10, couponCode: 'SAVE10',
+    items: [
+      { product: remaining._id, slug: 'old-hynix-slug', sku: remaining.sku, name: remaining.name, price: 135, qty: 1 },
+      { product: removed._id, slug: removed.slug, sku: removed.sku, name: removed.name, price: 585, qty: 1 },
+    ],
+    save: async () => undefined,
+  };
+  Product.find = (filter) => productQuery([remaining, removed].filter((candidate) => (filter.$or || [filter]).some((clause) => (
+    clause._id?.$in?.map(String).includes(String(candidate._id)) || clause.slug?.$in?.includes(candidate.slug)
+  ))));
+  Product.findOne = async (filter) => (String(filter._id) === String(remaining._id) ? remaining : null);
+  Cart.findOne = async () => cart;
+  const app = express();
+  app.use(express.json());
+  app.use('/api/cart', cartRouter);
+  try {
+    const response = await jsonRequest(app, `/api/cart/remove/${removed.slug}`, undefined, 'DELETE');
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.cart.items.map((item) => item.slug), ['old-hynix-slug']);
+    const updated = await jsonRequest(app, '/api/cart/update', { slug: 'old-hynix-slug', qty: 2 }, 'PATCH');
+    assert.equal(updated.status, 200);
+    assert.equal(updated.body.cart.items[0].qty, 2);
+  } finally {
+    Product.find = originalProductFind;
+    Product.findOne = originalProductFindOne;
     Cart.findOne = originalCartFindOne;
   }
 });
@@ -245,11 +286,9 @@ test('cart lines carry the stock on hand so the cart page can stop at it, and a 
     assert.equal(over.status, 400);
     assert.equal(over.body.error, 'Only 2 units available');
     Cart.findOne = () => ({
-      populate: async () => ({
-        _id: 'cart-id',
-        items: [{ slug: 'two-left', name: 'Two left', price: 100, qty: 1, product: { line: 'Server', price: 100, stockQuantity: 2 } }],
-        save: async () => undefined,
-      }),
+      _id: 'cart-id',
+      items: [{ slug: 'two-left', name: 'Two left', price: 100, qty: 1, product: stick._id }],
+      save: async () => undefined,
     });
     const loaded = await jsonRequest(app, '/api/cart', undefined, 'GET');
     assert.equal(loaded.status, 200);

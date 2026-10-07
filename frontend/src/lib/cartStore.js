@@ -1,6 +1,16 @@
 import { create } from 'zustand';
 import { cartApi } from './api';
 
+const cartState = (cart) => ({
+  items: cart.items || [],
+  subtotal: cart.subtotal || 0,
+  shipping: cart.shipping || 0,
+  shippingFaster: cart.shippingFaster ?? null,
+  itemCount: cart.itemCount || 0,
+  discount: cart.discount || 0,
+  couponCode: cart.couponCode || null,
+});
+
 const useCartStore = create((set, get) => ({
   items: [],
   shipping: 0,
@@ -18,13 +28,7 @@ const useCartStore = create((set, get) => ({
     try {
       const { data } = await cartApi.get();
       set({
-        items: data.cart.items || [],
-        subtotal: data.cart.subtotal || 0,
-        shipping: data.cart.shipping || 0,
-        shippingFaster: data.cart.shippingFaster ?? null,
-        itemCount: data.cart.itemCount || 0,
-        discount: data.cart.discount || 0,
-        couponCode: data.cart.couponCode || null,
+        ...cartState(data.cart),
         isLoading: false,
       });
     } catch (err) {
@@ -40,11 +44,7 @@ const useCartStore = create((set, get) => ({
     try {
       const { data } = await cartApi.add(slug, qty);
       set({
-        items: data.cart.items,
-        subtotal: data.cart.subtotal,
-        shipping: data.cart.shipping || 0,
-        shippingFaster: data.cart.shippingFaster ?? null,
-        itemCount: data.cart.itemCount,
+        ...cartState(data.cart),
         isLoading: false,
       });
       return { success: true };
@@ -62,11 +62,7 @@ const useCartStore = create((set, get) => ({
     try {
       const { data } = await cartApi.update(slug, qty);
       set({
-        items: data.cart.items,
-        subtotal: data.cart.subtotal,
-        shipping: data.cart.shipping || 0,
-        shippingFaster: data.cart.shippingFaster ?? null,
-        itemCount: data.cart.itemCount,
+        ...cartState(data.cart),
         isLoading: false,
       });
       return { success: true };
@@ -83,11 +79,7 @@ const useCartStore = create((set, get) => ({
     try {
       const { data } = await cartApi.remove(slug);
       set({
-        items: data.cart.items,
-        subtotal: data.cart.subtotal,
-        shipping: data.cart.shipping || 0,
-        shippingFaster: data.cart.shippingFaster ?? null,
-        itemCount: data.cart.itemCount,
+        ...cartState(data.cart),
         isLoading: false,
       });
     } catch (err) {

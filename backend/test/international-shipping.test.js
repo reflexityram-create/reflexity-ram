@@ -165,3 +165,19 @@ test('checkout abroad charges the chosen Canada Post service and only accepts th
     });
   });
 });
+
+test('the quote counts a cart line whose slug was edited since it was added (found by product id, like the cart page and checkout)', async () => {
+  await withFakeFetch(async () => {
+    const originals = { cartFindOne: Cart.findOne, productFind: Product.find };
+    Cart.findOne = async () => ({ items: [{ product: 'p1', slug: 'old-ddr4-slug', qty: 2 }] });
+    Product.find = () => {
+      const docs = [{ _id: 'p1', slug: 'ddr4-16gb', name: '16GB DDR4', price: 170, stock: 'in', stockQuantity: 10, isActive: true, line: 'Server' }];
+      return { select: () => Promise.resolve(docs), then: (resolve, reject) => Promise.resolve(docs).then(resolve, reject) };
+    };
+    try {
+      const uk = await post('/api/shipping/international-quote', { country: 'gb' });
+      assert.equal(uk.status, 200);
+      assert.equal(uk.body.sticks, 2);
+    } finally { Cart.findOne = originals.cartFindOne; Product.find = originals.productFind; }
+  });
+});
