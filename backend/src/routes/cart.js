@@ -23,23 +23,44 @@ const withAvailable = (item, product) => {
 };
 const unitsMessage = (stock, inCart = 0) =>
   `Only ${stock} units available${inCart > 0 ? ` (${inCart} already in your cart)` : ''}`;
+const itemProductId = (item) => item?.product?._id || item?.product || null;
+// All cart endpoints expose the same purchasable view. Product IDs survive a slug
+// rename; the stored slug is only a fallback for legacy lines with no product ID.
+// Gone, inactive, or non-Server products stay in the persisted cart but are omitted
+// everywhere until they become purchasable again.
 const publicCartView = async (cart) => {
-  const slugs = [...new Set(cart.items.map((item) => item.slug).filter(Boolean))];
-  const products = slugs.length
-    ? await Product.find({ slug: { $in: slugs }, isActive: true, line: 'Server' }).lean()
-    : [];
-  const productsBySlug = new Map(products.map((product) => [product.slug, product]));
-  const items = cart.items
-    .filter((item) => productsBySlug.has(item.slug))
-    .map((item) => withAvailable(item, productsBySlug.get(item.slug)));
+  const cartItems = cart.items || [];
+  const productIds = [...new Set(cartItems.map(itemProductId).filter(Boolean).map(String))];
+  const legacySlugs = [...new Set(cartItems
+    .filter((item) => !itemProductId(item))
+    .map((item) => item.slug)
+    .filter(Boolean))];
+  const [productsById, legacyProducts] = await Promise.all([
+    productIds.length
+      ? Product.find({ _id: { $in: productIds }, isActive: true, line: 'Server' }).lean()
+      : [],
+    legacySlugs.length
+      ? Product.find({ slug: { $in: legacySlugs }, isActive: true, line: 'Server' }).lean()
+      : [],
+  ]);
+  const products = new Map(productsById.map((product) => [String(product._id), product]));
+  const legacyProductsBySlug = new Map(legacyProducts.map((product) => [product.slug, product]));
+  const lines = cartItems.map((item) => ({
+    item,
+    product: products.get(String(itemProductId(item))) || (!itemProductId(item) && legacyProductsBySlug.get(item.slug)),
+  })).filter(({ product }) => product);
+  const items = lines.map(({ item, product }) => withAvailable(item, product));
   return {
+    _id: cart._id || null,
     items,
     subtotal: items.reduce((sum, item) => sum + item.price * item.qty, 0),
     itemCount: items.reduce((sum, item) => sum + item.qty, 0),
     // The flat rate Stripe Checkout will charge for this cart (same function).
-    shipping: items.length ? resolveCartShippingPrice(items.map((item) => ({ product: productsBySlug.get(item.slug), qty: item.qty }))) : 0,
+    shipping: items.length ? resolveCartShippingPrice(lines.map(({ product, item }) => ({ product, qty: item.qty }))) : 0,
     // What Faster shipping would cost for this cart, or null when it is not offered (more than 6 sticks).
-    shippingFaster: resolveFasterShippingPrice(items.map((item) => ({ product: productsBySlug.get(item.slug), qty: item.qty }))),
+    shippingFaster: resolveFasterShippingPrice(lines.map(({ product, item }) => ({ product, qty: item.qty }))),
+    discount: cart.discount || 0,
+    couponCode: cart.couponCode || null,
   };
 };
 
@@ -50,48 +71,17 @@ router.get('/', optionalAuth, async (req, res) => {
     const userId = req.user?._id;
 
     if (!userId && !sessionId) {
-      return res.json({ cart: { items: [], subtotal: 0, itemCount: 0 } });
+      return res.json({ cart: await publicCartView({}) });
     }
 
     const filter = userId ? { user: userId } : { sessionId };
-    const cart = await Cart.findOne(filter).populate('items.product', 'stock stockQuantity price name line shippingPrice');
+    const cart = await Cart.findOne(filter);
 
     if (!cart) {
-      return res.json({ cart: { items: [], subtotal: 0, itemCount: 0 } });
+      return res.json({ cart: await publicCartView({}) });
     }
 
-    // Validate items against current product data
-    let needsSave = false;
-    const items = cart.items.filter((item) => item.product?.line === 'Server');
-    for (const item of items) {
-      if (item.product) {
-        // Update price if changed
-        if (item.price !== item.product.price) {
-          item.price = item.product.price;
-          needsSave = true;
-        }
-      }
-    }
-    if (needsSave) await cart.save();
-
-    const subtotal = items.reduce((sum, i) => sum + i.price * i.qty, 0);
-    const itemCount = items.reduce((sum, i) => sum + i.qty, 0);
-    // The flat rate Stripe Checkout will charge for this cart (same function).
-    const shipping = items.length ? resolveCartShippingPrice(items.map((i) => ({ product: i.product, qty: i.qty }))) : 0;
-    const shippingFaster = resolveFasterShippingPrice(items.map((i) => ({ product: i.product, qty: i.qty })));
-
-    res.json({
-      cart: {
-        _id: cart._id,
-        items: items.map((item) => withAvailable(item, item.product)),
-        subtotal,
-        itemCount,
-        shipping,
-        shippingFaster,
-        discount: cart.discount,
-        couponCode: cart.couponCode,
-      },
-    });
+    res.json({ cart: await publicCartView(cart) });
   } catch (err) {
     console.error('Cart get error:', err);
     res.status(500).json({ error: 'Failed to fetch cart' });
@@ -128,7 +118,7 @@ router.post(
 
       const filter = userId ? { user: userId } : { sessionId };
       const cart = await mutateCartWithRetry(filter, async (draft) => {
-        const existingItem = draft.items.find(i => i.slug === slug);
+        const existingItem = draft.items.find((item) => item.slug === slug || String(itemProductId(item)) === String(product._id));
         if (existingItem) {
           const newQty = existingItem.qty + qty;
           if (newQty > product.stockQuantity) throw new CartMutationError(400, unitsMessage(product.stockQuantity, existingItem.qty));
@@ -179,7 +169,11 @@ router.patch(
         }
         const item = draft.items.find(i => i.slug === slug);
         if (!item) throw new CartMutationError(404, 'Item not in cart');
-        const product = await Product.findOne({ slug, isActive: true, line: 'Server' });
+        const product = await Product.findOne(
+          itemProductId(item)
+            ? { _id: itemProductId(item), isActive: true, line: 'Server' }
+            : { slug, isActive: true, line: 'Server' },
+        );
         if (!product) throw new CartMutationError(400, 'Product is no longer available');
         if (qty > product.stockQuantity) throw new CartMutationError(400, unitsMessage(product.stockQuantity));
         item.qty = qty;
