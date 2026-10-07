@@ -13,6 +13,9 @@
      base #FAFAF7 · paper #FFFFFF · alt #F4F4F0
    ============================================================ */
 :root {
+    /* Native controls (a <select>'s dropdown list, date pickers, scrollbars, autofill) follow the theme; without this they stay
+       browser-light in dark mode: a white list with light text. */
+    color-scheme: dark;
     --brand-yellow: #ffcf24;
     --brand-yellow-deep: #e5b400;
     --brand-yellow-tint: #fff6d6;
@@ -127,6 +130,7 @@
 }
 
 html.light {
+    color-scheme: light;
     --bg: #fafaf7;
     --bg-elev: #ffffff;
     --glass-bg: rgba(255, 255, 255, 0.94);
@@ -503,6 +507,12 @@ html.dark .pill-blue {
     .input::placeholder,
     .textarea::placeholder {
         color: var(--placeholder);
+    }
+    /* The open list of a <select> is drawn from its options: give them the surface and text of the theme (not the page default). */
+    select option,
+    select optgroup {
+        background-color: var(--bg-elev);
+        color: var(--fg);
     }
 }
 
