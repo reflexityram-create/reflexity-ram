@@ -15,7 +15,7 @@ async function notifyShipment(order, overrides = {}) {
       { 'shippingNotification.status': 'sending', 'shippingNotification.claimedAt': { $lt: new Date(now - CLAIM_MS) } },
     ],
   }, { $set: { 'shippingNotification.status': 'sending', 'shippingNotification.claimedAt': now } });
-  if (!claimed) return { status: 'skipped' };
+  if (!claimed) return { status: 'unchanged' }; // another worker owns it, or it was already handled
   const email = order.user?.email || order.guestEmail;
   const filter = { _id: order._id, 'shippingNotification.status': 'sending', 'shippingNotification.claimedAt': now };
   if (!email) {

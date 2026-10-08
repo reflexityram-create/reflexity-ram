@@ -76,7 +76,8 @@ test('two workers share one claim and a crashed claim can be reclaimed after its
   const fake = orderStore([order({ status: 'shipped', shippingNotification: { status: 'pending' } })]);
   let sends = 0;
   const deps = { Order: fake, now: () => NOW, sendEmail: async () => { sends += 1; } };
-  await Promise.all([notifyShipment(fake.store[0], deps), notifyShipment(fake.store[0], deps)]);
+  const notices = await Promise.all([notifyShipment(fake.store[0], deps), notifyShipment(fake.store[0], deps)]);
+  assert.deepEqual(notices.map((n) => n.status).sort(), ['sent', 'unchanged']);
   assert.equal(sends, 1);
   fake.store[0].shippingNotification = { status: 'sending', claimedAt: new Date(NOW - CLAIM_MS - 1) };
   await notifyShipment(fake.store[0], deps);
