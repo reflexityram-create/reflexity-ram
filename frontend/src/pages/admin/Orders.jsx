@@ -127,6 +127,16 @@ function OrderDetailModal({ orderId, onClose }) {
     }
   };
 
+  const saveTracking = async () => {
+    setUpdating(true);
+    try {
+      const { data } = await adminApi.updateOrderTracking(orderId, statusForm.trackingNumber);
+      await reloadOrder(data.order);
+      toast.success('Tracking saved. Status updates after Canada Post accepts the parcel.');
+    } catch (err) { toast.error(err.response?.data?.error || 'Tracking could not be saved'); }
+    finally { setUpdating(false); }
+  };
+
   const handleStatusUpdate = async (e) => {
     e.preventDefault();
     setUpdating(true);
@@ -250,6 +260,14 @@ function OrderDetailModal({ orderId, onClose }) {
                 required={statusForm.status === 'shipped' && !order.trackingNumber}
                 onChange={e => setStatusForm(f => ({ ...f, trackingNumber: e.target.value }))}
               />
+              {order.paymentStatus === 'paid' && ['pending', 'processing'].includes(order.status) && (
+                <div>
+                  <button type="button" onClick={saveTracking} disabled={updating || !statusForm.trackingNumber.trim()} className="btn-secondary">
+                    Save tracking for automatic updates
+                  </button>
+                  <p className="text-[12px] text-neutral-400 mt-2">Saving a label keeps the current status. After Canada Post scans the parcel, it moves to Shipped and the buyer receives an email.</p>
+                </div>
+              )}
               <input
                 className="input"
                 placeholder="Note (optional)"

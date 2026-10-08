@@ -14,7 +14,7 @@ const tokenMatches = (given) => {
 };
 
 // ─── POST /api/tracking/sync ───────────────────────────────────────────────────
-// Called every few hours by .github/workflows/tracking-sync.yml with
+// Called every 15 minutes by .github/workflows/tracking-sync.yml with
 // "Authorization: Bearer <TRACKING_SYNC_TOKEN>".
 router.post('/sync', async (req, res) => {
   const given = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');

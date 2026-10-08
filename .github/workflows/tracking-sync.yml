@@ -1,11 +1,11 @@
 name: Canada Post tracking sync
 
-# Every 3 hours the site checks shipped parcels with Canada Post, marks
+# Every 15 minutes the site checks tracked paid orders with Canada Post, marks
 # delivered orders and emails buyers (backend/src/utils/trackingSync.js).
 # Scheduled here because the Render free plan sleeps between requests.
 on:
   schedule:
-    - cron: '23 */3 * * *'
+    - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
 
 permissions: {}

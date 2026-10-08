@@ -60,11 +60,14 @@ const accessToken = async (fetchImpl = fetch) => {
 };
 
 const getJson = async (url, fetchImpl) => {
-  const res = await fetchImpl(url, {
-    headers: { Authorization: `Bearer ${await accessToken(fetchImpl)}`, Accept: 'application/json', 'Accept-Language': 'en-CA' },
-  });
-  if (!res.ok) throw new Error(`Canada Post tracking request failed (${res.status})`);
-  return res.json();
+  const token = await accessToken(fetchImpl);
+  return withDeadline(async (signal) => {
+    const res = await fetchImpl(url, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Accept-Language': 'en-CA' }, signal,
+    });
+    if (!res.ok) throw new Error(`Canada Post tracking request failed (${res.status})`);
+    return res.json();
+  }, 'Canada Post tracking request');
 };
 
 // Event codes seen on real parcels: 0174 "Item out for delivery", 14xx
@@ -79,8 +82,18 @@ const normalizeTracking = (summary = {}, details = {}) => {
   // delivery itself is the useful line for the buyer.
   const latest = events.find((e) => !/photo available/i.test(e.eventDescription || '')) || events[0];
   const delivered = Boolean(summary.actualDeliveryDate);
+  // A label or electronic declaration is not proof the parcel was handed over.
+  const physicalScan = (e) => e && !/electronic|label|information submitted|shipping details|expected/i.test(e.eventDescription || '')
+    && (['1302', '0174', '1701', '1421'].includes(e.eventIdentifier)
+      || /\b(item|shipment|parcel) (accepted|processed|picked up|arrived|departed|in transit|out for delivery|delivered)\b/i.test(e.eventDescription || '')
+      || READY_FOR_PICKUP.test(e.eventDescription || ''));
+  const accepted = [...events].reverse().find(physicalScan);
+  const summaryPhysical = physicalScan(summary);
+
   const isOut = (e) => e && (e.eventIdentifier === '0174' || OUT_FOR_DELIVERY.test(e.eventDescription || ''));
   return {
+    hasShipped: delivered || Boolean(accepted) || summaryPhysical,
+    shippedOn: accepted?.eventDate || (summaryPhysical ? summary.eventDate : null) || summary.actualDeliveryDate || null,
     delivered,
     deliveredOn: summary.actualDeliveryDate || null,
     expectedDeliveryDate: details.changedExpectedDate || details.expectedDeliveryDate || summary.expectedDeliveryDate || null,

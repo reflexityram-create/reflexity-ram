@@ -155,7 +155,9 @@ test('the order page headline follows the order status and tracking opens Canada
   const page = await read('../src/pages/OrderSuccess.jsx');
   assert.match(page, /case 'shipped':[\s\S]*?title: 'Your order is on its way'/);
   assert.match(page, /case 'delivered':[\s\S]*?title: 'Your order was delivered'/);
-  assert.match(page, /<a href=\{order\.trackingUrl\} target="_blank" rel="noopener noreferrer"/);
+  const tracking = await read('../src/components/OrderTracking.jsx');
+  assert.match(page, /<OrderTracking order=\{order\}/);
+  assert.match(tracking, /<a href=\{order\.trackingUrl\} target="_blank" rel="noopener noreferrer"/);
 });
 
 // Most buyers check out as guests; for them "View all orders" opened a sign-in wall.
@@ -183,8 +185,9 @@ test('the product page, checkout and shipping policies state the stick-count shi
 // Canada Post tracking sync stores the latest scan on the order; buyers see it under the tracking number.
 test('the order page shows the latest Canada Post scan and expected delivery date', async () => {
   const page = await read('../src/pages/OrderSuccess.jsx');
-  assert.match(page, /order\.trackingLatest\?\.description && \(/);
-  assert.match(page, /Latest from Canada Post:/);
+  const tracking = await read('../src/components/OrderTracking.jsx');
+  assert.match(tracking, /scan\?\.description/);
+  assert.match(tracking, /data-testid="order-tracking-latest"/);
   assert.match(page, /Canada Post expects to deliver it/);
 });
 

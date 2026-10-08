@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 // Swap the Resend SDK out before email.js loads so no test can send a real email.
 const sent = [];
+const sendOptions = [];
 const resendPath = require.resolve('resend');
 require.cache[resendPath] = {
   id: resendPath,
@@ -11,7 +12,7 @@ require.cache[resendPath] = {
   exports: {
     Resend: class {
       constructor() {
-        this.emails = { send: async (message) => { sent.push(message); return { data: { id: 'email_test' }, error: null }; } };
+        this.emails = { send: async (message, options) => { sent.push(message); sendOptions.push(options); return { data: { id: 'email_test' }, error: null }; } };
       }
     },
   },
@@ -62,4 +63,11 @@ test('a shipping email without a tracking number offers the order page only', as
   const links = hrefs(sent[0].html);
   assert.deepEqual(links.map(([text]) => text), ['View your order']);
   assert.ok(!sent[0].html.includes('canadapost'), 'no Canada Post link without a tracking number');
+});
+
+ test('shipping retry keys reach Resend instead of being discarded by the email wrapper', async () => {
+  await sendShippingNotificationEmail({ email: 'buyer@example.com', firstName: 'Buyer',
+    order: { _id: '6ac2d644ce61cd9a8fb13b53', orderNumber: 'RFX-RETRY', trackingNumber: 'CP123' },
+    idempotencyKey: 'shipment/6ac2d644ce61cd9a8fb13b53' });
+  assert.deepEqual(sendOptions.at(-1), { idempotencyKey: 'shipment/6ac2d644ce61cd9a8fb13b53' });
 });

@@ -59,23 +59,17 @@ async function request(app, method, path, body, headers) {
 }
 
 function setup(t, initial) {
-  let current = { ...initial };
-  const updates = [];
-  const originalOrder = {
-    findById: Order.findById,
-    findOneAndUpdate: Order.findOneAndUpdate,
-  };
+  const fake = require('./helpers/orderStore').orderStore([initial]);
+  const originalOrder = { findById: Order.findById, findOneAndUpdate: Order.findOneAndUpdate, updateOne: Order.updateOne };
   const originalUser = User.findById;
   User.findById = () => chain({ _id: 'admin-1', role: 'admin', isActive: true, authVersion: 0 });
-  Order.findById = () => chain({ ...current, user: undefined });
-  Order.findOneAndUpdate = (filter, update) => {
-    updates.push({ filter, update });
-    current = { ...current, ...update, status: update.status, trackingNumber: update.trackingNumber || current.trackingNumber };
-    return chain({ ...current, user: undefined });
-  };
+  Order.findById = fake.findById;
+  Order.findOneAndUpdate = fake.findOneAndUpdate;
+  Order.updateOne = fake.updateOne;
   t.after(() => {
     Order.findById = originalOrder.findById;
     Order.findOneAndUpdate = originalOrder.findOneAndUpdate;
+    Order.updateOne = originalOrder.updateOne;
     User.findById = originalUser;
     shippingEmailError = null;
   });
@@ -83,7 +77,7 @@ function setup(t, initial) {
   app.use(express.json());
   app.use('/api/admin', adminRouter);
   const headers = { Authorization: `Bearer ${jwt.sign({ id: 'admin-1', av: 0 }, process.env.JWT_SECRET)}` };
-  return { app, headers, updates, getCurrent: () => current };
+  return { app, headers, get updates() { return fake.writes.filter((w) => w.update.status); }, getCurrent: () => fake.store[0] };
 }
 
 test('a paid pending order can be shipped with tracking and emails once', async (t) => {
@@ -167,4 +161,27 @@ test('shipping email failure is surfaced without pretending the buyer was notifi
     status: 'failed', message: 'Order shipped, but the buyer notification could not be sent',
   });
   assert.equal(sent.length, 0);
+});
+
+test('saving tracking leaves a paid pending order pending and sends no premature email', async (t) => {
+  sent.length = 0;
+  const h = setup(t, { _id: '64b7f0c2a1b2c3d4e5f60719', status: 'pending', paymentStatus: 'paid',
+    trackingUrl: 'https://carrier.example/old', trackingLatest: { description: 'old number' } });
+  const result = await request(h.app, 'PATCH', `/api/admin/orders/${h.getCurrent()._id}/tracking`, { trackingNumber: ' CP123 ' }, h.headers);
+  assert.equal(result.status, 200);
+  assert.equal(h.getCurrent().status, 'pending');
+  assert.equal(h.getCurrent().trackingNumber, 'CP123');
+  assert.equal(h.getCurrent().trackingLatest, undefined);
+  assert.equal(h.getCurrent().trackingUrl, undefined);
+  assert.equal(sent.length, 0);
+});
+
+test('saving tracking rejects empty numbers, unpaid orders and already shipped orders', async (t) => {
+  const h = setup(t, { _id: '64b7f0c2a1b2c3d4e5f60719', status: 'pending', paymentStatus: 'pending' });
+  const path = `/api/admin/orders/${h.getCurrent()._id}/tracking`;
+  assert.equal((await request(h.app, 'PATCH', path, { trackingNumber: 'CP123' }, h.headers)).status, 409);
+  h.getCurrent().paymentStatus = 'paid';
+  assert.equal((await request(h.app, 'PATCH', path, { trackingNumber: '   ' }, h.headers)).status, 400);
+  h.getCurrent().status = 'shipped';
+  assert.equal((await request(h.app, 'PATCH', path, { trackingNumber: 'CP123' }, h.headers)).status, 409);
 });

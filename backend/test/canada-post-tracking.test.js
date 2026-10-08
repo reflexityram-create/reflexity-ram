@@ -61,34 +61,7 @@ test('the client caches its OAuth token and sends Bearer + language headers', as
   assert.equal(token.headers['X-IBM-Client-Id'], 'test-key');
 });
 
-// In-memory stand-in for the Order collection, enough for the sync.
-const fakeOrders = (docs) => {
-  const store = docs.map((d) => ({ ...d }));
-  const matches = (doc, filter) => Object.entries(filter).every(([k, v]) => {
-    if (k === '_id') return doc._id === v;
-    if (v === null) return doc[k] === undefined || doc[k] === null;
-    return doc[k] === v;
-  });
-  return {
-    store,
-    find: () => ({ populate: () => ({ limit: async () => store.filter((d) => d.status === 'shipped' && d.trackingNumber).map((d) => ({ ...d })) }) }),
-    updateOne: async (filter, update) => {
-      const doc = store.find((d) => matches(d, filter));
-      if (!doc) return { modifiedCount: 0 };
-      Object.assign(doc, update.$set || {});
-      for (const key of Object.keys(update.$unset || {})) delete doc[key];
-      if (update.$push?.statusHistory) doc.statusHistory = [...(doc.statusHistory || []), update.$push.statusHistory];
-      return { modifiedCount: 1 };
-    },
-    findOneAndUpdate: async (filter, update) => {
-      const doc = store.find((d) => matches(d, filter));
-      if (!doc) return null;
-      const before = { ...doc };
-      Object.assign(doc, update.$set || {});
-      return before;
-    },
-  };
-};
+const { orderStore: fakeOrders } = require('./helpers/orderStore');
 
 const withFakeOrders = async (docs, run) => {
   const fake = fakeOrders(docs);
@@ -172,7 +145,7 @@ test('the sync endpoint needs the shared token', async () => {
   const original = Order.find;
   try {
     process.env.TRACKING_SYNC_TOKEN = 'sync-secret';
-    Order.find = () => ({ populate: () => ({ limit: async () => [] }) });
+    Order.find = () => ({ sort() { return this; }, populate() { return this; }, limit: async () => [] });
     assert.equal((await call()).status, 401);
     assert.equal((await call('Bearer wrong')).status, 401);
     const ok = await call('Bearer sync-secret');

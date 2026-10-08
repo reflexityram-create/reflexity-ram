@@ -109,6 +109,12 @@ const orderSchema = new mongoose.Schema({
     expectedDeliveryDate: String,
     checkedAt: Date,
   },
+  // Created only for new shipped transitions; old shipments are not re-emailed.
+  shippingNotification: {
+    status: { type: String, enum: ['pending', 'sending', 'sent', 'failed', 'skipped'] },
+    claimedAt: Date,
+    sentAt: Date,
+  },
   // Each tracking email goes out once; set when it is sent.
   outForDeliveryEmailAt: { type: Date },
   pickupNoticeEmailAt: { type: Date },
