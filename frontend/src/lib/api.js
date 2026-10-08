@@ -181,6 +181,14 @@ export const adminApi = {
   archiveOrder: (id, archived) => api.patch(`/admin/orders/${id}/archive`, { archived }),
   sendReviewRequest: (id) => api.post(`/admin/orders/${id}/review-request`),
 
+  // Canada Post labels. Only buyLabel spends money, and the server refuses it unless `approve: true` comes with the
+  // exact price it just re-checked. Its timeout (100 s) is longer than the slowest the server can be (token 20 s + price
+  // 20 s + 45 s waiting for Canada Post): giving up early would leave the screen not knowing whether a label was bought.
+  getLabelOptions: (id, config = {}) => api.get(`/admin/orders/${id}/label/options`, { timeout: 45000, ...config }),
+  buyLabel: (id, request) => api.post(`/admin/orders/${id}/label`, request, { timeout: 100000 }),
+  checkLabel: (id) => api.post(`/admin/orders/${id}/label/reconcile`, {}, { timeout: 100000 }), // `{}`, not null: axios sends null as the JSON text "null", which the server's JSON parser rejects
+  getLabelPdf: (id) => api.get(`/admin/orders/${id}/label/pdf`, { responseType: 'blob', timeout: 45000 }),
+
   // Users
   listUsers: (params) => api.get('/admin/users', { params }),
   updateUser: (id, data) => api.patch(`/admin/users/${id}`, data),

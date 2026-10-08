@@ -5,6 +5,7 @@ import AppLayout from '@/components/AppLayout';
 import { adminApi } from '@/lib/api';
 import { imageUrl } from '@/lib/imageUrl';
 import ShippingPreparationPanel from '@/components/admin/ShippingPreparationPanel';
+import LabelPanel from '@/components/admin/LabelPanel';
 import { NEXT_STATUS, statusOptions } from '@/lib/adminOrderStatus';
 // The status filter's options. Kept in the same order as NEXT_STATUS and
 // matching the values the admin orders API accepts.
@@ -237,7 +238,9 @@ function OrderDetailModal({ orderId, onClose }) {
               )}
             </div>
 
-            <ShippingPreparationPanel preparation={order.shippingPreparation} />
+            <LabelPanel order={order} onChanged={() => reloadOrder()} />
+
+            <ShippingPreparationPanel preparation={order.shippingPreparation} labelBought={order.label?.status === 'created'} />
 
             <ReviewEmailPanel order={order} onUpdated={(next) => reloadOrder(next)} />
 
@@ -388,6 +391,13 @@ export default function AdminOrders() {
                         <span className={`pill ${STATUS_PILLS[o.status] || ''} text-[10px] py-0.5`}>
                           {o.status}
                         </span>
+                        {/* A bought label waiting for its parcel, or a purchase that needs a look */}
+                        {o.label?.status === 'created' && ['pending', 'processing'].includes(o.status) && (
+                          <span className="pill pill-accent text-[10px] py-0.5 ml-1.5" data-testid="order-label-badge">label ready</span>
+                        )}
+                        {['unknown', 'creating'].includes(o.label?.status) && (
+                          <span className="pill pill-amber text-[10px] py-0.5 ml-1.5" data-testid="order-label-badge">check label</span>
+                        )}
                       </td>
                       <td className="p-4 text-right mono">${o.total?.toFixed(2)}</td>
                       <td className="p-4 text-right text-neutral-500">

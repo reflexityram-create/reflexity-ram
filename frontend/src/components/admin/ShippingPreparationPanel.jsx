@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 
 const money = (value) => `CAD $${Number(value || 0).toFixed(2)}`;
 
-export default function ShippingPreparationPanel({ preparation }) {
+export default function ShippingPreparationPanel({ preparation, labelBought = false }) {
   const [copied, setCopied] = useState(false);
   if (!preparation) return null;
   const address = preparation.recipient || {};
@@ -29,8 +29,8 @@ export default function ShippingPreparationPanel({ preparation }) {
         <div className="text-neutral-500 text-[11px] uppercase tracking-widest flex items-center gap-1.5">
           <Truck size={11} /> Shipping preparation
         </div>
-        <span className={`pill text-[10px] py-0.5 ${fulfillment.canCreateLabel ? 'pill-accent' : 'text-neutral-500'}`}>
-          {fulfillment.canCreateLabel ? 'Ready to prepare' : 'Reference only'}
+        <span className={`pill text-[10px] py-0.5 ${fulfillment.canCreateLabel || labelBought ? 'pill-accent' : 'text-neutral-500'}`}>
+          {labelBought ? 'Label bought' : fulfillment.canCreateLabel ? 'Ready to prepare' : 'Reference only'}
         </span>
       </div>
       {!fulfillment.canCreateLabel && fulfillment.reason && (
@@ -84,11 +84,15 @@ export default function ShippingPreparationPanel({ preparation }) {
         <button type="button" onClick={copy} className="btn-ghost flex items-center gap-1.5 text-[12px]">
           <Clipboard size={13} /> {copied ? 'Copied' : 'Copy shipping details'}
         </button>
-        <a className="btn-ghost flex items-center gap-1.5 text-[12px]" href={preparation.links?.snapShip} target="_blank" rel="noreferrer">
-          <ExternalLink size={13} /> Open Canada Post
-        </a>
+        {!labelBought && (
+          <a className="btn-ghost flex items-center gap-1.5 text-[12px]" href={preparation.links?.snapShip} target="_blank" rel="noreferrer">
+            <ExternalLink size={13} /> Open Canada Post
+          </a>
+        )}
       </div>
-      <div className="text-neutral-400 text-[11px] mt-3">Preparation only. No label has been purchased or created here.</div>
+      <div className="text-neutral-400 text-[11px] mt-3">
+        {labelBought ? 'A label has already been bought for this order (see Canada Post label above), so there is nothing to buy in Snap Ship.' : 'Preparation only. No label has been purchased or created here.'}
+      </div>
     </div>
   );
 }
