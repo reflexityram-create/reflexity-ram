@@ -315,11 +315,11 @@ export default function Checkout() {
                     )}
                     <div className="flex justify-between gap-4">
                       <dt className="text-neutral-400">Tax</dt>
-                      <dd className="text-[14px] text-neutral-400 text-right">Added by Stripe from your address</dd>
+                      <dd className="text-[14px] text-neutral-400 text-right">Here at Reflexity, we don’t charge tax. Enjoy 🙂</dd>
                     </div>
                   </dl>
                   <div className="flex justify-between items-baseline gap-4 border-t border-white/10 mt-4 pt-4 mb-5">
-                    <span className="font-semibold">Total before tax</span>
+                    <span className="font-semibold">Total</span>
                     <span className="mono font-semibold text-[18px]">{formatStorePrice(totalBeforeTax)}</span>
                   </div>
 
@@ -338,7 +338,7 @@ export default function Checkout() {
                   <div className="mt-5 space-y-3 text-[13px] text-neutral-400">
                     <div className="flex items-start gap-2.5">
                       <ShieldCheck size={16} className="shrink-0 mt-0.5" />
-                      <span>Payment, address and tax handled securely by Stripe</span>
+                      <span>Payment and address handled securely by Stripe</span>
                     </div>
                     <div className="flex items-start gap-2.5" data-testid="checkout-payments">
                       <CreditCard size={16} className="shrink-0 mt-0.5" />
