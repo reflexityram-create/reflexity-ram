@@ -13,7 +13,7 @@ const { cancelOrderAndRestoreStock } = require('../utils/stock');
 const { ORDER_STATUSES, canTransitionOrder } = require('../utils/orderTransitions');
 const { buildShippingPreparation } = require('../utils/shippingPreparation');
 const {
-  LabelError, SERVICES: LABEL_SERVICES, labelEligibility, labelView, quoteLabelOptions, buyLabel, reconcileLabel, fetchLabelPdf,
+  LabelError, SERVICES: LABEL_SERVICES, labelEligibility, labelView, quoteLabelOptions, buyLabel, reconcileLabel, releaseLabel, fetchLabelPdf,
 } = require('../utils/canadaPostLabels');
 
 const router = express.Router();
@@ -502,13 +502,32 @@ router.post('/orders/:id/label', [
   }
 });
 
-// POST /api/admin/orders/:id/label/reconcile — after an unclear answer, ask Canada Post whether the shipment exists.
+// POST /api/admin/orders/:id/label/reconcile — after an unclear answer, ask Canada Post whether the shipment exists. Asking never
+// changes the order unless it finds the shipment: a negative answer is reported, not acted on.
 router.post('/orders/:id/label/reconcile', [labelOrderId], validate, async (req, res) => {
   try {
     const result = await reconcileLabel(req.params.id);
-    res.json({ found: result.found, message: result.message || null, label: result.label || null });
+    res.json({
+      found: result.found, message: result.message || null, label: result.label || null,
+      mismatch: result.mismatch || null, canRelease: Boolean(result.canRelease), shipmentKnown: Boolean(result.shipmentKnown), releaseAfter: result.releaseAfter || null,
+    });
   } catch (err) {
     sendLabelError(res, err, 'Canada Post could not be asked. Try again in a minute.');
+  }
+});
+
+// POST /api/admin/orders/:id/label/release — the admin's own decision, after checking Canada Post's tools and the card statement,
+// that an unfinished purchase bought nothing: the order may be bought again. Refused too soon after the attempt, when a shipment is
+// known to exist, and unless a fresh search finds nothing (see releaseLabel).
+router.post('/orders/:id/label/release', [
+  labelOrderId,
+  body('confirm').custom((v) => v === true).withMessage('Releasing needs an explicit confirmation'),
+], validate, async (req, res) => {
+  try {
+    const result = await releaseLabel(req.params.id, { admin: req.user });
+    res.json({ released: result.released, found: result.found, label: result.label || null, mismatch: result.mismatch || null });
+  } catch (err) {
+    sendLabelError(res, err, 'The purchase could not be released. Try again in a minute.');
   }
 });
 

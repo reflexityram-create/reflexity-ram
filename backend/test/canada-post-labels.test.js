@@ -26,7 +26,7 @@ function harness({ order = {}, scenario = {}, env = {}, others = [] } = {}) {
   const deps = { Order: store, fetchImpl: cp.fetchImpl, env: labelEnv(env), now: () => NOW, createTimeoutMs: 150 };
   return {
     store, cp, deps, order: () => store.store[0],
-    buy: (args = {}) => L.buyLabel({ orderId: 'order-1', serviceCode: 'DOM.EP', signature: false, approvedDue: 19.16, admin: ADMIN, ...args }, deps),
+    buy: (args = {}, d = deps) => L.buyLabel({ orderId: 'order-1', serviceCode: 'DOM.EP', signature: false, approvedDue: 19.16, admin: ADMIN, ...args }, d),
     reconcile: () => L.reconcileLabel('order-1', deps),
     quote: () => L.quoteLabelOptions(store.store[0], deps),
   };
@@ -298,14 +298,56 @@ test('the limit applies to the live price, and the owner can raise or lower it',
   assert.equal(creates(fallback.cp).length, 1, 'an unreadable limit falls back to the default instead of blocking or opening everything');
 });
 
-test('a day of purchases is capped', async () => {
-  const bought = (n) => labelOrder({ _id: `other-${n}`, orderNumber: `RFX-OTHER-${n}`, label: { status: 'created', createdAt: new Date(NOW - n * 60 * 1000) } });
-  const h = harness({ env: { CANADA_POST_LABEL_DAILY_LIMIT: '2' }, others: [bought(1), bought(2)] });
+const started = (n, status = 'created', ago = n * 60 * 1000) => labelOrder({ _id: `other-${n}`, orderNumber: `RFX-OTHER-${n}`, label: { status, claimedAt: new Date(NOW - ago), createdAt: new Date(NOW - ago) } });
+
+test('a day of purchases is capped, counting everything that may have charged and nothing that cannot have', async () => {
+  const h = harness({ env: { CANADA_POST_LABEL_DAILY_LIMIT: '2' }, others: [started(1), started(2)] });
   await refuses(h.buy(), 'daily-limit', 429);
-  untouched(h, 'daily limit');
-  const older = harness({ env: { CANADA_POST_LABEL_DAILY_LIMIT: '2' }, others: [bought(1), labelOrder({ _id: 'old', orderNumber: 'RFX-OLD', label: { status: 'created', createdAt: new Date(NOW - 25 * 60 * 60 * 1000) } })] });
-  await older.buy();
-  assert.equal(creates(older.cp).length, 1, 'purchases from more than 24 hours ago do not count');
+  assert.equal(creates(h.cp).length, 0, 'nothing was sent to Canada Post');
+  assert.equal(h.order().label.status, 'failed', 'the claim was given back');
+  assert.equal(h.order().label.error.code, 'daily-limit');
+  assert.equal(L.labelEligibility(h.order(), h.deps.env, NOW).canBuy, true, 'and the order can be bought tomorrow, or when the limit is raised');
+
+  // Purchases in flight and unclear ones count (they may have charged); refused, failed and old ones do not.
+  for (const status of ['creating', 'unknown']) {
+    const counted = harness({ env: { CANADA_POST_LABEL_DAILY_LIMIT: '2' }, others: [started(1, status), started(2)] });
+    await refuses(counted.buy(), 'daily-limit', 429);
+  }
+  const free = harness({ env: { CANADA_POST_LABEL_DAILY_LIMIT: '1' }, others: [started(1, 'failed'), started(2, 'created', 25 * 60 * 60 * 1000)] });
+  await free.buy();
+  assert.equal(creates(free.cp).length, 1, 'a failed attempt and a purchase from more than 24 hours ago do not count');
+});
+
+test('a burst of parallel approvals cannot get past the daily limit', async () => {
+  const orders = Array.from({ length: 30 }, (_, n) => labelOrder({ _id: `burst-${n}`, orderNumber: `RFX-BURST-${String(n).padStart(3, '0')}` }));
+  canadaPost.resetTokenCacheForTest();
+  const store = orderStore(orders);
+  const cp = fakeCanadaPost();
+  const deps = { Order: store, fetchImpl: cp.fetchImpl, env: labelEnv({ CANADA_POST_LABEL_DAILY_LIMIT: '5' }), now: () => NOW, createTimeoutMs: 150 };
+  const results = await Promise.allSettled(orders.map((o) => L.buyLabel({ orderId: o._id, serviceCode: 'DOM.EP', signature: false, approvedDue: 19.16, admin: ADMIN }, deps)));
+  const bought = results.filter((r) => r.status === 'fulfilled').length;
+  assert.ok(bought <= 5, `at most the limit was bought, got ${bought}`);
+  assert.equal(creates(cp).length, bought, 'every Create Shipment call is a purchase that was allowed');
+  assert.ok(results.filter((r) => r.status === 'rejected').every((r) => r.reason.code === 'daily-limit'));
+  assert.equal(store.store.filter((o) => o.label?.status === 'created').length, bought);
+  // A burst that is refused (every claim counted every other) gives its claims back: they do not eat the day's limit afterwards.
+  const left = store.store.filter((o) => !o.label || o.label.status === 'failed');
+  let after = 0;
+  for (const o of left) {
+    try { await L.buyLabel({ orderId: o._id, serviceCode: 'DOM.EP', signature: false, approvedDue: 19.16, admin: ADMIN }, deps); after += 1; } catch (err) { assert.equal(err.code, 'daily-limit'); }
+  }
+  assert.equal(bought + after, 5, 'one at a time, the limit is reached exactly');
+});
+
+test('the production defaults are what they are documented to be, and nonsense falls back to them', () => {
+  assert.equal(L.maxDue({}), 60);
+  assert.equal(L.dailyLimit({}), 20);
+  for (const bad of ['', 'abc', '0', '-5', undefined]) {
+    assert.equal(L.maxDue({ CANADA_POST_LABEL_MAX_DUE: bad }), 60, String(bad));
+    assert.equal(L.dailyLimit({ CANADA_POST_LABEL_DAILY_LIMIT: bad }), 20, String(bad));
+  }
+  assert.equal(L.maxDue({ CANADA_POST_LABEL_MAX_DUE: '35.5' }), 35.5);
+  assert.equal(L.dailyLimit({ CANADA_POST_LABEL_DAILY_LIMIT: '7.9' }), 7);
 });
 
 test('with the switch off nothing at all is sent to Canada Post', async () => {
@@ -490,15 +532,105 @@ test('after an unclear answer, "Check with Canada Post" finds the shipment and c
   }
 });
 
-test('"Check with Canada Post" only says nothing was charged when Canada Post says there is no shipment', async () => {
+test('a negative answer from Canada Post changes nothing: it tells the admin what to look at, and when a new try may be allowed', async () => {
   for (const lookup of ['none', 'not-found']) {
     const h = await unknownOrder({ lookup, processedAnyway: false });
+    const before = structuredClone(h.order());
     const result = await h.reconcile();
     assert.equal(result.found, false, lookup);
-    assert.match(result.message, /no shipment.*nothing was charged/i);
-    assert.equal(h.order().label.status, 'failed', 'and the order can be bought again');
-    assert.equal(L.labelEligibility(h.order(), h.deps.env, NOW).canBuy, true);
+    assert.match(result.message, /found no shipment/);
+    assert.match(result.message, /Shipping tools/);
+    assert.match(result.message, /card statement/);
+    assert.doesNotMatch(result.message, /nothing was charged/i, 'an empty search does not prove that');
+    assert.deepEqual(h.order(), before, 'the order is exactly as it was');
+    assert.equal(h.order().label.status, 'unknown');
+    assert.equal(result.canRelease, false, 'only just now: Canada Post may still be finishing');
+    assert.equal(result.shipmentKnown, false);
+    assert.equal(result.releaseAfter, new Date(NOW.getTime() + 10 * 60 * 1000).toISOString());
+    h.deps.now = () => new Date(NOW.getTime() + 10 * 60 * 1000);
+    assert.equal((await h.reconcile()).canRelease, true, 'ten minutes after the purchase started');
+    assert.equal(h.order().label.status, 'unknown', 'still not released by asking');
   }
+});
+
+test('the admin can release an unfinished purchase only after the wait, only with a fresh empty search, and never when Canada Post is known to hold a shipment', async () => {
+  const h = await unknownOrder({ lookup: 'none', processedAnyway: false });
+  // too soon: refused before Canada Post is even asked
+  const callsBefore = h.cp.calls.length;
+  await assert.rejects(L.releaseLabel('order-1', { admin: { email: 'owner@example.com' } }, h.deps), (err) => err.code === 'too-soon' && err.status === 409 && err.extra.releaseAfter === new Date(NOW.getTime() + 10 * 60 * 1000).toISOString() && /10 minutes/.test(err.message));
+  assert.equal(h.cp.calls.length, callsBefore, 'Canada Post was not asked');
+  assert.equal(h.order().label.status, 'unknown');
+
+  // after the wait, with an empty search: released for a new try, and the new try is a normal purchase
+  h.deps.now = () => new Date(NOW.getTime() + 11 * 60 * 1000);
+  const released = await L.releaseLabel('order-1', { admin: { email: 'owner@example.com' } }, h.deps);
+  assert.deepEqual([released.released, released.found, released.label.status, released.label.error.code], [true, false, 'failed', 'released']);
+  assert.match(h.order().statusHistory.at(-1).note, /released for a new try by owner@example\.com/);
+  assert.equal(L.labelEligibility(h.order(), h.deps.env, h.deps.now()).canBuy, true);
+  h.cp.scenario.create = 'ok'; // Canada Post is well again
+  await h.buy();
+  assert.equal(creates(h.cp).length, 1, 'one new Create Shipment call (the log was cleared after the first, unclear attempt)');
+  assert.equal(h.order().label.status, 'created');
+  assert.equal(h.order().label.error, undefined, 'the release note is gone from the bought label');
+});
+
+test('releasing finds the shipment instead when Canada Post does have it, and is refused when one is already known', async () => {
+  const found = await unknownOrder({ lookup: 'found', processedAnyway: true });
+  found.deps.now = () => new Date(NOW.getTime() + 11 * 60 * 1000);
+  const result = await L.releaseLabel('order-1', {}, found.deps);
+  assert.deepEqual([result.released, result.found, result.label.status], [false, true, 'created']);
+  assert.equal(found.order().trackingNumber, '123456789012');
+
+  const known = harness({ scenario: { create: 'no-pin', lookup: 'none' } });
+  await assert.rejects(known.buy(), (err) => err.code === 'no-tracking-number');
+  known.deps.now = () => new Date(NOW.getTime() + 60 * 60 * 1000);
+  const checked = await known.reconcile();
+  assert.deepEqual([checked.found, checked.canRelease, checked.shipmentKnown], [false, false, true], 'a shipment is known: asking never offers a release');
+  assert.match(checked.message, /earlier/);
+  await assert.rejects(L.releaseLabel('order-1', {}, known.deps), (err) => err.code === 'shipment-exists' && /ship-001/.test(err.message));
+  assert.equal(known.order().label.status, 'unknown');
+});
+
+test('a search that is unclear leaves a release undone, and releasing something that is not unfinished is refused', async () => {
+  for (const lookup of ['error', 'accepted', 'garbled', 'object']) {
+    const h = await unknownOrder({ lookup });
+    h.deps.now = () => new Date(NOW.getTime() + 11 * 60 * 1000);
+    const before = structuredClone(h.order());
+    await refuses(L.releaseLabel('order-1', {}, h.deps), 'lookup-failed', 502);
+    assert.deepEqual(h.order(), before, lookup);
+  }
+  await refuses(L.releaseLabel('order-1', {}, harness().deps), 'nothing-to-check', 409);
+  const done = harness(); await done.buy();
+  await refuses(L.releaseLabel('order-1', {}, done.deps), 'nothing-to-check', 409);
+  await refuses(L.releaseLabel('missing', {}, done.deps), 'not-found', 404);
+});
+
+test('the wait before a release can be set, and nonsense falls back to ten minutes', async () => {
+  const h = await unknownOrder({ lookup: 'none', processedAnyway: false });
+  for (const [value, minutes] of [['0', 0], ['3', 3], ['', 10], ['abc', 10], ['-4', 10], [undefined, 10]]) {
+    h.deps.env = labelEnv({ CANADA_POST_LABEL_RELEASE_WAIT_MINUTES: value });
+    assert.equal((await h.reconcile()).releaseAfter, new Date(NOW.getTime() + minutes * 60 * 1000).toISOString(), String(value));
+  }
+});
+
+test('links Canada Post gives that cannot be followed here never turn into "nothing was charged"', async () => {
+  for (const hrefStyle of ['legacy', 'http', 'no-prod']) {
+    const h = await unknownOrder({ lookup: 'found', processedAnyway: true, hrefStyle });
+    const before = structuredClone(h.order());
+    await assert.rejects(h.reconcile(), (err) => err.code === 'lookup-failed' && /Shipping tools/.test(err.message), hrefStyle);
+    assert.deepEqual(h.order(), before, `${hrefStyle}: nothing changed`);
+  }
+  // a stray quote or a path relative to the API host is read as what it means
+  for (const hrefStyle of ['quoted', 'relative']) {
+    const h = await unknownOrder({ lookup: 'found', processedAnyway: true, hrefStyle });
+    assert.equal((await h.reconcile()).found, true, hrefStyle);
+  }
+  assert.equal(L.pickLabelLink([{ rel: 'label', href: `"${SHIPPING}/artifacts/1/shipping/2/0`, mediaType: 'application/pdf' }]), `${SHIPPING}/artifacts/1/shipping/2/0`);
+  assert.equal(L.pickLabelLink([{ rel: 'label', href: '/prod/devportal-portaildesdeveloppeurs/shipping/v1/artifacts/1/shipping/2/0', mediaType: 'application/pdf' }]), `${SHIPPING}/artifacts/1/shipping/2/0`);
+  assert.equal(L.trustedShippingLink('//evil.example/prod/devportal-portaildesdeveloppeurs/shipping/v1/x'), null, 'a protocol-relative link is another host');
+  assert.equal(L.trustedShippingLink('/shipping/v1/artifacts/1'), null, 'a path outside the API prefix');
+  assert.equal(L.trustedShippingLink(''), null);
+  assert.equal(L.trustedShippingLink(undefined), null);
 });
 
 test('an answer that is not an answer leaves the order exactly as it was', async () => {
@@ -530,6 +662,95 @@ test('there is nothing to check unless a purchase is unfinished, and a stale cla
   assert.equal((await stale.reconcile()).found, true);
   await refuses(harness({ env: { CANADA_POST_CUSTOMER_NUMBER: '' }, order: { label: { status: 'unknown' } } }).reconcile(), 'not-configured', 503);
   await refuses(L.reconcileLabel('missing', fresh.deps), 'not-found', 404);
+});
+
+// ── Findings of the independent review (2026-10-08), kept as tests ───────────────────────
+test('a save that throws after a successful purchase still reports the tracking number and shipment id, and logs them', async () => {
+  const h = harness();
+  const real = h.store.findOneAndUpdate;
+  let calls = 0;
+  h.deps.Order = { ...h.store, findOneAndUpdate: (...args) => (++calls === 2 ? Promise.reject(new Error('MongoNetworkError: connection closed')) : calls === 3 ? Promise.reject(new Error('MongoNetworkError again')) : real(...args)) };
+  const logged = [];
+  const log = console.error; console.error = (...a) => logged.push(a.join(' '));
+  try {
+    await assert.rejects(h.buy(), (err) => err.code === 'save-failed' && /123456789012/.test(err.message) && /ship-001/.test(err.message));
+  } finally { console.error = log; }
+  assert.ok(logged.some((line) => /123456789012/.test(line) && /ship-001/.test(line)), 'the numbers are in the server log too');
+  assert.equal(creates(h.cp).length, 1);
+});
+
+test('a purchase whose claim comes after another buy finished or went unclear is refused at the claim itself', async () => {
+  // B reads the order, then waits inside the price lookup while A buys; B's claim must not be accepted.
+  const slowRating = (h) => {
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const fetchImpl = async (url, init) => {
+      const answer = await h.cp.fetchImpl(url, init);
+      if (String(url).endsWith('/rating/v1/prices') && !fetchImpl.armed) { fetchImpl.armed = true; await gate; }
+      return answer;
+    };
+    return { fetchImpl, release };
+  };
+  for (const [scenario, aCode] of [[{}, null], [{ create: 'server-error' }, 'unknown-outcome']]) {
+    const h = harness({ scenario });
+    const slow = slowRating(h);
+    const b = h.buy({}, { ...h.deps, fetchImpl: slow.fetchImpl });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    if (aCode) await assert.rejects(h.buy(), (err) => err.code === aCode); else await h.buy();
+    const afterA = h.order().label.status;
+    slow.release();
+    await assert.rejects(b, (err) => err.code === 'in-progress');
+    assert.equal(creates(h.cp).length, 1, 'B never reached Canada Post');
+    assert.equal(h.order().label.status, afterA, 'and A\'s result was not disturbed');
+  }
+});
+
+test('Canada Post\'s documented duplicate-request-id refusal (7314) is "check first"', async () => {
+  const h = harness();
+  const real = h.cp.fetchImpl;
+  h.deps.fetchImpl = async (url, init) => (String(url).endsWith('/shipments') && init?.method === 'POST'
+    ? new Response(JSON.stringify({ title: 'Validation failed', detail: 'Errors occurred while processing the request.', errors: [{ errorCode: '7314', message: 'Request ID already exists; it must be unique when provided.' }] }), { status: 400, headers: { 'content-type': 'application/json' } })
+    : real(url, init));
+  await refuses(h.buy(), 'unknown-outcome', 502);
+  assert.equal(h.order().label.status, 'unknown');
+});
+
+test('the purchase asks Canada Post for English messages, because the duplicate check reads them', async () => {
+  const h = harness();
+  await h.buy();
+  assert.equal(creates(h.cp)[0].headers['Accept-Language'], 'en-CA');
+  assert.equal(creates(h.cp)[0].headers['Content-Type'], 'application/json');
+});
+
+test('an amount Canada Post does not give is "not told", not zero, and the card amount on the receipt is the one compared', async () => {
+  const none = harness({ scenario: { omitAmounts: true } });
+  const result = await none.buy();
+  assert.equal(none.order().label.price.charged, null, 'no charged amount recorded');
+  assert.equal(result.mismatch, null, 'and no "charged $0.00" mismatch');
+  assert.equal(L.parseShipment({ shipmentPrice: { dueAmount: '' }, shipmentReceipt: { ccReceiptDetails: {} } }).charged, null);
+  assert.equal(L.parseShipment({ shipmentPrice: { dueAmount: null } }).charged, null);
+  assert.equal(L.parseShipment({ shipmentPrice: { dueAmount: 19.16 }, shipmentReceipt: { ccReceiptDetails: { chargeAmount: 20.5 } } }).charged, 20.5, 'the receipt (what the card paid) wins');
+  assert.equal(L.parseShipment({ shipmentPrice: { dueAmount: 19.16 } }).charged, 19.16);
+  const differs = harness({ scenario: { charged: 21 } });
+  assert.deepEqual((await differs.buy()).mismatch, { approved: 19.16, charged: 21 });
+});
+
+test('a tracking number of just a space is still a tracking number, an order number Canada Post cannot search for is not bought here, and the two checks agree with the claim', () => {
+  for (const trackingNumber of [' ', 'ABC']) {
+    assert.equal(L.labelEligibility(labelOrder({ trackingNumber }), labelEnv(), NOW).code, 'has-tracking', JSON.stringify(trackingNumber));
+  }
+  for (const trackingNumber of [undefined, null, '']) assert.equal(L.labelEligibility(labelOrder({ trackingNumber }), labelEnv(), NOW).canBuy, true);
+  assert.equal(L.labelEligibility(labelOrder({ orderNumber: 'R'.repeat(33) }), labelEnv(), NOW).code, 'odd-order-number');
+  assert.equal(L.labelEligibility(labelOrder({ orderNumber: 'R'.repeat(32) }), labelEnv(), NOW).canBuy, true);
+  assert.equal(L.labelEligibility(labelOrder({ orderNumber: '' }), labelEnv(), NOW).code, 'odd-order-number');
+});
+
+test('two checks at once end with the label saved and no error for the slower one', async () => {
+  const h = await unknownOrder({ lookup: 'found', processedAnyway: true });
+  const [first, second] = await Promise.all([h.reconcile(), h.reconcile()]);
+  assert.deepEqual([first.found, second.found], [true, true]);
+  assert.equal(h.order().label.status, 'created');
+  assert.equal(h.order().statusHistory.filter((e) => /label bought/.test(e.note)).length, 1, 'bought once on record');
 });
 
 // ── The label itself ───────────────────────────────────────────────────────────────────
@@ -579,6 +800,19 @@ test('the label link is found again from the shipment when it was not stored', a
   const { bytes } = await L.fetchLabelPdf(order, { fetchImpl: h.cp.fetchImpl, env: h.deps.env });
   assert.equal(bytes.subarray(0, 5).toString('latin1'), '%PDF-');
   assert.equal(h.cp.calls.length, 2, 'shipment, then artifact');
+});
+
+test('a stored label link that no longer works is replaced by the shipment\'s current one, once', async () => {
+  const h = harness();
+  await h.buy();
+  const order = { ...h.order(), label: { ...h.order().label, artifactUrl: `${SHIPPING}/artifacts/consumer-1/shipping/expired-9/0` } };
+  h.cp.calls.length = 0;
+  const { bytes } = await L.fetchLabelPdf(order, { fetchImpl: h.cp.fetchImpl, env: h.deps.env });
+  assert.equal(bytes.subarray(0, 5).toString('latin1'), '%PDF-');
+  assert.equal(h.cp.calls.length, 3, 'the stored link (refused), the shipment, the new link');
+  // and with nothing to fall back on the error says what failed
+  const lone = { ...order, label: { ...order.label, shipmentId: '' } };
+  await refuses(L.fetchLabelPdf(lone, { fetchImpl: h.cp.fetchImpl, env: h.deps.env }), 'pdf-failed', 502);
 });
 
 test('what the admin screens may see of a label has no links and no internals', () => {

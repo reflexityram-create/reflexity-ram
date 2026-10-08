@@ -3,37 +3,44 @@ import { AlertTriangle, CheckCircle2, Clipboard, FileText, Loader2, RefreshCw, T
 import { toast } from 'sonner';
 import { adminApi } from '@/lib/api';
 import {
-  accessWarning, arrivalNote, detailsOf, explainPurchaseError, initialChoice, labelStage, money, panelVisible, priceOf, purchaseRequest, signatureNote, withRequote,
+  CONFIRM_ARM_MS, accessWarning, arrivalNote, detailsOf, explainPurchaseError, initialChoice, labelStage, money, overCap, panelVisible, priceOf,
+  purchaseRequest, signatureNote, withRequote,
 } from '@/lib/labelPurchase';
 
 // Buying a Canada Post label from the order. Prices are read-only; the ONLY thing that spends money is the confirm
 // button in the last step, which sends the option and the exact price on screen. Nothing here runs by itself.
 export default function LabelPanel({ order, onChanged }) {
-  const stage = labelStage(order);
   const [step, setStep] = useState('closed'); // closed | loading | choosing | confirming | buying | checking
   const [payload, setPayload] = useState(null);
   const [choice, setChoice] = useState({ serviceCode: null, signature: false });
   const [notice, setNotice] = useState(null); // { tone: 'error' | 'warn' | 'info', text }
   const [opening, setOpening] = useState(false);
+  const [bought, setBought] = useState(null); // the label the purchase just answered with: shown even if reading the order again fails
+  const [checkResult, setCheckResult] = useState(null); // what Canada Post said to "Check", when it found nothing
+  const [releasing, setReleasing] = useState(false);
   const confirmRef = useRef(null);
   const reviewRef = useRef(null);
   const purchasing = useRef(false); // a second click while the first purchase is in flight is ignored here, before the server's own guard
+  const confirmOpenedAt = useRef(0); // when the confirm box opened: the Charge button is not live for the first CONFIRM_ARM_MS
   const orderId = order?._id;
+  const stage = bought ? 'bought' : labelStage(order);
 
   // A different order starts the panel over, and so does a changed label state: no price is carried from one to the other.
   // (The message is kept across a label-state change, so an error that arrives together with a reload stays visible.)
-  useEffect(() => { setNotice(null); }, [orderId]);
+  useEffect(() => { setNotice(null); setBought(null); setCheckResult(null); }, [orderId]);
   useEffect(() => {
     setStep('closed'); setPayload(null); setChoice({ serviceCode: null, signature: false });
   }, [orderId, order?.label?.status]);
 
+  // Focus goes to the confirm box itself, never to the Charge button: a second Enter or Space (a double tap, a held key) while the
+  // box opens must not buy. The button is reached with Tab or the mouse after the price has been read.
   useEffect(() => { if (step === 'confirming') confirmRef.current?.focus(); }, [step]);
 
   if (!order || !panelVisible(order)) return null;
 
   const option = payload?.options?.find((o) => o.serviceCode === choice.serviceCode) || null;
   const due = priceOf(option, choice.signature);
-  const details = detailsOf(option, choice.signature);
+  const aboveLimit = overCap(payload, due);
   const busy = step === 'loading' || step === 'buying' || step === 'checking';
   const address = order.shippingAddress || {};
 
@@ -59,42 +66,63 @@ export default function LabelPanel({ order, onChanged }) {
   const confirmPurchase = async () => {
     const request = purchaseRequest(option, choice.signature);
     if (!request || step !== 'confirming' || purchasing.current) return;
+    if (Date.now() - confirmOpenedAt.current < CONFIRM_ARM_MS) return; // too soon after the box opened to have read it
     purchasing.current = true;
     setStep('buying'); setNotice(null);
     try {
       const { data } = await adminApi.buyLabel(orderId, request);
-      toast.success(`Label bought. Tracking ${data.label?.trackingPin || ''}`.trim());
+      setBought(data.label || null);
+      setStep('closed');
+      toast.success(`Label bought for ${order.orderNumber}. Tracking ${data.label?.trackingPin || ''}`.trim());
       if (data.mismatch) {
         toast.warning(`Canada Post charged ${money(data.mismatch.charged)}, not the ${money(data.mismatch.approved)} you approved.`);
       }
       await onChanged();
     } catch (err) {
       const outcome = explainPurchaseError(err);
+      setStep('choosing'); // whatever happened, the panel is usable again (a changed label state then resets it)
       if (outcome.priceChanged) {
         setPayload((p) => withRequote(p, outcome.priceChanged, choice.signature));
-        setStep('choosing');
         setNotice({ tone: 'warn', text: outcome.message });
         return;
       }
       toast.error(outcome.message);
       setNotice({ tone: 'error', text: outcome.message });
-      if (outcome.reload) await onChanged(); else setStep('choosing');
+      if (outcome.reload) await onChanged();
     } finally {
       purchasing.current = false;
     }
   };
 
   const checkWithCanadaPost = async () => {
-    setStep('checking'); setNotice(null);
+    setStep('checking'); setNotice(null); setCheckResult(null);
     try {
       const { data } = await adminApi.checkLabel(orderId);
-      if (data.found) toast.success('Found it: the label is on this order now.');
-      else toast.info(data.message || 'Canada Post has no shipment for this order.');
-      await onChanged();
+      setStep('closed');
+      if (data.found) {
+        toast.success('Found it: the label is on this order now.');
+        await onChanged();
+      } else {
+        setCheckResult(data); // nothing changes on the order: the admin decides what to do with this answer
+      }
     } catch (err) {
       setStep('closed');
       setNotice({ tone: 'error', text: err.response?.data?.error || 'Canada Post could not be asked. Try again in a minute.' });
     }
+  };
+
+  // The admin's own decision, after looking in Canada Post's tools and at the card statement, that nothing was bought.
+  const releaseUnfinished = async () => {
+    if (!window.confirm("Only continue if Canada Post's own Shipping tools AND your card statement show no label and no charge for this order. Allow a new purchase?")) return;
+    setReleasing(true); setNotice(null);
+    try {
+      const { data } = await adminApi.releaseLabel(orderId);
+      toast[data.found ? 'success' : 'info'](data.found ? 'Found it: the label is on this order now.' : 'Released: this order can be bought again.');
+      setCheckResult(null);
+      await onChanged();
+    } catch (err) {
+      setNotice({ tone: 'error', text: err.response?.data?.error || 'The purchase could not be released. Try again in a minute.' });
+    } finally { setReleasing(false); }
   };
 
   const openPdf = async () => {
@@ -136,7 +164,7 @@ export default function LabelPanel({ order, onChanged }) {
 
   // ── A label exists ────────────────────────────────────────────────────────────
   if (stage === 'bought') {
-    const label = order.label;
+    const label = bought || order.label;
     return (
       <div className="glass rounded-xl p-4 text-[13px]" data-testid="label-panel" data-stage="bought">
         <div className="flex items-center justify-between gap-3 mb-3">
@@ -186,6 +214,21 @@ export default function LabelPanel({ order, onChanged }) {
             {stage === 'running' ? 'Reload' : 'Check with Canada Post'}
           </button>
         </div>
+        {stage === 'unfinished' && checkResult && !checkResult.found && (
+          <div className="mt-3 text-[12px] leading-relaxed" role="status" data-testid="label-check-result">
+            <p className="text-neutral-200">{checkResult.message}</p>
+            {!checkResult.shipmentKnown && (
+              <div className="mt-2">
+                <button type="button" onClick={releaseUnfinished} disabled={releasing || (checkResult.releaseAfter && Date.parse(checkResult.releaseAfter) > Date.now())} className="btn-secondary flex items-center gap-2 !py-2 !px-4 text-[12px]" data-testid="label-release">
+                  {releasing && <Loader2 size={13} className="animate-spin" />} Nothing was bought: allow a new purchase…
+                </button>
+                {checkResult.releaseAfter && Date.parse(checkResult.releaseAfter) > Date.now() && (
+                  <p className="text-neutral-400 mt-1">Available after {new Date(checkResult.releaseAfter).toLocaleTimeString(undefined, { timeStyle: 'short' })}: Canada Post may still be finishing the first purchase.</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         {notices}
       </div>
     );
@@ -265,20 +308,26 @@ export default function LabelPanel({ order, onChanged }) {
             </p>
           )}
 
+          {aboveLimit && (
+            <p className="text-amber-700 dark:text-amber-300 text-[12px] mt-3 leading-relaxed" role="note" data-testid="label-over-cap">
+              {money(due)} is above this site's safety limit of {money(payload.maxDue)} per label, so a purchase would be refused. Pick a cheaper service, or raise the limit (a server setting).
+            </p>
+          )}
+
           {step === 'choosing' && (
             payload.switchedOff || stage === 'switched-off' ? (
               <p className="text-amber-700 dark:text-amber-300 text-[12px] mt-3" data-testid="label-switched-off">
                 Buying labels is switched off on the server, so only prices are shown. It is turned on with a server setting, not from this page.
               </p>
             ) : (
-              <button type="button" ref={reviewRef} onClick={() => { setStep('confirming'); setNotice(null); }} className="btn-primary mt-4 !py-2.5 !px-5 text-[13px]">
+              <button type="button" ref={reviewRef} onClick={() => { confirmOpenedAt.current = Date.now(); setStep('confirming'); setNotice(null); }} disabled={aboveLimit} className="btn-primary mt-4 !py-2.5 !px-5 text-[13px]">
                 Review and buy…
               </button>
             )
           )}
 
           {(step === 'confirming' || step === 'buying') && (
-            <div className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3" role="group" aria-label="Confirm label purchase" data-testid="label-confirm">
+            <div ref={confirmRef} tabIndex={-1} className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60" role="group" aria-label="Confirm label purchase" data-testid="label-confirm">
               <div className="text-amber-800 dark:text-amber-200 text-[11px] uppercase tracking-widest mb-2">You are about to buy</div>
               <div className="text-neutral-100">{option.serviceName}{choice.signature ? ' + signature' : ''} · <span className="mono">{money(due)} CAD</span> incl. tax</div>
               <div className="text-neutral-400 text-[12px] mt-1">
@@ -288,7 +337,7 @@ export default function LabelPanel({ order, onChanged }) {
                 This charges the card saved on your Canada Post account right now. A bought label can't be cancelled from this page.
               </p>
               <div className="flex flex-wrap gap-2 mt-3">
-                <button type="button" ref={confirmRef} onClick={confirmPurchase} disabled={step === 'buying'} className="btn-primary flex items-center gap-2 !py-2.5 !px-5 text-[13px]" data-testid="label-confirm-buy">
+                <button type="button" onClick={confirmPurchase} disabled={step === 'buying'} className="btn-primary flex items-center gap-2 !py-2.5 !px-5 text-[13px]" data-testid="label-confirm-buy">
                   {step === 'buying' && <Loader2 size={13} className="animate-spin" />}
                   {step === 'buying' ? 'Buying…' : `Charge ${money(due)} and create label`}
                 </button>

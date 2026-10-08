@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 
 const money = (value) => `CAD $${Number(value || 0).toFixed(2)}`;
 
-export default function ShippingPreparationPanel({ preparation, labelBought = false }) {
+export default function ShippingPreparationPanel({ preparation, labelBought = false, labelUnfinished = false }) {
   const [copied, setCopied] = useState(false);
   if (!preparation) return null;
   const address = preparation.recipient || {};
@@ -84,14 +84,18 @@ export default function ShippingPreparationPanel({ preparation, labelBought = fa
         <button type="button" onClick={copy} className="btn-ghost flex items-center gap-1.5 text-[12px]">
           <Clipboard size={13} /> {copied ? 'Copied' : 'Copy shipping details'}
         </button>
-        {!labelBought && (
+        {!labelBought && !labelUnfinished && (
           <a className="btn-ghost flex items-center gap-1.5 text-[12px]" href={preparation.links?.snapShip} target="_blank" rel="noreferrer">
             <ExternalLink size={13} /> Open Canada Post
           </a>
         )}
       </div>
       <div className="text-neutral-400 text-[11px] mt-3">
-        {labelBought ? 'A label has already been bought for this order (see Canada Post label above), so there is nothing to buy in Snap Ship.' : 'Preparation only. No label has been purchased or created here.'}
+        {labelBought
+          ? 'A label has already been bought for this order (see Canada Post label above), so there is nothing to buy in Snap Ship.'
+          : labelUnfinished
+            ? 'A Canada Post label purchase for this order did not finish cleanly and a label may exist (see Canada Post label above). Check that first: buying one here as well could charge the card twice.'
+            : 'Preparation only. No label has been purchased or created here.'}
       </div>
     </div>
   );

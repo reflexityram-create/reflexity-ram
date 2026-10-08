@@ -240,7 +240,7 @@ function OrderDetailModal({ orderId, onClose }) {
 
             <LabelPanel order={order} onChanged={() => reloadOrder()} />
 
-            <ShippingPreparationPanel preparation={order.shippingPreparation} labelBought={order.label?.status === 'created'} />
+            <ShippingPreparationPanel preparation={order.shippingPreparation} labelBought={order.label?.status === 'created'} labelUnfinished={['unknown', 'creating'].includes(order.label?.status)} />
 
             <ReviewEmailPanel order={order} onUpdated={(next) => reloadOrder(next)} />
 

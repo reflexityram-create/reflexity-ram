@@ -5,7 +5,11 @@
 
 export const money = (value) => `$${Number(value || 0).toFixed(2)}`;
 
-const ACTIONABLE_REFUSALS = new Set(['outside-canada', 'bad-address', 'odd-parcel', 'not-configured', 'has-tracking']);
+const ACTIONABLE_REFUSALS = new Set(['outside-canada', 'bad-address', 'odd-parcel', 'odd-order-number', 'not-configured', 'has-tracking']);
+
+// The Charge button ignores a click, tap or key press that comes sooner than this after the confirm box opened: a double
+// activation of "Review and buy…" (a double Enter, a held key) must never reach it before the price has been read.
+export const CONFIRM_ARM_MS = 700;
 
 // Which screen the panel shows, from what the server sent (order.label and order.labelEligibility) and nothing else.
 export function labelStage(order) {
@@ -58,6 +62,9 @@ export function accessWarning(payload) {
   return payload?.access?.ok === false ? String(payload.access.message || 'Canada Post is not letting this site create labels yet.') : '';
 }
 
+// True when the price on screen is above the server's per-label safety limit (it would only be refused).
+export const overCap = (payload, due) => Number.isFinite(Number(payload?.maxDue)) && Number.isFinite(Number(due)) && Number(due) > Number(payload.maxDue);
+
 // What the signature option adds to the price: "" when it is not offered, "included" when it costs nothing extra (Priority).
 export function signatureNote(option) {
   if (!option?.withSignature) return '';
@@ -88,19 +95,17 @@ export function withRequote(payload, quote, signature) {
   };
 }
 
+export const UNKNOWN_OUTCOME_MESSAGE = 'No clear answer came back, so it is not known whether the label was bought. The order was reloaded: check its label status before trying again.';
+
 // What an error from the purchase should do on screen. `reload` = the server's state may have changed (or is unknown),
 // so read the order again instead of trusting the screen; `priceChanged` = show the new price and ask again.
+// Only an answer from this site's own API (a JSON body with an `error` text) says what happened. Anything else (no answer at
+// all, or a gateway page from a restart or a deploy) says nothing, and a purchase may have gone through behind it.
 export function explainPurchaseError(err) {
   const response = err?.response;
-  if (!response) {
-    return {
-      message: 'No answer came back, so it is not known whether the label was bought. The order was reloaded: check its label status before trying again.',
-      reload: true,
-      priceChanged: null,
-    };
-  }
-  const data = response.data || {};
-  const message = typeof data.error === 'string' && data.error ? data.error : 'The purchase did not go through.';
+  const data = response?.data;
+  const message = data && typeof data === 'object' && typeof data.error === 'string' && data.error ? data.error : null;
+  if (!message) return { message: UNKNOWN_OUTCOME_MESSAGE, reload: true, priceChanged: null };
   if (data.code === 'price-changed' && data.quote) return { message, reload: false, priceChanged: data.quote };
   const untouched = response.status === 400 || response.status === 401 || response.status === 403;
   return { message, reload: !untouched, priceChanged: null };

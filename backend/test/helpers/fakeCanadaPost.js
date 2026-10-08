@@ -54,11 +54,24 @@ function fakeCanadaPost(scenario = {}) {
     rating: 'ok',
     lookup: 'found', // GET shipments?request-id=...: 'found' | 'none' | 'not-found' | 'error' | 'accepted' | 'wrapped' | 'garbled'
     access: 'ok', // the no-manifest probe: 'ok' | 'unauthorized' | 'forbidden' | 'error'
+    hrefStyle: 'normal', // how links in the shipment search read: 'normal' | 'legacy' | 'http' | 'relative' | 'quoted' | 'no-prod'
+    omitAmounts: false, // Create answers without any amount (no dueAmount, no receipt amount)
     pin: '123456789012',
     shipmentId: 'ship-001',
     artifactHref: `${SHIPPING}/artifacts/consumer-1/shipping/artifact-1/0`,
     pdf: PDF,
     ...scenario,
+  };
+  const styled = (href) => {
+    const path = href.replace(BASE, '');
+    switch (s.hrefStyle) {
+      case 'legacy': return `https://soa-gw.canadapost.ca/rs${path.replace('/shipping/v1', '')}`;
+      case 'http': return href.replace('https://', 'http://');
+      case 'relative': return `/prod/devportal-portaildesdeveloppeurs${path}`;
+      case 'quoted': return `"${href}`;
+      case 'no-prod': return `https://api.canadapost-postescanada.ca${path}`;
+      default: return href;
+    }
   };
   const fetchImpl = async (url, init = {}) => {
     const method = init.method || 'GET';
@@ -95,16 +108,14 @@ function fakeCanadaPost(scenario = {}) {
       if (s.create === 'server-error') return json({ errors: [{ errorCode: '9999', message: 'internal error' }] }, 500);
       if (s.create === 'hang') return new Promise(() => {}); // never answers
       if (s.create === 'unreadable') return new Response('<html>gateway</html>', { status: 200 });
+      const amount = s.charged ?? cents(quoteFor(body.deliverySpec.serviceCode, Boolean(body.deliverySpec.options)).priceDetails.due + (Number(s.ratingShift) || 0));
       return json({
         customerRequestId: body.customerRequestId,
         shipmentId: s.shipmentId,
         shipmentStatus: s.create === 'suspended' ? 'suspended' : 'created',
         ...(s.create === 'no-pin' ? {} : { trackingPin: s.pin }),
-        shipmentPrice: {
-          serviceCode: body.deliverySpec.serviceCode,
-          dueAmount: s.charged ?? cents(quoteFor(body.deliverySpec.serviceCode, Boolean(body.deliverySpec.options)).priceDetails.due + (Number(s.ratingShift) || 0)),
-        },
-        shipmentReceipt: { ccReceiptDetails: { cardType: 'VI', nameOnCard: 'Test Cardholder', authCode: '123456', chargeAmount: 19.16, currency: 'CAD' } },
+        shipmentPrice: { serviceCode: body.deliverySpec.serviceCode, ...(s.omitAmounts ? {} : { dueAmount: amount }) },
+        shipmentReceipt: { ccReceiptDetails: { cardType: 'VI', nameOnCard: 'Test Cardholder', authCode: '123456', ...(s.omitAmounts ? {} : { chargeAmount: amount }), currency: 'CAD' } },
         links: [
           { rel: 'self', href: `${SHIPPING}/${NUMBER}/${NUMBER}/shipments/${s.shipmentId}`, mediaType: 'application/json' },
           { rel: 'returnLabel', href: `${SHIPPING}/artifacts/consumer-1/shipping/return-1/0`, mediaType: 'application/pdf' },
@@ -126,13 +137,14 @@ function fakeCanadaPost(scenario = {}) {
       // Live behaviour (2026-10-08): the request id is the whole search; anything added to it is a 400.
       if (query.has('request-id') && query.has('no-manifest')) return json({ title: 'Validation failed', errors: [{ errorCode: '9183', message: 'Mutually exclusive search parameters were provided.  Please refer to documentation and provide only one.' }] }, 400);
       if (query.has('request-id') && (query.has('date') || query.has('limit'))) return json({ title: 'Validation failed', errors: [{ errorCode: '9185', message: 'Limit and/or Date do not apply to this type of request.' }] }, 400);
-      const links = [{ rel: 'shipment', href: `${SHIPPING}/${NUMBER}/${NUMBER}/shipments/${s.shipmentId}`, mediaType: 'application/json' }];
+      const links = [{ rel: 'shipment', href: styled(`${SHIPPING}/${NUMBER}/${NUMBER}/shipments/${s.shipmentId}`), mediaType: 'application/json' }];
       if (s.lookup === 'error') return json({ errors: [{ errorCode: '9000', message: 'try later' }] }, 503);
       if (s.lookup === 'accepted') return new Response(null, { status: 202 });
       if (s.lookup === 'not-found') return json({ errors: [{ errorCode: '404', message: 'No shipments found' }] }, 404);
       if (s.lookup === 'garbled') return new Response('<html>gateway</html>', { status: 200 });
       if (s.lookup === 'none') return json([]);
       if (s.lookup === 'wrapped') return json({ links });
+      if (s.lookup === 'object') return json({ title: 'Something else' });
       return json(links);
     }
     if (u === `${SHIPPING}/${NUMBER}/${NUMBER}/shipments/${s.shipmentId}`) {

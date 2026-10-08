@@ -76,15 +76,15 @@ const approve = (extra = {}) => ({ serviceCode: 'DOM.EP', signature: false, appr
 
 test('every label endpoint needs a signed-in admin', async (t) => {
   const anonymous = setup(t);
-  for (const [method, path] of [['GET', `${base}/label/options`], ['POST', `${base}/label`], ['POST', `${base}/label/reconcile`], ['GET', `${base}/label/pdf`]]) {
+  for (const [method, path] of [['GET', `${base}/label/options`], ['POST', `${base}/label`], ['POST', `${base}/label/reconcile`], ['POST', `${base}/label/release`], ['GET', `${base}/label/pdf`]]) {
     const res = await call(anonymous.app, method, path, { body: method === 'POST' ? approve() : undefined });
     assert.equal(res.status, 401, `${method} ${path}`);
   }
   assert.equal(anonymous.cp.calls.length, 0);
 
   const customer = setup(t, { role: 'customer' });
-  for (const [method, path] of [['GET', `${base}/label/options`], ['POST', `${base}/label`], ['POST', `${base}/label/reconcile`], ['GET', `${base}/label/pdf`]]) {
-    const res = await call(customer.app, method, path, { headers: customer.headers, body: method === 'POST' ? approve() : undefined });
+  for (const [method, path] of [['GET', `${base}/label/options`], ['POST', `${base}/label`], ['POST', `${base}/label/reconcile`], ['POST', `${base}/label/release`], ['GET', `${base}/label/pdf`]]) {
+    const res = await call(customer.app, method, path, { headers: customer.headers, body: method === 'POST' ? { ...approve(), confirm: true } : undefined });
     assert.equal(res.status, 403, `${method} ${path}`);
   }
   assert.equal(customer.cp.calls.length, 0, 'a customer token reaches nothing');
@@ -207,8 +207,9 @@ test('"Check with Canada Post" resolves an unclear purchase over HTTP', async (t
   const none = setup(t, { scenario: { create: 'server-error', lookup: 'none' } });
   await call(none.app, 'POST', `${base}/label`, { headers: none.headers, body: approve() });
   const missing = await call(none.app, 'POST', `${base}/label/reconcile`, { headers: none.headers });
-  assert.deepEqual([missing.status, missing.body.found], [200, false]);
-  assert.match(missing.body.message, /nothing was charged/i);
+  assert.deepEqual([missing.status, missing.body.found, missing.body.canRelease], [200, false, false]);
+  assert.match(missing.body.message, /card statement/);
+  assert.equal(none.order().label.status, 'unknown', 'a negative answer changes nothing');
 
   const nothing = setup(t);
   const idle = await call(nothing.app, 'POST', `${base}/label/reconcile`, { headers: nothing.headers });
@@ -255,4 +256,30 @@ test('the order screen gets the label view and the eligibility, never the Canada
 
 test('the SHIPPING base the routes use is the one the fake follows (a guard against a silently different endpoint)', () => {
   assert.equal(SHIPPING, `${canadaPost.BASE}/shipping/v1`);
+});
+
+test('releasing an unfinished purchase is the admin\'s explicit decision: it needs confirm:true, the wait, and a fresh empty search', async (t) => {
+  const h = setup(t, { scenario: { create: 'server-error', lookup: 'none' } });
+  await call(h.app, 'POST', `${base}/label`, { headers: h.headers, body: approve() });
+  assert.equal(h.order().label.status, 'unknown');
+
+  for (const [name, body] of [['no body', undefined], ['empty', {}], ['confirm false', { confirm: false }], ['confirm as a string', { confirm: 'true' }], ['confirm as 1', { confirm: 1 }]]) {
+    const res = await call(h.app, 'POST', `${base}/label/release`, { headers: h.headers, body });
+    assert.equal(res.status, 400, name);
+  }
+  const tooSoon = await call(h.app, 'POST', `${base}/label/release`, { headers: h.headers, body: { confirm: true } });
+  assert.deepEqual([tooSoon.status, tooSoon.body.code], [409, 'too-soon']);
+  assert.ok(tooSoon.body.releaseAfter, 'the screen is told when it may try again');
+  assert.equal(h.order().label.status, 'unknown');
+
+  process.env.CANADA_POST_LABEL_RELEASE_WAIT_MINUTES = '0';
+  t.after(() => { delete process.env.CANADA_POST_LABEL_RELEASE_WAIT_MINUTES; });
+  const released = await call(h.app, 'POST', `${base}/label/release`, { headers: h.headers, body: { confirm: true } });
+  assert.equal(released.status, 200, JSON.stringify(released.body));
+  assert.deepEqual([released.body.released, released.body.label.status], [true, 'failed']);
+  assert.match(h.order().statusHistory.at(-1).note, /released for a new try by/);
+  assert.doesNotMatch(JSON.stringify(released.body), /https?:|artifact/i);
+
+  const nothing = await call(h.app, 'POST', `${base}/label/release`, { headers: h.headers, body: { confirm: true } });
+  assert.deepEqual([nothing.status, nothing.body.code], [409, 'nothing-to-check']);
 });

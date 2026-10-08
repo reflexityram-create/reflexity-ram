@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
-  accessWarning, arrivalNote, detailsOf, explainPurchaseError, initialChoice, labelStage, money, panelVisible, priceOf, purchaseRequest, signatureNote, withRequote,
+  CONFIRM_ARM_MS, UNKNOWN_OUTCOME_MESSAGE, accessWarning, arrivalNote, detailsOf, explainPurchaseError, initialChoice, labelStage, money, overCap, panelVisible, priceOf, purchaseRequest, signatureNote, withRequote,
 } from "../src/lib/labelPurchase.js";
 
 const read = (file) => readFile(new URL(`../src/${file}`, import.meta.url), "utf8");
@@ -93,15 +93,19 @@ test("errors from a purchase either ask again, or send the screen back to the tr
   const noAnswer = explainPurchaseError({ code: "ECONNABORTED", message: "timeout of 100000ms exceeded" });
   assert.equal(noAnswer.reload, true, "no answer means the outcome is unknown: read the order again");
   assert.match(noAnswer.message, /not known whether the label was bought/);
+  // a gateway page from a restart or a deploy says nothing about the purchase behind it (found by the independent review)
+  for (const response of [{ status: 502, data: "<html>Bad Gateway</html>" }, { status: 504, data: "" }, { status: 503, data: null }, { status: 500, data: {} }, { status: 502, data: { message: "no error text" } }]) {
+    const gateway = explainPurchaseError({ response });
+    assert.deepEqual([gateway.message, gateway.reload, gateway.priceChanged], [UNKNOWN_OUTCOME_MESSAGE, true, null], JSON.stringify(response));
+  }
 
   const unclear = explainPurchaseError({ response: { status: 502, data: { error: "Canada Post did not give a clear answer.", code: "unknown-outcome" } } });
   assert.deepEqual([unclear.reload, unclear.priceChanged, unclear.message], [true, null, "Canada Post did not give a clear answer."]);
 
   for (const status of [400, 401, 403]) {
     const untouched = explainPurchaseError({ response: { status, data: { error: "nope" } } });
-    assert.equal(untouched.reload, false, `${status}: nothing happened on the server`);
+    assert.equal(untouched.reload, false, `${status}: this site's own API said nothing happened`);
   }
-  assert.equal(explainPurchaseError({ response: { status: 500, data: {} } }).message, "The purchase did not go through.");
   assert.equal(explainPurchaseError({ response: { status: 409, data: { code: "price-changed" } } }).priceChanged, null, "without a quote there is nothing to show");
 });
 
@@ -110,7 +114,7 @@ test("the purchase starts from one place only: the confirm button of the last st
   assert.equal(source.match(/adminApi\.buyLabel\(/g)?.length, 1, "one call site");
   const handler = source.slice(source.indexOf("const confirmPurchase"), source.indexOf("const checkWithCanadaPost"));
   assert.match(handler, /adminApi\.buyLabel\(orderId, request\)/);
-  assert.match(handler, /const request = purchaseRequest\(option, choice\.signature\);\s*if \(!request \|\| step !== 'confirming' \|\| purchasing\.current\) return;/);
+  assert.match(handler, /const request = purchaseRequest\(option, choice\.signature\);\s*if \(!request \|\| step !== 'confirming' \|\| purchasing\.current\) return;\s*if \(Date\.now\(\) - confirmOpenedAt\.current < CONFIRM_ARM_MS\) return;/);
   assert.match(source, /onClick=\{confirmPurchase\}/);
   assert.equal(source.match(/confirmPurchase/g)?.length, 2, "defined, and used by the button, nowhere else");
   // never from an effect, never from a render
@@ -118,8 +122,68 @@ test("the purchase starts from one place only: the confirm button of the last st
   assert.doesNotMatch(source, /autoBuy|setTimeout\([^)]*confirmPurchase/);
   // the button names the price it will charge
   assert.match(source, /`Charge \$\{money\(due\)\} and create label`/);
-  // choosing and reviewing are separate from buying
-  assert.match(source, /onClick=\{\(\) => \{ setStep\('confirming'\); setNotice\(null\); \}\}/);
+  // choosing and reviewing are separate from buying; reviewing starts the clock the Charge button waits on
+  assert.match(source, /onClick=\{\(\) => \{ confirmOpenedAt\.current = Date\.now\(\); setStep\('confirming'\); setNotice\(null\); \}\}/);
+});
+
+test("a stray key press cannot buy: focus goes to the confirm box, never the Charge button, and the button waits before it is live", async () => {
+  const source = await read("components/admin/LabelPanel.jsx");
+  assert.equal(CONFIRM_ARM_MS, 700);
+  // the box takes the focus (tabIndex -1 + the ref), the Charge button has no ref and is not focused by any effect
+  assert.match(source, /<div ref=\{confirmRef\} tabIndex=\{-1\}[^>]*data-testid="label-confirm">/);
+  assert.match(source, /useEffect\(\(\) => \{ if \(step === 'confirming'\) confirmRef\.current\?\.focus\(\); \}, \[step\]\);/);
+  const button = source.slice(source.indexOf('data-testid="label-confirm-buy"') - 300, source.indexOf('data-testid="label-confirm-buy"'));
+  assert.doesNotMatch(button, /ref=/, "no ref on the Charge button");
+  assert.equal(source.match(/\.focus\(\)/g)?.length, 2, "only the box (and Cancel's way back to Review) is ever focused");
+  assert.doesNotMatch(source, /autoFocus/);
+});
+
+test("a purchase that goes wrong never leaves the panel stuck on Buying, and a bought label is shown even if the order cannot be read again", async () => {
+  const source = await read("components/admin/LabelPanel.jsx");
+  const handler = source.slice(source.indexOf("const confirmPurchase"), source.indexOf("const checkWithCanadaPost"));
+  // success: remember the label the purchase answered with and leave the buying step before reading the order again
+  assert.match(handler, /const \{ data \} = await adminApi\.buyLabel\(orderId, request\);\s*setBought\(data\.label \|\| null\);\s*setStep\('closed'\);/);
+  assert.match(source, /const stage = bought \? 'bought' : labelStage\(order\);/);
+  assert.match(source, /const label = bought \|\| order\.label;/);
+  // failure: the first thing the catch does is leave the buying step, whatever the outcome
+  assert.match(handler, /const outcome = explainPurchaseError\(err\);\s*setStep\('choosing'\);/);
+  assert.doesNotMatch(handler, /else setStep\('choosing'\)/);
+  // a different order forgets what the last one bought
+  assert.match(source, /useEffect\(\(\) => \{ setNotice\(null\); setBought\(null\); setCheckResult\(null\); \}, \[orderId\]\);/);
+  // the toast names the order it is about
+  assert.match(handler, /toast\.success\(`Label bought for \$\{order\.orderNumber\}\./);
+});
+
+test("a price above the server's safety limit is flagged and cannot be sent for review", async () => {
+  assert.equal(overCap({ maxDue: 60 }, 60.01), true);
+  assert.equal(overCap({ maxDue: 60 }, 60), false);
+  assert.equal(overCap({ maxDue: 60 }, 57.69), false);
+  assert.equal(overCap({}, 99), false, "no limit known: the server decides");
+  assert.equal(overCap(null, 99), false);
+  assert.equal(overCap({ maxDue: 60 }, null), false);
+  const source = await read("components/admin/LabelPanel.jsx");
+  assert.match(source, /const aboveLimit = overCap\(payload, due\);/);
+  assert.match(source, /disabled=\{aboveLimit\} className="btn-primary mt-4/);
+  assert.match(source, /data-testid="label-over-cap"/);
+});
+
+test("an unfinished purchase: Check reports and changes nothing, release is the admin's own decision behind a confirmation, and Snap Ship is not offered meanwhile", async () => {
+  const source = await read("components/admin/LabelPanel.jsx");
+  const checker = source.slice(source.indexOf("const checkWithCanadaPost"), source.indexOf("// The admin's own decision"));
+  assert.match(checker, /adminApi\.checkLabel\(orderId\)/);
+  assert.doesNotMatch(checker, /buyLabel|releaseLabel/);
+  assert.match(checker, /setCheckResult\(data\); \/\/ nothing changes on the order/);
+  const releaser = source.slice(source.indexOf("const releaseUnfinished"), source.indexOf("const openPdf"));
+  assert.match(releaser, /if \(!window\.confirm\(.*card statement.*\)\) return;\s*setReleasing\(true\)/s);
+  assert.equal(source.match(/adminApi\.releaseLabel\(/g)?.length, 1);
+  assert.doesNotMatch(releaser, /buyLabel/);
+  assert.match(source, /\{!checkResult\.shipmentKnown && \(/, "no release is offered when a shipment is known");
+  assert.match(source, /data-testid="label-release"/);
+  const [orders, panel, api] = await Promise.all([read("pages/admin/Orders.jsx"), read("components/admin/ShippingPreparationPanel.jsx"), read("lib/api.js")]);
+  assert.match(orders, /labelUnfinished=\{\['unknown', 'creating'\]\.includes\(order\.label\?\.status\)\}/);
+  assert.match(panel, /\{!labelBought && !labelUnfinished && \(\s*<a className="btn-ghost/);
+  assert.match(panel, /could charge the card twice/);
+  assert.match(api, /releaseLabel: \(id\) => api\.post\(`\/admin\/orders\/\$\{id\}\/label\/release`, \{ confirm: true \}/);
 });
 
 test("prices are only asked for when the admin asks, and checking a purchase never buys", async () => {
@@ -166,8 +230,8 @@ test("the chosen service is tinted in a way both themes can read, found when whi
 
 test("once a label is bought the Snap Ship panel stops offering to buy one", async () => {
   const [orders, panel] = await Promise.all([read("pages/admin/Orders.jsx"), read("components/admin/ShippingPreparationPanel.jsx")]);
-  assert.match(orders, /<ShippingPreparationPanel preparation=\{order\.shippingPreparation\} labelBought=\{order\.label\?\.status === 'created'\} \/>/);
-  assert.match(panel, /\{!labelBought && \(\s*<a className="btn-ghost[^>]*href=\{preparation\.links\?\.snapShip\}/);
+  assert.match(orders, /<ShippingPreparationPanel preparation=\{order\.shippingPreparation\} labelBought=\{order\.label\?\.status === 'created'\} labelUnfinished=/);
+  assert.match(panel, /\{!labelBought && !labelUnfinished && \(\s*<a className="btn-ghost[^>]*href=\{preparation\.links\?\.snapShip\}/);
   assert.match(panel, /A label has already been bought for this order/);
 });
 

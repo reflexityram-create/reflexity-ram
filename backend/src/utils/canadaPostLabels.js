@@ -41,6 +41,8 @@ const DEFAULT_MAX_DUE = 60; // CAD incl. tax; a price above this is refused unti
 const DEFAULT_DAILY_LIMIT = 20; // labels per rolling 24 h
 const STALE_CLAIM_MS = 3 * 60 * 1000; // a claim older than this with no answer is an unknown outcome, not "in progress"
 const CREATE_TIMEOUT_MS = 45 * 1000; // how long Create Shipment may take before the outcome is called unknown
+const DEFAULT_RELEASE_WAIT_MINUTES = 10; // an unfinished purchase cannot be released for a new try before it is this old
+const MAX_REQUEST_ID = 32; // the shipment search takes ids of up to 32 characters (Create allows 35): longer order numbers stay in Snap Ship
 const MAX_PDF_BYTES = 5 * 1024 * 1024;
 
 class LabelError extends Error {
@@ -60,6 +62,11 @@ const money = (value) => Math.round(Number(value) * 100) / 100;
 const labelsEnabled = (env = process.env) => env.CANADA_POST_LABELS_ENABLED === 'true';
 const maxDue = (env = process.env) => (Number(env.CANADA_POST_LABEL_MAX_DUE) > 0 ? Number(env.CANADA_POST_LABEL_MAX_DUE) : DEFAULT_MAX_DUE);
 const dailyLimit = (env = process.env) => (Number(env.CANADA_POST_LABEL_DAILY_LIMIT) > 0 ? Math.floor(Number(env.CANADA_POST_LABEL_DAILY_LIMIT)) : DEFAULT_DAILY_LIMIT);
+const releaseWaitMs = (env = process.env) => {
+  const raw = text(env.CANADA_POST_LABEL_RELEASE_WAIT_MINUTES);
+  const minutes = raw === '' ? DEFAULT_RELEASE_WAIT_MINUTES : Number(raw);
+  return (Number.isFinite(minutes) && minutes >= 0 ? minutes : DEFAULT_RELEASE_WAIT_MINUTES) * 60 * 1000;
+};
 const customerNumber = (env = process.env) => {
   const value = text(env.CANADA_POST_CUSTOMER_NUMBER);
   return CUSTOMER_NUMBER.test(value) ? value : null;
@@ -181,7 +188,10 @@ function labelEligibility(order, env = process.env, now = new Date()) {
       : no('A label purchase for this order is in progress.', 'in-progress');
   }
   if (state === 'unknown') return no('The last label purchase did not finish cleanly. Check the outcome first.', 'unknown-outcome');
-  if (text(order.trackingNumber)) return no('A tracking number is already saved for this order, so a second label is not offered.', 'has-tracking');
+  // "Present" is what the claim filter below calls present (anything but null/missing/''), so the two can never disagree.
+  if (order.trackingNumber != null && order.trackingNumber !== '') return no('A tracking number is already saved for this order, so a second label is not offered.', 'has-tracking');
+  const orderNumber = text(order.orderNumber);
+  if (!orderNumber || orderNumber.length > MAX_REQUEST_ID) return no("This order number does not fit Canada Post's shipment search; buy this label in Snap Ship.", 'odd-order-number');
   const destination = destinationFromOrder(order);
   if (!destination.ok) return no(`This address cannot go on a label: ${destination.problems.join('; ')}.`, 'bad-address');
   if (!parcelForOrder(order).ok) return no('The number of sticks does not fit the standard parcel; buy this label in Snap Ship.', 'odd-parcel');
@@ -303,13 +313,16 @@ function buildShipmentRequest(order, { serviceCode, signature, sender, destinati
   };
 }
 
-// A link Canada Post hands back is only followed when it stays on the Shipping API host and path.
+// A link Canada Post hands back is only followed when it ends up on the Shipping API host and path. A stray quote or space
+// around it (the published Get Shipments example has one) and a path relative to the API host are read as what they mean;
+// anything else (another host, http, a path outside /shipping/v1/) is refused.
 function trustedShippingLink(href) {
   try {
-    const url = new URL(href);
-    if (url.protocol !== 'https:') return null;
+    const cleaned = text(href).replace(/^["'\s]+|["'\s]+$/g, '');
+    if (!cleaned) return null;
     const base = new URL(SHIPPING_URL);
-    if (url.host !== base.host || !url.pathname.startsWith(`${base.pathname}/`)) return null;
+    const url = new URL(cleaned, `${base.origin}/`);
+    if (url.protocol !== 'https:' || url.host !== base.host || !url.pathname.startsWith(`${base.pathname}/`)) return null;
     return url.toString();
   } catch { return null; }
 }
@@ -323,9 +336,12 @@ function pickLabelLink(links) {
   return link ? trustedShippingLink(link.href) : null;
 }
 
-// `GET .../shipments?request-id=` answers with a bare array of links in the published example; accept an object that
-// wraps the same list too, so a change in wrapping cannot turn "found" into "nothing was charged".
-const linkList = (body) => (Array.isArray(body) ? body : Array.isArray(body?.links) ? body.links : []);
+// `GET .../shipments?request-id=` answers with a bare array of links (the live API answered `[]` for an id nobody used);
+// an object wrapping the same list is read too. Anything else is NOT "an empty list": it is an answer we do not understand.
+const linkList = (body) => (Array.isArray(body) ? body : Array.isArray(body?.links) ? body.links : null);
+
+// A money amount from Canada Post, or null: a missing or empty value is "not told", never 0.
+const amountOrNull = (value) => (value == null || value === '' || !Number.isFinite(Number(value)) ? null : money(value));
 
 function parseShipment(body) {
   const pin = text(body?.trackingPin).replace(/\s+/g, '').toUpperCase();
@@ -336,7 +352,8 @@ function parseShipment(body) {
     shipmentStatus: text(body?.shipmentStatus).toLowerCase(),
     trackingPin: PIN.test(pin) ? pin : '',
     artifactUrl: pickLabelLink(body?.links),
-    charged: Number.isFinite(Number(price.dueAmount)) ? money(price.dueAmount) : null,
+    // What the card was charged: the receipt's amount when there is one, else the shipment's amount due.
+    charged: amountOrNull(receipt.chargeAmount) ?? amountOrNull(price.dueAmount),
     cardType: text(receipt.cardType) || null,
   };
 }
@@ -414,9 +431,6 @@ async function buyLabel({ orderId, serviceCode, signature = false, approvedDue, 
   }
   const cap = maxDue(d.env);
   if (live.due > cap) throw new LabelError('over-cap', `This label costs $${live.due.toFixed(2)}, above the $${cap.toFixed(2)} safety limit. Raise CANADA_POST_LABEL_MAX_DUE to allow it.`, 409);
-  const since = new Date(d.now().getTime() - 24 * 60 * 60 * 1000);
-  const recent = await d.Order.countDocuments({ 'label.createdAt': { $gte: since } });
-  if (recent >= dailyLimit(d.env)) throw new LabelError('daily-limit', `${recent} labels were bought in the last 24 hours, the limit is ${dailyLimit(d.env)}.`, 429);
 
   // One request id per order for ever: Canada Post refuses a second shipment with the same id, so even a bug here
   // cannot buy two labels for one order.
@@ -436,12 +450,28 @@ async function buyLabel({ orderId, serviceCode, signature = false, approvedDue, 
     $unset: { 'label.error': '' },
   }, { returnDocument: 'after' });
   if (!claimed) throw new LabelError('in-progress', 'This order changed or another purchase is already running. Reload it and check.', 409);
+  const mine = { _id: order._id, 'label.status': 'creating', 'label.requestId': requestId };
+
+  // The daily limit is counted AFTER the claim, over every purchase that may have charged (running, bought, unclear) and
+  // mine included: counted before the claim, a burst of parallel approvals all saw the same number and all went through.
+  // Over the limit, the claim is given back and nothing is sent to Canada Post.
+  const limit = dailyLimit(d.env);
+  let used;
+  try {
+    used = await d.Order.countDocuments({ 'label.claimedAt': { $gte: new Date(d.now().getTime() - 24 * 60 * 60 * 1000) }, 'label.status': { $in: ['creating', 'created', 'unknown'] } });
+  } catch {
+    await d.Order.updateOne(mine, { $set: { 'label.status': 'failed', 'label.error': { code: 'limit-check-failed', message: 'The daily limit could not be checked.', at: d.now() } } }).catch(() => {});
+    throw new LabelError('limit-check-failed', 'The daily label limit could not be checked, so nothing was bought or charged. Try again in a minute.', 503);
+  }
+  if (used > limit) {
+    await d.Order.updateOne(mine, { $set: { 'label.status': 'failed', 'label.error': { code: 'daily-limit', message: `The daily limit of ${limit} labels was reached.`, at: d.now() } } });
+    throw new LabelError('daily-limit', `${used - 1} labels were bought or started in the last 24 hours and the limit is ${limit}, so nothing was bought or charged.`, 429);
+  }
 
   const requestBody = buildShipmentRequest(order, {
     serviceCode, signature: Boolean(signature), sender: senderConfig.sender, destination, parcel, requestId, format: text(d.env.CANADA_POST_LABEL_FORMAT) === '4x6' ? '4x6' : '8.5x11',
   });
   const result = await postCreateShipment(requestBody, { env: d.env, fetchImpl: d.fetchImpl, timeoutMs: d.createTimeoutMs });
-  const mine = { _id: order._id, 'label.status': 'creating', 'label.requestId': requestId };
 
   // A refusal that talks about a duplicate means Canada Post already holds a shipment for this order: that is not a
   // "nothing was charged" failure, so it goes to the check-first state.
@@ -484,16 +514,30 @@ async function finishCreated(d, order, mine, shipment, live) {
     ...(usable ? { $unset: { 'label.error': '', trackingLatest: '', trackingUrl: '' } } : {}),
     $push: { statusHistory: { status: order.status, note: `Shipping label ${usable ? 'bought' : 'created but not usable yet'} (${live.serviceName}${priceNote})`, timestamp: at } },
   };
-  let saved = await d.Order.findOneAndUpdate(mine, update, { returnDocument: 'after' });
-  if (!saved) saved = await d.Order.findOneAndUpdate(mine, update, { returnDocument: 'after' });
+  // A save that throws (a dropped connection) is handled like one that matches nothing: one more try, then the numbers are
+  // said out loud, because the money is spent.
+  const trySave = async () => {
+    try { return { saved: await d.Order.findOneAndUpdate(mine, update, { returnDocument: 'after' }) }; } catch (error) { return { error }; }
+  };
+  let attempt = await trySave();
+  if (!attempt.saved) attempt = await trySave();
+  let saved = attempt.saved;
   if (!saved) {
+    // Another check may just have saved this very label: that is a success, not an error.
+    const current = await findLabelOrder(d.Order, order._id).catch(() => null);
+    if (usable && current?.label?.status === 'created' && current.label.trackingPin === shipment.trackingPin) {
+      return { label: labelView(current.label), mismatch: null };
+    }
+    console.error(`Canada Post label bought but not saved on order ${order.orderNumber}: tracking ${shipment.trackingPin || 'unknown'}, shipment ${shipment.shipmentId || 'unknown'}${attempt.error ? ` (${attempt.error.message})` : ''}`);
     throw new LabelError('save-failed', `The label was bought (tracking ${shipment.trackingPin || 'unknown'}, shipment ${shipment.shipmentId || 'unknown'}) but could not be saved on the order. Save the tracking number on the order by hand.`, 500);
   }
   if (suspended) {
     throw new LabelError('shipment-suspended', `Canada Post created shipment ${shipment.shipmentId || 'unknown'} but marked it suspended, so the label is not valid yet. Look at it in Canada Post's Shipping tools, then use "Check with Canada Post".`, 502);
   }
   if (!shipment.trackingPin) {
-    throw new LabelError('no-tracking-number', `The label was bought (shipment ${shipment.shipmentId || 'unknown'}) but Canada Post did not return a tracking number. Use "Check with Canada Post".`, 502);
+    throw new LabelError('no-tracking-number', shipment.shipmentId
+      ? `The label was bought (shipment ${shipment.shipmentId}) but Canada Post did not return a tracking number. Use "Check with Canada Post".`
+      : 'Canada Post answered without a shipment number or a tracking number, so it is not clear whether a label was made. Use "Check with Canada Post".', 502);
   }
   // Only the label's own view goes back to callers: never the whole order (its address belongs to the buyer).
   return {
@@ -529,70 +573,145 @@ async function shippingAccess({ env, fetchImpl, now }) {
   }
 }
 
-// Ask Canada Post whether a shipment exists for this order's request id (after an ambiguous answer). "Not found" is only
-// concluded from an answer that says so (a 404, or a 200 with no shipment in it); an error or a 202 ("still working")
-// leaves the order exactly as it was. A wrong "not found" cannot buy a second label: Canada Post refuses a second shipment
-// with the same request id, and that refusal is itself treated as "check first".
-async function reconcileLabel(orderId, deps = {}) {
-  const d = { Order: OrderModel, fetchImpl: fetch, now: () => new Date(), env: process.env, ...deps };
-  const order = await findLabelOrder(d.Order, orderId);
-  if (!order) throw new LabelError('not-found', 'Order not found.', 404);
-  const state = order.label?.status;
-  const stale = state === 'creating' && order.label?.claimedAt && d.now() - new Date(order.label.claimedAt) > STALE_CLAIM_MS;
-  if (state !== 'unknown' && !stale) throw new LabelError('nothing-to-check', 'There is no unfinished label purchase to check on this order.', 409);
+// ── Unfinished purchases: ask, then (only by an admin's explicit act) release ──────────────────────────────────────────────
+const isUnfinished = (order, now) => {
+  const state = order?.label?.status;
+  const stale = state === 'creating' && order.label?.claimedAt && now - new Date(order.label.claimedAt) > STALE_CLAIM_MS;
+  return state === 'unknown' || Boolean(stale);
+};
+
+// Asks Canada Post for the shipment of this order's request id: { kind: 'found', shipment } or { kind: 'none' }. Only a clear
+// answer counts as "none" (a 404, or an empty list). An error, a 202 ("still working"), a reply that is not a list, or a list
+// whose links cannot be followed here is a LabelError and changes nothing: that is "we could not tell", never "nothing was charged".
+// The request id is the whole search: against the live API (2026-10-08) adding no-manifest, date or limit to it is a 400
+// (9183 "mutually exclusive" / 9185 "limit and date do not apply"), and an id nobody used answers 200 with an empty list.
+async function lookupShipment(d, order) {
   const number = customerNumber(d.env);
   if (!number) throw new LabelError('not-configured', 'Canada Post customer number is not configured.', 503);
   const requestId = text(order.label?.requestId || order.orderNumber).slice(0, 35);
-  // The request id is the whole search: against the live API (2026-10-08) adding no-manifest, date or limit to it is a 400
-  // (9183 "mutually exclusive" / 9185 "limit and date do not apply"), and an id nobody used answers 200 with an empty list.
   const url = `${SHIPPING_URL}/${number}/${number}/shipments?request-id=${encodeURIComponent(requestId)}`;
-  const noShipment = async () => {
-    await d.Order.updateOne({ _id: order._id, 'label.status': state }, { $set: { 'label.status': 'failed', 'label.error': { code: 'not-found', message: 'Canada Post has no shipment for this order.', at: d.now() } } });
-    return {
-      found: false,
-      message: 'Canada Post reports no shipment for this order, so nothing was charged and you can buy the label again. If its own Shipping tools do show a label for this order, save that tracking number on the order instead of buying again.',
-    };
-  };
   const res = await authorizedGet(url, { accept: 'application/json', env: d.env, fetchImpl: d.fetchImpl, label: 'Canada Post shipment lookup' });
-  if (res.status === 404) return noShipment();
+  if (res.status === 404) return { kind: 'none' };
   if (!res.ok || res.status === 202) {
     const err = res.status === 202 ? { status: 202, code: '', message: 'still working' } : await errorFromResponse(res);
     throw new LabelError('lookup-failed', `Canada Post could not say yet (${err.status}${err.code ? ` ${err.code}` : ''}: ${err.message}). Try again in a minute.`, 502);
   }
   let listing = null;
   try { listing = await res.json(); } catch { /* handled below */ }
-  if (listing == null) throw new LabelError('lookup-failed', 'Canada Post answered but the answer could not be read. Try again in a minute.', 502);
-  const ref = linkList(listing).find((l) => /shipment|self/i.test(text(l?.rel)) && trustedShippingLink(l?.href));
-  if (!ref) return noShipment();
-  const detail = await authorizedGet(trustedShippingLink(ref.href), { accept: 'application/json', env: d.env, fetchImpl: d.fetchImpl, label: 'Canada Post shipment lookup' });
+  const entries = linkList(listing);
+  if (entries === null) throw new LabelError('lookup-failed', 'Canada Post answered in a form this site does not understand. Try again in a minute, or look for the label in Canada Post\'s Shipping tools.', 502);
+  if (entries.length === 0) return { kind: 'none' };
+  const href = entries.filter((l) => /shipment|self/i.test(text(l?.rel))).map((l) => trustedShippingLink(l?.href)).find(Boolean);
+  if (!href) {
+    throw new LabelError('lookup-failed', 'Canada Post lists a shipment for this order, but its link cannot be followed from here. Look for it in Canada Post\'s Shipping tools and save its tracking number on the order.', 502);
+  }
+  const detail = await authorizedGet(href, { accept: 'application/json', env: d.env, fetchImpl: d.fetchImpl, label: 'Canada Post shipment lookup' });
   if (!detail.ok) throw new LabelError('lookup-failed', `Canada Post knows the shipment but its details could not be read (${detail.status}).`, 502);
-  const shipment = parseShipment(await detail.json());
+  let body = null;
+  try { body = await detail.json(); } catch { /* handled below */ }
+  const shipment = parseShipment(body);
   if (!shipment.trackingPin) throw new LabelError('lookup-failed', 'Canada Post knows the shipment but did not give its tracking number.', 502);
+  return { kind: 'found', shipment, requestId };
+}
+
+// A shipment that exists but was lost to us (the answer to Create never arrived): finish the order from what Canada Post says.
+async function completeFromLookup(d, order, found) {
+  const state = order.label?.status;
   const live = { serviceName: order.label?.serviceName || '', due: Number(order.label?.approvedDue) || 0, preTax: null, tax: null };
-  const mine = { _id: order._id, 'label.status': state, 'label.requestId': order.label?.requestId || requestId };
-  const done = await finishCreated(d, order, mine, shipment, live);
-  return { found: true, ...done };
+  const mine = { _id: order._id, 'label.status': state, 'label.requestId': order.label?.requestId || found.requestId };
+  return finishCreated(d, order, mine, found.shipment, live);
+}
+
+// When may an unfinished purchase be released for a new try (and has Canada Post told us it exists)?
+function releaseWindow(order, d) {
+  const claimedAt = order.label?.claimedAt ? new Date(order.label.claimedAt) : null;
+  const after = claimedAt ? new Date(claimedAt.getTime() + releaseWaitMs(d.env)) : null;
+  return { after, open: !after || d.now() >= after, hasShipment: Boolean(order.label?.shipmentId) };
+}
+
+// "Check with Canada Post": finds the shipment and completes the order, or reports what Canada Post said. It never changes an
+// order's state on a negative answer: an empty search proves little (a label made seconds ago may not show yet, and the search
+// has not been seen finding a shipment made without a manifest), so only releaseLabel, an admin's own decision, lets go.
+async function reconcileLabel(orderId, deps = {}) {
+  const d = { Order: OrderModel, fetchImpl: fetch, now: () => new Date(), env: process.env, ...deps };
+  const order = await findLabelOrder(d.Order, orderId);
+  if (!order) throw new LabelError('not-found', 'Order not found.', 404);
+  if (!isUnfinished(order, d.now())) throw new LabelError('nothing-to-check', 'There is no unfinished label purchase to check on this order.', 409);
+  const found = await lookupShipment(d, order);
+  if (found.kind === 'found') return { found: true, ...(await completeFromLookup(d, order, found)) };
+  const window = releaseWindow(order, d);
+  return {
+    found: false,
+    canRelease: window.open && !window.hasShipment,
+    shipmentKnown: window.hasShipment,
+    releaseAfter: window.after ? window.after.toISOString() : null,
+    message: window.hasShipment
+      ? 'Canada Post made a shipment for this order earlier, but its search does not show it now. Look at it in Canada Post\'s Shipping tools and save its tracking number on the order.'
+      : "Canada Post's search found no shipment for this order. A label made a moment ago can take a few minutes to show up. Before buying again, look in Canada Post's own Shipping tools and at your card statement: only if both show nothing, allow a new purchase.",
+  };
+}
+
+// The admin's decision, after checking, that nothing was bought: lets the order be bought again. Refused while the first attempt
+// may still be finishing (a wait from its start), when Canada Post is known to hold a shipment for the order, and unless a fresh
+// search just now finds nothing. Even then Canada Post refuses a second shipment with the same request id.
+async function releaseLabel(orderId, { admin } = {}, deps = {}) {
+  const d = { Order: OrderModel, fetchImpl: fetch, now: () => new Date(), env: process.env, ...deps };
+  const order = await findLabelOrder(d.Order, orderId);
+  if (!order) throw new LabelError('not-found', 'Order not found.', 404);
+  if (!isUnfinished(order, d.now())) throw new LabelError('nothing-to-check', 'There is no unfinished label purchase on this order.', 409);
+  const window = releaseWindow(order, d);
+  if (window.hasShipment) {
+    throw new LabelError('shipment-exists', `Canada Post made shipment ${order.label.shipmentId} for this order, so a new purchase is not allowed. Look at it in Canada Post's Shipping tools and save its tracking number on the order.`, 409);
+  }
+  if (!window.open) {
+    const minutes = Math.max(1, Math.ceil((window.after - d.now()) / 60000));
+    throw new LabelError('too-soon', `Canada Post may still be finishing the first purchase. Check again in about ${minutes} minute${minutes === 1 ? '' : 's'}.`, 409, { releaseAfter: window.after.toISOString() });
+  }
+  const found = await lookupShipment(d, order);
+  if (found.kind === 'found') return { released: false, found: true, ...(await completeFromLookup(d, order, found)) };
+  const state = order.label.status;
+  const at = d.now();
+  const released = await d.Order.findOneAndUpdate({ _id: order._id, 'label.status': state, 'label.requestId': order.label.requestId || null }, {
+    $set: { 'label.status': 'failed', 'label.error': { code: 'released', message: "Released by an admin after Canada Post's search found no shipment.", at } },
+    $push: { statusHistory: { status: order.status, note: `Label purchase released for a new try by ${admin?.email || 'an admin'} after Canada Post's search found no shipment`, timestamp: at } },
+  }, { returnDocument: 'after' });
+  if (!released) throw new LabelError('in-progress', 'This order changed while it was being released. Reload it and check.', 409);
+  return { released: true, found: false, label: labelView(released.label) };
+}
+
+async function downloadPdf(url, d) {
+  const res = await authorizedGet(url, { accept: 'application/pdf', env: d.env, fetchImpl: d.fetchImpl, label: 'Canada Post label download' });
+  if (!res.ok) return { error: `Canada Post could not return the label (${res.status}).` };
+  const bytes = Buffer.from(await res.arrayBuffer());
+  if (bytes.length > MAX_PDF_BYTES || bytes.subarray(0, 5).toString('latin1') !== '%PDF-') return { error: 'Canada Post did not return a PDF for this label.' };
+  return { bytes };
 }
 
 async function fetchLabelPdf(order, deps = {}) {
   const d = { fetchImpl: fetch, env: process.env, ...deps };
   if (order?.label?.status !== 'created') throw new LabelError('no-label', 'There is no label for this order.', 404);
-  let url = trustedShippingLink(order.label.artifactUrl);
+  const filename = `label-${text(order.orderNumber).replace(/[^A-Za-z0-9_-]/g, '')}.pdf`;
+  const stored = trustedShippingLink(order.label.artifactUrl);
+  const first = stored ? await downloadPdf(stored, d) : null;
+  if (first?.bytes) return { bytes: first.bytes, filename };
+  // No stored link, or it no longer works (label links can expire): ask Canada Post for the shipment's current one, once.
+  const number = customerNumber(d.env);
+  if (!number || !order.label.shipmentId) {
+    if (first) throw new LabelError('pdf-failed', first.error, 502);
+    throw new LabelError('no-label-link', 'The label link is missing; use "Check with Canada Post".', 409);
+  }
+  const res = await authorizedGet(`${SHIPPING_URL}/${number}/${number}/shipments/${encodeURIComponent(order.label.shipmentId)}`, { accept: 'application/json', env: d.env, fetchImpl: d.fetchImpl, label: 'Canada Post shipment lookup' });
+  if (!res.ok) throw new LabelError('lookup-failed', `Canada Post could not return the label link (${res.status}).`, 502);
+  let body = null;
+  try { body = await res.json(); } catch { /* no link below */ }
+  const url = pickLabelLink(body?.links);
   if (!url) {
-    const number = customerNumber(d.env);
-    if (!number || !order.label.shipmentId) throw new LabelError('no-label-link', 'The label link is missing; use "Check with Canada Post".', 409);
-    const res = await authorizedGet(`${SHIPPING_URL}/${number}/${number}/shipments/${encodeURIComponent(order.label.shipmentId)}`, { accept: 'application/json', env: d.env, fetchImpl: d.fetchImpl, label: 'Canada Post shipment lookup' });
-    if (!res.ok) throw new LabelError('lookup-failed', `Canada Post could not return the label link (${res.status}).`, 502);
-    url = pickLabelLink((await res.json())?.links);
-    if (!url) throw new LabelError('no-label-link', 'Canada Post did not return a label link.', 502);
+    console.error(`Canada Post returned no usable label link for order ${order.orderNumber}: ${(Array.isArray(body?.links) ? body.links : []).map((l) => { try { return new URL(String(l?.href).replace(/^["'\s]+/, ''), SHIPPING_URL).host; } catch { return 'unparseable'; } }).join(', ') || 'no links'}`);
+    throw new LabelError('no-label-link', 'Canada Post did not return a label link this site can use. Open the label from Canada Post\'s Shipping tools; the tracking number is on the order.', 502);
   }
-  const res = await authorizedGet(url, { accept: 'application/pdf', env: d.env, fetchImpl: d.fetchImpl, label: 'Canada Post label download' });
-  if (!res.ok) throw new LabelError('pdf-failed', `Canada Post could not return the label (${res.status}).`, 502);
-  const bytes = Buffer.from(await res.arrayBuffer());
-  if (bytes.length > MAX_PDF_BYTES || bytes.subarray(0, 5).toString('latin1') !== '%PDF-') {
-    throw new LabelError('pdf-failed', 'Canada Post did not return a PDF for this label.', 502);
-  }
-  return { bytes, filename: `label-${text(order.orderNumber).replace(/[^A-Za-z0-9_-]/g, '')}.pdf` };
+  const second = await downloadPdf(url, d);
+  if (!second.bytes) throw new LabelError('pdf-failed', second.error, 502);
+  return { bytes: second.bytes, filename };
 }
 
 // What the admin screens may see of a label: no Canada Post URLs, no card details beyond the type.
@@ -632,6 +751,7 @@ module.exports = {
   parseShipment,
   buyLabel,
   reconcileLabel,
+  releaseLabel,
   fetchLabelPdf,
   labelView,
   STALE_CLAIM_MS,

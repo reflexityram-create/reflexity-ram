@@ -187,6 +187,7 @@ export const adminApi = {
   getLabelOptions: (id, config = {}) => api.get(`/admin/orders/${id}/label/options`, { timeout: 45000, ...config }),
   buyLabel: (id, request) => api.post(`/admin/orders/${id}/label`, request, { timeout: 100000 }),
   checkLabel: (id) => api.post(`/admin/orders/${id}/label/reconcile`, {}, { timeout: 100000 }), // `{}`, not null: axios sends null as the JSON text "null", which the server's JSON parser rejects
+  releaseLabel: (id) => api.post(`/admin/orders/${id}/label/release`, { confirm: true }, { timeout: 100000 }),
   getLabelPdf: (id) => api.get(`/admin/orders/${id}/label/pdf`, { responseType: 'blob', timeout: 45000 }),
 
   // Users
