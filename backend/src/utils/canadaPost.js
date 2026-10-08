@@ -167,4 +167,4 @@ const rateUnitedStates = ({ zipCode, ...rest }) => ratePrices({ ...rest, destina
 
 const resetTokenCacheForTest = () => { cachedToken = null; pendingToken = null; };
 
-module.exports = { isConfigured, accessToken, trackParcel, normalizeTracking, rateInternational, rateUnitedStates, resetTokenCacheForTest, BASE };
+module.exports = { isConfigured, accessToken, trackParcel, normalizeTracking, rateInternational, rateUnitedStates, resetTokenCacheForTest, BASE, withDeadline, REQUEST_TIMEOUT_MS };

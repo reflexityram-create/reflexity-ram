@@ -12,6 +12,9 @@ const { ensureStripePrice, syncStripeProductDetails } = require('../utils/stripe
 const { cancelOrderAndRestoreStock } = require('../utils/stock');
 const { ORDER_STATUSES, canTransitionOrder } = require('../utils/orderTransitions');
 const { buildShippingPreparation } = require('../utils/shippingPreparation');
+const {
+  LabelError, SERVICES: LABEL_SERVICES, labelEligibility, labelView, quoteLabelOptions, buyLabel, reconcileLabel, fetchLabelPdf,
+} = require('../utils/canadaPostLabels');
 
 const router = express.Router();
 
@@ -405,7 +408,7 @@ router.get(
       ]);
 
       res.json({
-        orders,
+        orders: orders.map((order) => ({ ...order, label: labelView(order.label) })),
         pagination: { page, total, pages: Math.ceil(total / limit) },
       });
     } catch (err) {
@@ -432,7 +435,7 @@ router.get(
         // The panel is a convenience: log it and show the order without it rather than a 500 for the whole page.
         console.error(`Shipping preparation failed for order ${order._id}:`, prepErr.message);
       }
-      res.json({ order: { ...order, shippingPreparation } });
+      res.json({ order: { ...order, label: labelView(order.label), labelEligibility: labelEligibility(order), shippingPreparation } });
     } catch (err) {
       res.status(500).json({ error: 'Failed to fetch order' });
     }
@@ -458,6 +461,68 @@ router.patch('/orders/:id/tracking', [
     if (!order) return res.status(409).json({ error: 'Order changed while tracking was being saved' });
     res.json({ order });
   } catch { res.status(500).json({ error: 'Failed to save tracking' }); }
+});
+
+// ─── CANADA POST LABELS ───────────────────────────────────────────────────────
+// A label is a purchase: the card on the Canada Post profile is charged the moment it is created and it cannot be
+// voided. Only POST .../label spends money, and only with the exact price an admin has just seen (see utils/canadaPostLabels.js).
+const labelOrderId = param('id').custom((v) => isValidObjectId(v)).withMessage('Invalid order ID');
+const sendLabelError = (res, err, fallback) => {
+  if (err instanceof LabelError) return res.status(err.status).json({ error: err.message, code: err.code, ...err.extra });
+  console.error(`${fallback}:`, err?.message);
+  return res.status(502).json({ error: fallback, code: 'canada-post-unreachable' });
+};
+
+// GET /api/admin/orders/:id/label/options — live prices for the picker. Read-only: nothing is bought.
+router.get('/orders/:id/label/options', [labelOrderId], validate, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id).lean();
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    res.json({ options: await quoteLabelOptions(order) });
+  } catch (err) {
+    sendLabelError(res, err, 'Canada Post prices could not be loaded. Try again in a minute.');
+  }
+});
+
+// POST /api/admin/orders/:id/label — BUY the label. The body must repeat the price the admin approved; the server
+// re-prices first and refuses on any difference.
+router.post('/orders/:id/label', [
+  labelOrderId,
+  body('serviceCode').isString().isIn(LABEL_SERVICES.map((s) => s.code)),
+  body('signature').custom((v) => typeof v === 'boolean').withMessage('signature must be true or false'),
+  body('approvedDue').custom((v) => typeof v === 'number' && Number.isFinite(v) && v > 0 && v < 1000).withMessage('approvedDue must be the price shown'),
+  body('approve').custom((v) => v === true).withMessage('The purchase needs an explicit approval'),
+], validate, async (req, res) => {
+  try {
+    const { serviceCode, signature, approvedDue } = req.body;
+    const bought = await buyLabel({ orderId: req.params.id, serviceCode, signature, approvedDue, admin: req.user });
+    res.status(201).json({ label: bought.label, ...(bought.mismatch ? { mismatch: bought.mismatch } : {}) });
+  } catch (err) {
+    sendLabelError(res, err, 'The label purchase did not finish cleanly. Reload the order and use "Check with Canada Post" before trying again.');
+  }
+});
+
+// POST /api/admin/orders/:id/label/reconcile — after an unclear answer, ask Canada Post whether the shipment exists.
+router.post('/orders/:id/label/reconcile', [labelOrderId], validate, async (req, res) => {
+  try {
+    const result = await reconcileLabel(req.params.id);
+    res.json({ found: result.found, message: result.message || null, label: result.label || null });
+  } catch (err) {
+    sendLabelError(res, err, 'Canada Post could not be asked. Try again in a minute.');
+  }
+});
+
+// GET /api/admin/orders/:id/label/pdf — the label, downloaded from Canada Post when asked for.
+router.get('/orders/:id/label/pdf', [labelOrderId], validate, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id).select('+label.artifactUrl').lean();
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    const { bytes, filename } = await fetchLabelPdf(order);
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${filename}"`, 'X-Content-Type-Options': 'nosniff' });
+    res.send(bytes);
+  } catch (err) {
+    sendLabelError(res, err, 'The label could not be downloaded. Try again in a minute.');
+  }
 });
 
 // PATCH /api/admin/orders/:id/status
