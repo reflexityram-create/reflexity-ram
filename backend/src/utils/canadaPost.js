@@ -1,6 +1,7 @@
 // ─── Canada Post developer API (OAuth 2.0, REST) ───────────────────────────────
 // App "[Production] Reflexity RAM website" on the Canada Post developer portal,
-// subscribed to Tracking 2.0.0 and Rating 4.0.0. Credentials come from
+// subscribed to Tracking 2.0.0, Rating 4.0.0 and (since 2026-10-08, for the admin
+// label purchase in canadaPostLabels.js) Shipping 8.0.0. Credentials come from
 // CANADA_POST_API_KEY / CANADA_POST_API_SECRET; tokens last an hour and are
 // cached in memory.
 
