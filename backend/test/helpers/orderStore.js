@@ -13,6 +13,7 @@ function matches(doc, filter) {
         if (op === '$nin') return !arg.some((x) => equal(value, x));
         if (op === '$lt') return value != null && value < arg;
         if (op === '$gte') return value != null && value >= arg;
+        if (op === '$ne') return !equal(value, arg);
         throw new Error(`Unsupported query ${op}`);
       });
     }
@@ -32,7 +33,7 @@ const apply = (doc, update) => {
   for (const [key, value] of Object.entries(update)) if (!key.startsWith('$')) set(doc, key, value);
 };
 const chain = (value) => ({ select() { return this; }, populate() { return this; }, sort() { return this; },
-  lean() { return this; }, limit() { return this; }, then(resolve, reject) { return Promise.resolve(value).then(resolve, reject); } });
+  lean() { return this; }, limit() { return this; }, skip() { return this; }, then(resolve, reject) { return Promise.resolve(value).then(resolve, reject); } });
 function orderStore(docs) {
   const store = structuredClone(docs);
   const writes = [];
@@ -40,6 +41,7 @@ function orderStore(docs) {
     store, writes,
     find: (filter) => chain(structuredClone(store.filter((doc) => matches(doc, filter)))),
     findById: (id) => chain(structuredClone(store.find((doc) => doc._id === id) || null)),
+    countDocuments: async (filter = {}) => store.filter((doc) => matches(doc, filter)).length,
     updateOne: async (filter, update) => {
       writes.push({ filter, update });
       const doc = store.find((d) => matches(d, filter));

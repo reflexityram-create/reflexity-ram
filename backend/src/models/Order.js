@@ -109,6 +109,26 @@ const orderSchema = new mongoose.Schema({
     expectedDeliveryDate: String,
     checkedAt: Date,
   },
+  // A Canada Post label bought from the admin order page (utils/canadaPostLabels.js). `creating` = claimed, request in
+  // flight; `created` = bought; `failed` = Canada Post refused before charging; `unknown` = no clear answer, check with Canada Post.
+  label: {
+    status: { type: String, enum: ['creating', 'created', 'failed', 'unknown'] },
+    requestId: String, // the order number: Canada Post refuses a second shipment with the same id
+    serviceCode: String,
+    serviceName: String,
+    signature: Boolean,
+    approvedDue: Number, // the exact price (CAD, incl. tax) the admin approved
+    approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    claimedAt: Date,
+    createdAt: Date,
+    shipmentId: String,
+    shipmentStatus: String,
+    trackingPin: String,
+    artifactUrl: { type: String, select: false }, // Canada Post link to the PDF; never read unless asked for, never sent to a browser
+    price: { preTax: Number, tax: Number, due: Number, charged: Number },
+    cardType: String,
+    error: { code: String, message: String, at: Date },
+  },
   // Created only for new shipped transitions; old shipments are not re-emailed.
   shippingNotification: {
     status: { type: String, enum: ['pending', 'sending', 'sent', 'failed', 'skipped'] },

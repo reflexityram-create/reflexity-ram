@@ -59,6 +59,25 @@ services:
         sync: false
       - key: CANADA_POST_ORIGIN_POSTAL_CODE
         sync: false
+      # Labels bought from the admin order page. Off until CANADA_POST_LABELS_ENABLED is true (set in the dashboard, so a
+      # blueprint sync never flips it); the sender address is the return address on the label. See utils/canadaPostLabels.js
+      # and .env.example for each setting.
+      - key: CANADA_POST_LABELS_ENABLED
+        sync: false
+      - key: CANADA_POST_SENDER_NAME
+        sync: false
+      - key: CANADA_POST_SENDER_COMPANY
+        sync: false
+      - key: CANADA_POST_SENDER_PHONE
+        sync: false
+      - key: CANADA_POST_SENDER_ADDRESS1
+        sync: false
+      - key: CANADA_POST_SENDER_ADDRESS2
+        sync: false
+      - key: CANADA_POST_SENDER_CITY
+        sync: false
+      - key: CANADA_POST_SENDER_PROVINCE
+        sync: false
       # Zonos API credential: quotes the US import duties and fees a US buyer prepays at checkout. Without it the
       # United States is simply not offered (utils/zonos.js).
       - key: ZONOS_API_KEY
