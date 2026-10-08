@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
-  arrivalNote, detailsOf, explainPurchaseError, initialChoice, labelStage, money, panelVisible, priceOf, purchaseRequest, signatureNote, withRequote,
+  accessWarning, arrivalNote, detailsOf, explainPurchaseError, initialChoice, labelStage, money, panelVisible, priceOf, purchaseRequest, signatureNote, withRequote,
 } from "../src/lib/labelPurchase.js";
 
 const read = (file) => readFile(new URL(`../src/${file}`, import.meta.url), "utf8");
@@ -176,4 +176,15 @@ test("the signature note says what it adds: a price, nothing extra, or not offer
   assert.equal(signatureNote(pcIncluded), "included", "Priority already includes the signature");
   assert.equal(signatureNote(pc), "");
   assert.equal(signatureNote(null), "");
+});
+
+test("the screen warns when Canada Post will not let this site create labels, and stays quiet when it can't tell", async () => {
+  assert.match(accessWarning({ access: { ok: false, message: "Canada Post refused a test read (HTTP 401)." } }), /HTTP 401/);
+  assert.match(accessWarning({ access: { ok: false } }), /not letting this site create labels/);
+  assert.equal(accessWarning({ access: { ok: true, message: null } }), "");
+  assert.equal(accessWarning({ access: { ok: null, message: "could not be checked" } }), "", "an unknown is not shown as a problem");
+  assert.equal(accessWarning({}), "");
+  assert.equal(accessWarning(null), "");
+  const source = await read("components/admin/LabelPanel.jsx");
+  assert.match(source, /\{accessWarning\(payload\) && \(\s*<p[^>]*data-testid="label-access-warning"/);
 });

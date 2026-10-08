@@ -136,6 +136,28 @@ test('the picker shows the real commercial prices for every service, with and wi
   assert.ok(ratings(h.cp).some((c) => c.body.options?.[0]?.optionCode === 'SO'), 'the signature prices are asked for too');
 });
 
+test('the picker says whether Canada Post lets this site use the Shipping API, by reading and never by buying', async () => {
+  const ok = harness();
+  const quote = await ok.quote();
+  assert.deepEqual(quote.access, { ok: true, message: null });
+  const probe = ok.cp.calls.filter((c) => c.access);
+  assert.equal(probe.length, 1);
+  assert.equal(probe[0].method, 'GET');
+  assert.deepEqual([...new URL(probe[0].url).searchParams.keys()], ['no-manifest', 'date', 'limit']);
+  assert.equal(new URL(probe[0].url).searchParams.get('date'), '20261008');
+  assert.equal(creates(ok.cp).length, 0);
+
+  for (const access of ['unauthorized', 'forbidden']) {
+    const refused = await harness({ scenario: { access } }).quote();
+    assert.equal(refused.access.ok, false, access);
+    assert.match(refused.access.message, /Shipping subscription/);
+    assert.equal(refused.options.length, 4, 'prices are still shown');
+  }
+  const unclear = await harness({ scenario: { access: 'error' } }).quote();
+  assert.equal(unclear.access.ok, null);
+  assert.equal(unclear.options.length, 4, 'a failed probe never fails the prices');
+});
+
 test('the service the buyer paid for is preselected', async () => {
   const faster = await harness({ order: { shippingMethod: 'Faster shipping: Xpresspost, typically 1–3 business days after dispatch', shippingCost: 26 } }).quote();
   assert.deepEqual(faster.recommended, { serviceCode: 'DOM.XP', signature: false });
@@ -462,7 +484,8 @@ test('after an unclear answer, "Check with Canada Post" finds the shipment and c
     assert.equal(creates(h.cp).length, 0, 'asking never buys');
     const search = h.cp.calls.find((c) => c.lookup);
     const query = new URL(search.url).searchParams;
-    assert.deepEqual([query.get('request-id'), query.get('no-manifest'), query.get('date')], ['RFX-TEST-000001', 'true', '20261007'], 'searches from the day before the claim');
+    assert.deepEqual([...query.keys()], ['request-id'], 'the live API refuses the request id combined with any other search parameter');
+    assert.equal(query.get('request-id'), 'RFX-TEST-000001');
     assert.equal(search.headers.Authorization, 'Bearer test-token');
   }
 });

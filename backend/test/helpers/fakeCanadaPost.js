@@ -53,6 +53,7 @@ function fakeCanadaPost(scenario = {}) {
     create: 'ok',
     rating: 'ok',
     lookup: 'found', // GET shipments?request-id=...: 'found' | 'none' | 'not-found' | 'error' | 'accepted' | 'wrapped' | 'garbled'
+    access: 'ok', // the no-manifest probe: 'ok' | 'unauthorized' | 'forbidden' | 'error'
     pin: '123456789012',
     shipmentId: 'ship-001',
     artifactHref: `${SHIPPING}/artifacts/consumer-1/shipping/artifact-1/0`,
@@ -112,7 +113,19 @@ function fakeCanadaPost(scenario = {}) {
       });
     }
     if (u.startsWith(`${SHIPPING}/${NUMBER}/${NUMBER}/shipments?`)) {
+      const query = new URL(u).searchParams;
+      // The access probe: today's no-manifest shipments (what the admin screen asks before offering a purchase).
+      if (query.has('no-manifest') && !query.has('request-id')) {
+        call.access = true;
+        if (s.access === 'unauthorized') return json({ errors: [{ errorCode: '401', message: 'API product not subscribed' }] }, 401);
+        if (s.access === 'forbidden') return json({ errors: [{ errorCode: '403', message: 'forbidden' }] }, 403);
+        if (s.access === 'error') return json({ errors: [{ errorCode: '9000', message: 'try later' }] }, 503);
+        return json([]);
+      }
       call.lookup = true;
+      // Live behaviour (2026-10-08): the request id is the whole search; anything added to it is a 400.
+      if (query.has('request-id') && query.has('no-manifest')) return json({ title: 'Validation failed', errors: [{ errorCode: '9183', message: 'Mutually exclusive search parameters were provided.  Please refer to documentation and provide only one.' }] }, 400);
+      if (query.has('request-id') && (query.has('date') || query.has('limit'))) return json({ title: 'Validation failed', errors: [{ errorCode: '9185', message: 'Limit and/or Date do not apply to this type of request.' }] }, 400);
       const links = [{ rel: 'shipment', href: `${SHIPPING}/${NUMBER}/${NUMBER}/shipments/${s.shipmentId}`, mediaType: 'application/json' }];
       if (s.lookup === 'error') return json({ errors: [{ errorCode: '9000', message: 'try later' }] }, 503);
       if (s.lookup === 'accepted') return new Response(null, { status: 202 });

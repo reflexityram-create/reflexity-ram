@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle2, Clipboard, FileText, Loader2, RefreshCw, T
 import { toast } from 'sonner';
 import { adminApi } from '@/lib/api';
 import {
-  arrivalNote, detailsOf, explainPurchaseError, initialChoice, labelStage, money, panelVisible, priceOf, purchaseRequest, signatureNote, withRequote,
+  accessWarning, arrivalNote, detailsOf, explainPurchaseError, initialChoice, labelStage, money, panelVisible, priceOf, purchaseRequest, signatureNote, withRequote,
 } from '@/lib/labelPurchase';
 
 // Buying a Canada Post label from the order. Prices are read-only; the ONLY thing that spends money is the confirm
@@ -258,6 +258,12 @@ export default function LabelPanel({ order, onChanged }) {
           <p className="text-neutral-400 text-[12px] mt-3 leading-relaxed" data-testid="label-buyer-paid">
             The buyer paid {money(payload.buyerPaid?.shipping)} for shipping{payload.buyerPaid?.service ? ` (${payload.buyerPaid.service})` : ''}. Prices include tax and were checked at {new Date(payload.checkedAt).toLocaleTimeString(undefined, { timeStyle: 'short' })}; they are checked again at the moment you buy.
           </p>
+
+          {accessWarning(payload) && (
+            <p className="text-amber-700 dark:text-amber-300 text-[12px] mt-3 leading-relaxed" role="note" data-testid="label-access-warning">
+              {accessWarning(payload)} You can look at prices, but a purchase would be refused until this is fixed (nothing is charged when Canada Post refuses).
+            </p>
+          )}
 
           {step === 'choosing' && (
             payload.switchedOff || stage === 'switched-off' ? (

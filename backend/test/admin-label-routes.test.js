@@ -98,6 +98,7 @@ test('GET options returns the live prices and buys nothing', async (t) => {
   assert.deepEqual(res.body.options.options.map((o) => [o.serviceCode, o.due]), [['DOM.EP', 19.16], ['DOM.RP', 19.16], ['DOM.XP', 24.13], ['DOM.PC', 57.69]]);
   assert.equal(res.body.options.recommended.serviceCode, 'DOM.EP');
   assert.equal(res.body.options.switchedOff, false);
+  assert.deepEqual(res.body.options.access, { ok: true, message: null });
   assert.equal(creates(h.cp).length, 0);
   assert.equal(h.store.writes.length, 0);
 

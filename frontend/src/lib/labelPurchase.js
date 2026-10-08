@@ -53,6 +53,11 @@ export function purchaseRequest(option, signature) {
   return { serviceCode: option.serviceCode, signature: Boolean(signature), approvedDue, approve: true };
 }
 
+// The line shown when Canada Post says this site cannot create labels yet ("" when it can, or when that could not be checked).
+export function accessWarning(payload) {
+  return payload?.access?.ok === false ? String(payload.access.message || 'Canada Post is not letting this site create labels yet.') : '';
+}
+
 // What the signature option adds to the price: "" when it is not offered, "included" when it costs nothing extra (Priority).
 export function signatureNote(option) {
   if (!option?.withSignature) return '';

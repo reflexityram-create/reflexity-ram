@@ -257,9 +257,10 @@ async function quoteLabelOptions(order, deps = {}) {
   const originPostal = sender.ok ? sender.originPostal : SHIP_FROM_POSTAL_CODE;
   const { postalCode } = destinationFromOrder(order);
   const { parcel, sticks } = parcelForOrder(order);
-  const [plain, signed] = await Promise.all([
+  const [plain, signed, access] = await Promise.all([
     rate({ parcel, originPostal, postalCode, signature: false, env: d.env, fetchImpl: d.fetchImpl }),
     rate({ parcel, originPostal, postalCode, signature: true, env: d.env, fetchImpl: d.fetchImpl }).catch(() => []),
+    shippingAccess({ env: d.env, fetchImpl: d.fetchImpl, now: d.now }),
   ]);
   const signedBy = new Map(signed.map(normalizeQuote).filter(Boolean).map((q) => [q.serviceCode, q]));
   const options = plain.map(normalizeQuote).filter((q) => q && SERVICE_CODES.includes(q.serviceCode))
@@ -274,6 +275,7 @@ async function quoteLabelOptions(order, deps = {}) {
     buyerPaid: { shipping: money(order.shippingCost), service: serviceFromOrder(order).name, signature: recommended.signature },
     maxDue: maxDue(d.env),
     switchedOff: !labelsEnabled(d.env),
+    access,
     checkedAt: d.now().toISOString(),
   };
 }
@@ -509,6 +511,24 @@ async function authorizedGet(url, { accept, env, fetchImpl, label }) {
   }, label, 30 * 1000);
 }
 
+// Is this app allowed to use the Shipping API at all? A read-only list of the account's no-manifest shipments for today:
+// the live API answered it 200 with a list once the app had the Shipping subscription (2026-10-08), and an app without it
+// gets 401. It never blocks anything, it only lets the screen say so before a purchase is attempted.
+async function shippingAccess({ env, fetchImpl, now }) {
+  const number = customerNumber(env);
+  const day = now().toISOString().slice(0, 10).replace(/-/g, '');
+  try {
+    const res = await authorizedGet(`${SHIPPING_URL}/${number}/${number}/shipments?no-manifest=true&date=${day}&limit=1`, { accept: 'application/json', env, fetchImpl, label: 'Canada Post Shipping access check' });
+    if (res.ok) return { ok: true, message: null };
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, message: `Canada Post refused a test read of the Shipping API (HTTP ${res.status}): this site's developer-portal app probably needs the Shipping subscription, or the account may not be allowed to create labels.` };
+    }
+    return { ok: null, message: `Canada Post's Shipping API could not be checked just now (HTTP ${res.status}).` };
+  } catch {
+    return { ok: null, message: "Canada Post's Shipping API could not be checked just now." };
+  }
+}
+
 // Ask Canada Post whether a shipment exists for this order's request id (after an ambiguous answer). "Not found" is only
 // concluded from an answer that says so (a 404, or a 200 with no shipment in it); an error or a 202 ("still working")
 // leaves the order exactly as it was. A wrong "not found" cannot buy a second label: Canada Post refuses a second shipment
@@ -523,13 +543,15 @@ async function reconcileLabel(orderId, deps = {}) {
   const number = customerNumber(d.env);
   if (!number) throw new LabelError('not-configured', 'Canada Post customer number is not configured.', 503);
   const requestId = text(order.label?.requestId || order.orderNumber).slice(0, 35);
-  // Canada Post dates shipments in its own time zone: start the search a day before the claim so no zone can hide it.
-  const from = new Date((order.label?.claimedAt ? new Date(order.label.claimedAt) : d.now()).getTime() - 24 * 60 * 60 * 1000);
-  const day = from.toISOString().slice(0, 10).replace(/-/g, '');
-  const url = `${SHIPPING_URL}/${number}/${number}/shipments?no-manifest=true&request-id=${encodeURIComponent(requestId)}&date=${day}&limit=5`;
+  // The request id is the whole search: against the live API (2026-10-08) adding no-manifest, date or limit to it is a 400
+  // (9183 "mutually exclusive" / 9185 "limit and date do not apply"), and an id nobody used answers 200 with an empty list.
+  const url = `${SHIPPING_URL}/${number}/${number}/shipments?request-id=${encodeURIComponent(requestId)}`;
   const noShipment = async () => {
     await d.Order.updateOne({ _id: order._id, 'label.status': state }, { $set: { 'label.status': 'failed', 'label.error': { code: 'not-found', message: 'Canada Post has no shipment for this order.', at: d.now() } } });
-    return { found: false, message: 'Canada Post reports no shipment for this order, so nothing was charged. You can buy the label again.' };
+    return {
+      found: false,
+      message: 'Canada Post reports no shipment for this order, so nothing was charged and you can buy the label again. If its own Shipping tools do show a label for this order, save that tracking number on the order instead of buying again.',
+    };
   };
   const res = await authorizedGet(url, { accept: 'application/json', env: d.env, fetchImpl: d.fetchImpl, label: 'Canada Post shipment lookup' });
   if (res.status === 404) return noShipment();
