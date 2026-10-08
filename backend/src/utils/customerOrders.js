@@ -63,6 +63,7 @@ const customerOrderResponse = (order) => {
         timeZone: value.trackingLatest.timeZone,
         location: value.trackingLatest.location,
         expectedDeliveryDate: value.trackingLatest.expectedDeliveryDate,
+        checkedAt: value.trackingLatest.checkedAt,
       }
       : undefined,
     estimatedDelivery: value.estimatedDelivery,

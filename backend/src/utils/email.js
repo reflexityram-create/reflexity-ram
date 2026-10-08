@@ -180,7 +180,7 @@ const sendOrderConfirmationEmail = async ({ email, firstName, order }) => {
 /**
  * Send shipping notification email
  */
-const sendShippingNotificationEmail = async ({ email, firstName, order }) => {
+const sendShippingNotificationEmail = async ({ email, firstName, order, idempotencyKey }) => {
   const orderUrl = orderAccessUrl(FRONTEND_URL, order, email);
   const trackingUrl = trackingUrlFor(order);
 
@@ -206,7 +206,7 @@ const sendShippingNotificationEmail = async ({ email, firstName, order }) => {
       </body>
       </html>
     `,
-  });
+  }, idempotencyKey ? { idempotencyKey } : undefined);
 
   if (error) { console.error('Resend error detail:', JSON.stringify(error)); throw new Error(`Email send failed: ${error.message || JSON.stringify(error)}`); }
   return data;

@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { CheckCircle, Package, Truck, Loader2, AlertTriangle, ExternalLink } from 'lucide-react';
+import { CheckCircle, Package, Truck, Loader2, AlertTriangle } from 'lucide-react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { ordersApi } from '@/lib/api';
 import GoogleCustomerReviewsOptIn from '@/components/GoogleCustomerReviewsOptIn';
 import { imageUrl } from '@/lib/imageUrl';
 import useAuthStore from '@/lib/authStore';
+import OrderTracking from '@/components/OrderTracking';
+import { startOrderUpdates } from '@/lib/orderUpdates';
 
 const STATUS_STEPS = [
   { id: 'pending', label: 'Order placed' },
@@ -20,16 +22,6 @@ const STATUS_INDEX = { pending: 0, processing: 1, shipped: 2, delivered: 3 };
 const dayLabel = (value) => (value
   ? new Date(value).toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' })
   : null);
-
-// Canada Post scan times come as a local date + time + zone label (e.g. MST).
-const scanTime = ({ date, time, timeZone }) => {
-  if (!date) return '';
-  const [y, m, d] = date.split('-').map(Number);
-  const day = new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', timeZone: 'UTC' });
-  if (!time) return day;
-  const [hh, mm] = time.split(':').map(Number);
-  return `${day}, ${((hh + 11) % 12) + 1}:${String(mm).padStart(2, '0')} ${hh < 12 ? 'AM' : 'PM'}${timeZone ? ` ${timeZone}` : ''}`;
-};
 
 // The same page is the confirmation right after paying and the status page the
 // shipping email links to later, so the headline follows the order's status.
@@ -62,6 +54,7 @@ export default function OrderSuccess() {
 
   useEffect(() => {
     if (!orderNumber) return;
+    setLoading(true); setError(null); setOrder(null);
     // Guest proof arrives in a client-only fragment and then lives only for
     // this browser session. Legacy query links are cleaned before the API call.
     const storageKey = `rfx_order_email:${orderNumber}`;
@@ -76,10 +69,10 @@ export default function OrderSuccess() {
     if (window.location.search || window.location.hash) {
       window.history.replaceState({}, '', window.location.pathname);
     }
-    ordersApi.getByNumber(orderNumber, guestEmail)
-      .then(({ data }) => setOrder(data.order))
-      .catch(() => setError('Order not found'))
-      .finally(() => setLoading(false));
+    return startOrderUpdates({
+      load: () => ordersApi.getByNumber(orderNumber, guestEmail),
+      onOrder: (next) => { setOrder(next); setError(null); }, onError: setError, onLoaded: () => setLoading(false),
+    });
   }, [orderNumber]);
 
   return (
@@ -147,23 +140,7 @@ export default function OrderSuccess() {
                   );
                 })}
               </div>
-              {order.trackingNumber && (
-                <div className="mt-4 pt-4 border-t border-white/5 text-[13px] text-neutral-400 flex flex-wrap items-center justify-between gap-3" data-testid="order-tracking">
-                  <span>Canada Post tracking: <span className="mono text-white">{order.trackingNumber}</span></span>
-                  {order.trackingUrl && (
-                    <a href={order.trackingUrl} target="_blank" rel="noopener noreferrer" className="btn-secondary">
-                      Track package <ExternalLink size={14} />
-                    </a>
-                  )}
-                </div>
-              )}
-              {order.trackingLatest?.description && (
-                <p className="mt-3 text-[13px] text-neutral-400" data-testid="order-tracking-latest">
-                  Latest from Canada Post: <span className="text-white">{order.trackingLatest.description}</span>
-                  {order.trackingLatest.date && ` · ${scanTime(order.trackingLatest)}`}
-                  {order.trackingLatest.location && ` · ${order.trackingLatest.location}`}
-                </p>
-              )}
+              <OrderTracking order={order} />
             </div>
 
             {/* Order items */}

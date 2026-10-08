@@ -176,6 +176,7 @@ export const adminApi = {
   // Orders
   listOrders: (params) => api.get('/admin/orders', { params }),
   getOrder: (id, config = {}) => api.get(`/admin/orders/${id}`, config),
+  updateOrderTracking: (id, trackingNumber) => api.patch(`/admin/orders/${id}/tracking`, { trackingNumber }),
   updateOrderStatus: (id, data) => api.patch(`/admin/orders/${id}/status`, data),
   archiveOrder: (id, archived) => api.patch(`/admin/orders/${id}/archive`, { archived }),
   sendReviewRequest: (id) => api.post(`/admin/orders/${id}/review-request`),

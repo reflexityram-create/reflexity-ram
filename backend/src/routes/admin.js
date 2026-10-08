@@ -6,7 +6,7 @@ const Order = require('../models/Order');
 const User = require('../models/User');
 const { validate } = require('../middleware/validate');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { sendShippingNotificationEmail } = require('../utils/email');
+const { notifyShipment } = require('../utils/shippingNotifications');
 const { scheduleReviewRequest } = require('../utils/reviewRequests');
 const { ensureStripePrice, syncStripeProductDetails } = require('../utils/stripeSync');
 const { cancelOrderAndRestoreStock } = require('../utils/stock');
@@ -439,6 +439,27 @@ router.get(
   }
 );
 
+// Save a label's number without declaring the parcel physically shipped.
+router.patch('/orders/:id/tracking', [
+  param('id').custom((v) => isValidObjectId(v)).withMessage('Invalid order ID'),
+  body('trackingNumber').isString().trim().isLength({ min: 1, max: 100 }),
+], validate, async (req, res) => {
+  try {
+    const current = await Order.findById(req.params.id).select('status paymentStatus trackingNumber');
+    if (!current) return res.status(404).json({ error: 'Order not found' });
+    if (current.paymentStatus !== 'paid' || !['pending', 'processing'].includes(current.status)) {
+      return res.status(409).json({ error: 'Tracking can only be saved for a paid order awaiting shipment' });
+    }
+    const order = await Order.findOneAndUpdate({ _id: req.params.id, status: current.status,
+      paymentStatus: 'paid', trackingNumber: current.trackingNumber ?? null }, {
+      $set: { trackingNumber: req.body.trackingNumber },
+      $unset: { trackingLatest: '', trackingUrl: '' },
+    }, { returnDocument: 'after' }).populate('user', 'firstName lastName email');
+    if (!order) return res.status(409).json({ error: 'Order changed while tracking was being saved' });
+    res.json({ order });
+  } catch { res.status(500).json({ error: 'Failed to save tracking' }); }
+});
+
 // PATCH /api/admin/orders/:id/status
 router.patch(
   '/orders/:id/status',
@@ -481,7 +502,7 @@ router.patch(
 
       if (status === 'shipped') updates.trackingNumber = shippedTrackingNumber;
       else if (cleanTrackingNumber) updates.trackingNumber = cleanTrackingNumber;
-      if (status === 'shipped') updates.shippedAt = new Date();
+      if (status === 'shipped') { updates.shippedAt = new Date(); updates['shippingNotification.status'] = 'pending'; }
       if (status === 'delivered') updates.deliveredAt = new Date();
       if (status === 'cancelled') updates.cancelledAt = new Date();
 
@@ -508,19 +529,7 @@ router.patch(
       // Send shipping notification
       let shippingNotification;
       if (status === 'shipped') {
-        const email = order.user?.email || order.guestEmail;
-        const firstName = order.user?.firstName || order.shippingAddress?.firstName;
-        if (email) {
-          try {
-            await sendShippingNotificationEmail({ email, firstName, order });
-            shippingNotification = { status: 'sent' };
-          } catch (emailErr) {
-            console.error('Shipping notification email failed:', emailErr.message);
-            shippingNotification = { status: 'failed', message: 'Order shipped, but the buyer notification could not be sent' };
-          }
-        } else {
-          shippingNotification = { status: 'skipped', message: 'Order shipped, but no buyer email address is on the order' };
-        }
+        shippingNotification = await notifyShipment(order);
         // Queue the "how was your order?" email for after delivery.
         try {
           const request = await scheduleReviewRequest(order);
