@@ -5,7 +5,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import useCartStore from '@/lib/cartStore';
 import { stripeApi } from '@/lib/api';
-import { trackPurchaseOnce } from '@/lib/analytics';
+import { trackEvent, trackPurchaseOnce } from '@/lib/analytics';
 
 // Landing page after Stripe Checkout (success_url → /order/success?session_id=...).
 // Polls /stripe/session-status, which both verifies payment server-side and
@@ -26,6 +26,7 @@ export default function CheckoutReturn() {
 
   useEffect(() => {
     if (!checkoutSessionId) {
+      trackEvent('checkout_return', { outcome: 'missing_session' });
       setError('Missing checkout session.');
       return;
     }
@@ -41,6 +42,10 @@ export default function CheckoutReturn() {
           // When the server reports the purchase itself (GA4 Measurement Protocol), reporting
           // it here too would double-count; the browser path is only the fallback.
           if (!data.serverPurchaseTracking) trackPurchaseOnce(data);
+          trackEvent('checkout_return', {
+            outcome: 'complete',
+            server_purchase_tracking: Boolean(data.serverPurchaseTracking),
+          });
           clearCartLocal();
           const emailParam = data.email ? `?email=${encodeURIComponent(data.email)}` : '';
           navigate(`/order/${data.orderNumber}${emailParam}`, { replace: true });
@@ -49,6 +54,7 @@ export default function CheckoutReturn() {
 
         attempts.current += 1;
         if (attempts.current >= MAX_ATTEMPTS) {
+          trackEvent('checkout_return', { outcome: 'pending' });
           setError(
             "Your payment is still being confirmed. If you completed payment, you'll receive a confirmation email shortly — no need to pay again."
           );
@@ -56,7 +62,10 @@ export default function CheckoutReturn() {
         }
         setTimeout(poll, POLL_MS);
       } catch {
-        if (!cancelled) setError('Could not verify your payment. If you were charged, check your email for confirmation.');
+        if (!cancelled) {
+          trackEvent('checkout_return', { outcome: 'error' });
+          setError('Could not verify your payment. If you were charged, check your email for confirmation.');
+        }
       }
     };
 

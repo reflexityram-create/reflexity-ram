@@ -1,21 +1,56 @@
+import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { Cpu } from "lucide-react";
 import { imageSrcSet, imageUrl } from "@/lib/imageUrl";
 import { formatStorePrice, STORE_CURRENCY_CODE } from "@/lib/currency";
+import { ecommerceItem, trackEvent } from "@/lib/analytics";
 
 // Compact card: the photo is trimmed to the module on a white panel (the
 // photos have white backgrounds), then one spec line, the name, the price and
 // the stock status (kept off the photo, where it covered small images).
 // Two per row on phones, three on desktop. The part number, CAS latency and
 // shipping details live on the product page.
-export default function ProductCard({ p, index = 0, priority = false }) {
+export default function ProductCard({
+  p,
+  index = 0,
+  priority = false,
+  itemListId = "product_grid",
+  itemListName = "Product grid",
+}) {
+  const cardRef = useRef(null);
+  const impressionTracked = useRef(false);
   const image = p.images?.[0];
   const primaryImage = imageUrl(image, { width: 640, trim: true });
   const specs = [p.generation, p.formFactor, p.capacityLabel, p.speedLabel].filter(Boolean);
 
+  useEffect(() => {
+    const node = cardRef.current;
+    if (!node || !p?.slug || typeof IntersectionObserver !== "function") return undefined;
+    const observer = new IntersectionObserver((entries) => {
+      if (impressionTracked.current || !entries.some((entry) => entry.isIntersecting)) return;
+      impressionTracked.current = true;
+      trackEvent("view_item_list", {
+        item_list_id: itemListId,
+        item_list_name: itemListName,
+        items: [ecommerceItem(p)],
+      });
+      observer.disconnect();
+    }, { threshold: 0.25 });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [itemListId, itemListName, p]);
+
+  const selectItem = () => trackEvent("select_item", {
+    item_list_id: itemListId,
+    item_list_name: itemListName,
+    items: [ecommerceItem(p)],
+  });
+
   return (
     <Link
+      ref={cardRef}
       to={`/shop/${p.slug}`}
+      onClick={selectItem}
       className="glass card-hover rounded-xl overflow-hidden flex flex-col fade-up"
       style={{ animationDelay: `${(index % 8) * 0.04}s` }}
       data-testid={`product-card-${p.slug}`}

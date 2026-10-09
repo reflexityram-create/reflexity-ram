@@ -28,8 +28,8 @@ const PAGES = {
     ],
   },
   "/shop": {
-    title: "Shop Tested Server RAM in Canada — Reflexity RAM",
-    description: "Shop tested server memory in Canada: DDR4 ECC RDIMM and LRDIMM modules with part numbers, compatibility details, a warranty and tracked shipping from Toronto.",
+    title: "Shop Tested DDR4 Server RAM in Canada — Reflexity RAM",
+    description: "Shop tested DDR4 ECC RDIMM and LRDIMM server memory in Canada. Search exact part numbers, check condition and warranty, and choose tracked shipping from Toronto.",
     heading: "Shop tested Server RAM",
     links: [["Browse RAM categories", "/categories"], ["RAM compatibility guides", "/guides"]],
     productList: true,
@@ -55,17 +55,17 @@ const PAGES = {
   },
   "/guides/ecc-rdimm-udimm-explained": {
     title: "RDIMM vs UDIMM: ECC, LRDIMM & Server RAM Explained — Reflexity RAM",
-    description: "Understand ECC, RDIMM, LRDIMM, and UDIMM differences before choosing compatible server or workstation memory.",
+    description: "Understand ECC, RDIMM, LRDIMM, and UDIMM differences before ordering server memory in Canada or comparing an exact part number.",
     heading: "RDIMM vs UDIMM, ECC, and LRDIMM explained",
-    body: "Registered, load-reduced, and unbuffered DIMMs serve different platforms and are usually not interchangeable. Check the server or motherboard memory rules before ordering.",
-    links: [["Shop tested server RAM", "/shop"], ["Ask about compatibility", "/support"]],
+    body: "Registered, load-reduced, and unbuffered DIMMs serve different platforms and are usually not interchangeable. Check the server or motherboard memory rules before ordering. Current examples include SK hynix HMA82GR7DJR8N-XN (RDIMM) and Samsung M386A8K40DM2-CWEZY (LRDIMM).",
+    links: [["Shop tested server RAM", "/shop"], ["Shop current RDIMM stock", "/shop/rfx-sk-hynix-16gb-ddr4-3200-ecc-rdimm-server-memory-"], ["Shop current LRDIMM stock", "/shop/rfx-samsung-64gb-ddr4-3200-ecc-registered-rdimm-serv"], ["Ask about compatibility", "/support"]],
   },
   "/guides/how-to-identify-ram": {
     title: "How to Identify RAM: Labels & Part Numbers — Reflexity RAM",
     description: "Read a RAM label and part number to identify capacity, DDR generation, speed, form factor, ECC type, and rank.",
     heading: "How to identify RAM from its label and part number",
     body: "Use the complete manufacturer part number, then verify capacity, DDR generation, speed, form factor, ECC type, and rank against the computer or server manual.",
-    links: [["Search the RAM catalog", "/shop"], ["Ask us to identify a module", "/support"]],
+    links: [["Search the RAM catalog", "/shop"], ["Search HMA82GR7DJR8N-XN", "/shop/rfx-sk-hynix-16gb-ddr4-3200-ecc-rdimm-server-memory-"], ["Ask us to identify a module", "/support"]],
   },
   "/guides/how-much-ram-do-i-need": {
     title: "How Much RAM Do I Need? Capacity Guide — Reflexity RAM",

@@ -15,7 +15,7 @@ export function ShopInventory({ products }) {
   return (
     <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4" data-testid="shop-grid">
       {publicProducts.map((p, i) => (
-        <ProductCard key={p.slug} p={p} index={i} priority={i < 3} />
+        <ProductCard key={p.slug} p={p} index={i} priority={i < 3} itemListId="shop_inventory" itemListName="Shop inventory" />
       ))}
     </div>
   );
@@ -27,8 +27,8 @@ export default function Shop() {
   const [error, setError] = useState(null);
 
   useSEO({
-    title: "Shop Tested Server RAM in Canada — Reflexity RAM",
-    description: "Shop tested server memory in Canada: DDR4 ECC RDIMM and LRDIMM modules with part numbers, compatibility details, a warranty and tracked shipping from Toronto.",
+    title: "Shop Tested DDR4 Server RAM in Canada — Reflexity RAM",
+    description: "Shop tested DDR4 ECC RDIMM and LRDIMM server memory in Canada. Search exact part numbers, check condition and warranty, and choose tracked shipping from Toronto.",
   });
 
   useEffect(() => {

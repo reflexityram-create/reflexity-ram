@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Trash2, ShoppingCart, Loader2, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
@@ -16,15 +16,49 @@ import { ecommerceItem, trackEvent } from '@/lib/analytics';
 export default function Cart() {
   useSEO({ title: 'Cart', description: 'Review your Reflexity RAM order before checkout.' });
   const { items, subtotal, itemCount, isLoading, fetchCart, updateItem, removeItem } = useCartStore();
+  const viewCartTracked = useRef(false);
 
   useEffect(() => {
     fetchCart();
   }, []);
 
+  useEffect(() => {
+    if (isLoading || viewCartTracked.current || items.length === 0) return;
+    viewCartTracked.current = true;
+    trackEvent('view_cart', {
+      currency: STORE_CURRENCY_CODE,
+      value: Number(subtotal || 0),
+      items: items.map((item) => ecommerceItem(item, item.qty)),
+    });
+  }, [isLoading, items, subtotal]);
+
   // The picker stops at the stock on hand; the server has the last word and says why when it refuses.
   const changeQty = async (slug, qty) => {
+    const previous = items.find((item) => item.slug === slug);
     const result = await updateItem(slug, qty);
     if (result && !result.success) toast.error(result.message);
+    const updated = useCartStore.getState().items.find((item) => item.slug === slug);
+    if (previous && updated && Number(updated.qty) === Number(qty) && Number(previous.qty) !== Number(updated.qty)) {
+      trackEvent('cart_quantity_change', {
+        currency: STORE_CURRENCY_CODE,
+        value: Number(updated.price || 0) * Number(updated.qty || 0),
+        items: [ecommerceItem(updated, updated.qty)],
+      });
+    }
+  };
+
+  const removeFromCart = async (item) => {
+    await removeItem(item.slug);
+    // cartStore only replaces state after a successful server mutation. Reading it
+    // back avoids emitting a removal event for a failed request.
+    const removed = !useCartStore.getState().items.some((line) => line.slug === item.slug);
+    if (removed) {
+      trackEvent('remove_from_cart', {
+        currency: STORE_CURRENCY_CODE,
+        value: Number(item.price || 0) * Number(item.qty || 0),
+        items: [ecommerceItem(item, item.qty)],
+      });
+    }
   };
 
   return (
@@ -71,7 +105,7 @@ export default function Cart() {
                   </div>
                   <div className="flex flex-col items-end gap-3">
                     <button
-                      onClick={() => removeItem(item.slug)}
+                      onClick={() => removeFromCart(item)}
                       className="p-1.5 rounded-lg text-neutral-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
                       data-testid={`cart-remove-${item.slug}`}
                     >
@@ -119,11 +153,6 @@ export default function Cart() {
               </div>
               <Link
                 to="/checkout"
-                onClick={() => trackEvent('begin_checkout', {
-                  currency: STORE_CURRENCY_CODE,
-                  value: Number(subtotal || 0),
-                  items: items.map((item) => ecommerceItem(item, item.qty)),
-                })}
                 className="btn-primary w-full flex items-center justify-center gap-2"
                 data-testid="cart-checkout-btn"
               >

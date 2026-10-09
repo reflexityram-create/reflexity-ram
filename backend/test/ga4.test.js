@@ -62,6 +62,8 @@ test('the purchase payload carries the verified order values and joins the brows
       tax: 125.8,
       shipping: 14,
       items: [{ item_id: 'RFX-SK-HYNIX', item_name: 'SK hynix 64GB', price: 500, quantity: 2 }],
+      page_location: 'https://reflexityram.com/order/success',
+      page_title: 'Order confirmed',
       session_id: '1789737000',
       engagement_time_msec: 1,
     },
