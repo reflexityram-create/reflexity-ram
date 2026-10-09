@@ -9,7 +9,7 @@ import { stripeApi, shippingApi } from '@/lib/api';
 import CountryPicker from '@/components/CountryPicker';
 import { useSEO } from '@/lib/seo';
 import { imageUrl } from '@/lib/imageUrl';
-import { formatStorePrice, FASTER_SHIPPING_MAX_STICKS, SIGNATURE_PRICE, STORE_CURRENCY_NAME } from '@/lib/currency';
+import { formatStorePrice, FASTER_SHIPPING_MAX_STICKS, SIGNATURE_PRICE, STORE_CURRENCY_CODE, STORE_CURRENCY_NAME } from '@/lib/currency';
 import { ACCEPTED_PAYMENTS_SENTENCE } from '@/lib/payments';
 import { ecommerceItem, readGaIdentifiers, trackEvent } from '@/lib/analytics';
 
@@ -63,8 +63,19 @@ export default function Checkout() {
     : (useFaster ? shippingFaster : Number(shipping || 0)) + (signature ? SIGNATURE_PRICE : 0);
   const dutiesAmount = international && country === 'US' ? Number(quote.duties?.amount || 0) : 0;
   const totalBeforeTax = Number(subtotal || 0) + Number(shippingAmount || 0) + dutiesAmount;
+  const beginCheckoutTracked = useRef(false);
 
   useEffect(() => { fetchCart(); }, []);
+
+  useEffect(() => {
+    if (isLoading || beginCheckoutTracked.current || items.length === 0) return;
+    beginCheckoutTracked.current = true;
+    trackEvent('begin_checkout', {
+      currency: STORE_CURRENCY_CODE,
+      value: Number(subtotal || 0),
+      items: items.map((item) => ecommerceItem(item, item.qty)),
+    });
+  }, [isLoading, items, subtotal]);
 
   useEffect(() => {
     if (!international || countries.length) return;
@@ -120,12 +131,20 @@ export default function Checkout() {
         items: items.map((item) => ecommerceItem(item, item.qty)),
       });
       trackEvent('checkout_redirect', {
-        currency: 'CAD',
-        value: Number(subtotal || 0),
+        currency: STORE_CURRENCY_CODE,
+        value: totalBeforeTax,
         items: items.map((item) => ecommerceItem(item, item.qty)),
       });
       window.location.href = data.url; // hand off to Stripe's hosted checkout
     } catch (err) {
+      const reason = err?.response?.status >= 500
+        ? 'server_error'
+        : err?.response?.status >= 400
+          ? 'request_rejected'
+          : err?.response
+            ? 'request_failed'
+            : 'network_error';
+      trackEvent('checkout_error', { reason });
       toast.error(err.response?.data?.error || 'Failed to start checkout');
       setRedirecting(false);
     }

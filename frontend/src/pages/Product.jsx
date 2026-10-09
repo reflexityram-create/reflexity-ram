@@ -247,11 +247,6 @@ export default function Product() {
       value: Number(p.price || 0) * qty,
       items: [ecommerceItem(p, qty)],
     });
-    trackEvent("begin_checkout", {
-      currency: STORE_CURRENCY_CODE,
-      value: Number(p.price || 0) * qty,
-      items: [ecommerceItem(p, qty)],
-    });
     navigate("/checkout");
   };
 
@@ -574,7 +569,13 @@ export default function Product() {
               </div>
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="product-related">
                 {related.map((r, i) => (
-                  <ProductCard key={r.slug} p={r} index={i} />
+                  <ProductCard
+                    key={r.slug}
+                    p={r}
+                    index={i}
+                    itemListId="related_products"
+                    itemListName="Related products"
+                  />
                 ))}
               </div>
             </div>
@@ -743,7 +744,13 @@ function RecentlyViewedSection({ slugs, currentSlug }) {
       </div>
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4" data-testid="recently-viewed">
         {items.map((r, i) => (
-          <ProductCard key={r.slug} p={r} index={i} />
+          <ProductCard
+            key={r.slug}
+            p={r}
+            index={i}
+            itemListId="recently_viewed_products"
+            itemListName="Recently viewed products"
+          />
         ))}
       </div>
     </div>

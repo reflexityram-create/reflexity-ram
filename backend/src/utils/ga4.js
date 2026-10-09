@@ -62,6 +62,10 @@ function buildPurchasePayload(order, { clientId, sessionId } = {}, { currency, n
         tax: analytics.tax,
         shipping: analytics.shipping,
         items: analytics.items,
+        // Fixed public context: never send Stripe return tokens or customer URLs.
+        // Server events otherwise have no hostname and disappear from site reports.
+        page_location: 'https://reflexityram.com/order/success',
+        page_title: 'Order confirmed',
         ...(sessionId ? { session_id: sessionId } : {}),
         engagement_time_msec: 1,
       },

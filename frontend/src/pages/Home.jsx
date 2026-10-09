@@ -142,7 +142,13 @@ export default function Home() {
                 ) : (
                   <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
                     {rest.map((p, i) => (
-                      <ProductCard key={p._id || p.slug} p={p} index={i} />
+                      <ProductCard
+                        key={p._id || p.slug}
+                        p={p}
+                        index={i}
+                        itemListId="home_inventory"
+                        itemListName="Home inventory"
+                      />
                     ))}
                   </div>
                 )}

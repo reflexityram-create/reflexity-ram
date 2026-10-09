@@ -12,6 +12,10 @@ const GUIDES = [
     description: "Compare DDR4 and DDR5 speed, compatibility, price, and upgrade value before buying desktop or laptop RAM in Canada.",
     keywords: "DDR4 vs DDR5, DDR5 RAM Canada, DDR4 upgrade",
     cta: { label: "Browse RAM by generation", to: "/categories" },
+    relatedLinks: [
+      ["DDR4 RDIMM modules", "/shop/rfx-sk-hynix-16gb-ddr4-3200-ecc-rdimm-server-memory-"],
+      ["DDR4 LRDIMM modules", "/shop/rfx-samsung-64gb-ddr4-3200-ecc-registered-rdimm-serv"],
+    ],
     sections: [
       ["The short answer", "DDR4 and DDR5 are not interchangeable. Your motherboard and processor determine which generation you can install. If your system supports DDR5, it offers higher bandwidth and newer platforms. If it uses DDR4, a tested DDR4 upgrade is usually the best value."],
       ["Compatibility comes first", "DDR4 modules have a different key notch and electrical design from DDR5 modules, so they cannot be installed in the wrong slot. Check the motherboard model, CPU generation, and official memory support list before ordering. Laptop buyers should also confirm whether memory is upgradeable or soldered."],
@@ -22,14 +26,18 @@ const GUIDES = [
   {
     slug: "ecc-rdimm-udimm-explained",
     title: "RDIMM vs UDIMM: ECC, LRDIMM, and Server RAM Explained",
-    description: "Learn the difference between ECC, registered RDIMM, load-reduced LRDIMM, and unbuffered UDIMM server memory.",
+    description: "Learn the difference between ECC, registered RDIMM, load-reduced LRDIMM, and unbuffered UDIMM server memory before ordering in Canada.",
     keywords: "ECC RAM, RDIMM vs UDIMM, LRDIMM server memory",
     cta: { label: "Shop tested server RAM", to: "/shop" },
+    relatedLinks: [
+      ["Shop verified RDIMM stock", "/shop/rfx-sk-hynix-16gb-ddr4-3200-ecc-rdimm-server-memory-"],
+      ["Shop verified LRDIMM stock", "/shop/rfx-samsung-64gb-ddr4-3200-ecc-registered-rdimm-serv"],
+    ],
     sections: [
       ["ECC memory", "ECC adds error detection and correction for many single-bit memory errors. It is common in servers, workstations, and systems where reliability matters. ECC support depends on the motherboard and CPU; an ECC module is not automatically compatible with every desktop platform."],
       ["UDIMM", "Unbuffered DIMMs are common in desktops and many entry-level systems. They communicate directly with the memory controller and are the usual choice for consumer motherboards. Do not substitute a registered DIMM for a UDIMM unless the platform documentation explicitly supports it."],
-      ["RDIMM", "Registered DIMMs place a register between the memory controller and the memory chips. This reduces electrical load and lets supported servers use more modules and larger capacities. RDIMM is primarily a server format and must match the server CPU and board."],
-      ["LRDIMM", "Load-reduced DIMMs use additional buffering to support very high capacities in compatible servers. LRDIMM and RDIMM are not interchangeable in most systems. Check the server manufacturer's memory population rules before buying."],
+      ["RDIMM", "Registered DIMMs place a register between the memory controller and the memory chips. This reduces electrical load and lets supported servers use more modules and larger capacities. RDIMM is primarily a server format and must match the server CPU and board. Current stock includes the SK hynix HMA82GR7DJR8N-XN and Lenovo 4X71B67860; search the complete part number before ordering."],
+      ["LRDIMM", "Load-reduced DIMMs use additional buffering to support very high capacities in compatible servers. LRDIMM and RDIMM are not interchangeable in most systems. Current 64GB examples include Samsung M386A8K40DM2-CWEZY and SK hynix HMAA8GL7CPR4N-VK. Check the server manufacturer's memory population rules before buying."],
     ],
   },
   {
@@ -38,6 +46,10 @@ const GUIDES = [
     description: "Use the label and model number to identify RAM capacity, DDR generation, speed, form factor, ECC type, and rank.",
     keywords: "identify RAM part number, Samsung RAM model number, server RAM label",
     cta: { label: "Search the RAM catalog", to: "/shop" },
+    relatedLinks: [
+      ["Search SK hynix HMA82GR7DJR8N-XN", "/shop/rfx-sk-hynix-16gb-ddr4-3200-ecc-rdimm-server-memory-"],
+      ["Search Samsung M386A8K40DM2-CWEZY", "/shop/rfx-samsung-64gb-ddr4-3200-ecc-registered-rdimm-serv"],
+    ],
     sections: [
       ["Start with the exact model", "Search the complete label number, including letters and suffixes. A model such as M471A2K43DB1-CTD can identify a specific Samsung module more reliably than a generic search for 16GB DDR4."],
       ["Read the key specifications", "Look for capacity, DDR generation, transfer rate, and the PC4 or PC5 speed code. SO-DIMM usually indicates laptop memory, while DIMM or UDIMM usually indicates desktop memory. RDIMM, LRDIMM, ECC, and REG point toward server memory."],
@@ -51,6 +63,10 @@ const GUIDES = [
     description: "Choose the right RAM capacity for office work, gaming, content creation, virtual machines, and server workloads.",
     keywords: "how much RAM do I need, 16GB vs 32GB RAM, server memory capacity",
     cta: { label: "Browse RAM by use case", to: "/categories" },
+    relatedLinks: [
+      ["See current 16GB RDIMM stock", "/shop/rfx-sk-hynix-16gb-ddr4-3200-ecc-rdimm-server-memory-"],
+      ["See current 64GB LRDIMM stock", "/shop/rfx-samsung-64gb-ddr4-3200-ecc-registered-rdimm-serv"],
+    ],
     sections: [
       ["Everyday laptops and desktops", "16GB is a practical baseline for office work, web browsing, school, and general multitasking. Choose 32GB if you regularly use large spreadsheets, development tools, many browser tabs, or photo and video applications."],
       ["Gaming and creative work", "Capacity needs depend on the game and the rest of the system, but 32GB gives modern gaming PCs useful headroom. Video editing, 3D work, and large creative projects may benefit from 64GB or more, especially when several applications are open."],
@@ -112,6 +128,14 @@ export default function Guides() {
                 <Link to={guide.cta.to} className="btn-primary"><CheckCircle2 size={15} /> {guide.cta.label}</Link>
                 <Link to="/support" className="btn-secondary">Ask us to confirm compatibility</Link>
               </div>
+              {guide.relatedLinks?.length ? (
+                <div className="mt-8">
+                  <h2 className="text-sm font-semibold">Related current stock</h2>
+                  <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-[13px]" style={{ color: "var(--fg-muted)" }}>
+                    {guide.relatedLinks.map(([label, to]) => <Link key={to} to={to} className="underline hover:text-white">{label}</Link>)}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </article>
           <GuideSchema guide={guide} />

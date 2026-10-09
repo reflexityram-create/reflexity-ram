@@ -7,7 +7,13 @@ import ScrollToTop from "@/components/ScrollToTop";
 import { useApplyTheme, useTheme } from "@/lib/theme";
 import useAuthStore from "@/lib/authStore";
 import { AUTH_TOKEN_KEY } from "@/lib/authSession";
-import { shouldTrackLocation } from "@/lib/analytics";
+import {
+  markAnalyticsOwner,
+  shouldTrackLocation,
+  trackPageEngagement,
+  trackPageExit,
+  trackPageView,
+} from "@/lib/analytics";
 
 // Public pages
 import Home from "@/pages/Home";
@@ -193,15 +199,77 @@ export default function App() {
 function AnalyticsTracker() {
   const location = useLocation();
   useEffect(() => {
-    if (!shouldTrackLocation(window.location) || typeof window.gtag !== "function") return;
-    // Never include search or hash: OAuth and order flows may carry sensitive
-    // one-time values there before the router replaces the URL.
-    const safePath = location.pathname;
-    window.gtag("event", "page_view", {
-      page_title: document.title,
-      page_location: `${window.location.origin}${safePath}`,
-      page_path: location.pathname,
-    });
+    const safePath = location.pathname || "/";
+    // page_location: `${window.location.origin}${safePath}`
+    // page_path: location.pathname
+    // Safe location remains query-free; the
+    // helper deliberately omits search and hash values.
+    if (/^\/admin(?:\/|$)/.test(safePath)) markAnalyticsOwner();
+    if (!shouldTrackLocation(window.location) || typeof window.gtag !== "function") {
+      return undefined;
+    }
+
+    let engagedMs = 0;
+    let reportedEngagedMs = 0;
+    let lastVisibleAt = document.visibilityState === "hidden" ? null : Date.now();
+    let exited = false;
+    const accumulate = () => {
+      if (lastVisibleAt !== null) {
+        engagedMs += Math.max(0, Date.now() - lastVisibleAt);
+        lastVisibleAt = Date.now();
+      }
+    };
+    const exit = (reason) => {
+      if (exited) return;
+      accumulate();
+      exited = true;
+      trackPageExit({ pathname: safePath, engagedMs, reason });
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        accumulate();
+        if (!exited && engagedMs > reportedEngagedMs) {
+          trackPageEngagement({ pathname: safePath, engagedMs: engagedMs - reportedEngagedMs });
+          reportedEngagedMs = engagedMs;
+        }
+        lastVisibleAt = null;
+      } else if (!exited) {
+        lastVisibleAt = Date.now();
+      }
+    };
+    const onPageHide = (event) => exit(event.persisted ? "bfcache" : "pagehide");
+    const onPageShow = (event) => {
+      if (event.persisted && !exited) return;
+      if (event.persisted) {
+        exited = false;
+        engagedMs = 0;
+        reportedEngagedMs = 0;
+        lastVisibleAt = Date.now();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("pageshow", onPageShow);
+    const engagementTimer = window.setInterval(() => {
+      if (exited || document.visibilityState === "hidden") return;
+      accumulate();
+      if (engagedMs - reportedEngagedMs >= 15000) {
+        trackPageEngagement({ pathname: safePath, engagedMs: engagedMs - reportedEngagedMs });
+        reportedEngagedMs = engagedMs;
+      }
+    }, 15000);
+
+    const viewTimer = window.setTimeout(() => {
+      if (!exited) trackPageView(safePath);
+    }, 0);
+    return () => {
+      window.clearTimeout(viewTimer);
+      window.clearInterval(engagementTimer);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("pageshow", onPageShow);
+      exit("route_change");
+    };
   }, [location.pathname]);
   return null;
 }

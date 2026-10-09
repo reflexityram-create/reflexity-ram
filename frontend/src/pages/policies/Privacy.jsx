@@ -15,7 +15,7 @@ export default function Privacy() {
             { list: [
               "Name, shipping address, email, and phone number for fulfilment",
               "Order details and billing zip for payment processing",
-              "Basic analytics (page views, referral source) — no personal profiling",
+              "Store analytics: pages viewed, product and cart interactions, checkout steps, technical error categories, and time spent on a page — no personal profiling, session recordings, or form-field contents",
               "Reviews you choose to post: your star rating, title, review text, and first name",
             ] },
           ],
@@ -50,7 +50,7 @@ export default function Privacy() {
               "Stripe — processes your payment. We never see or store full card numbers.",
               "The shipping carrier — delivers your order.",
               "Resend — sends our order and review emails.",
-              "Google Analytics — measures site traffic.",
+              "Google Analytics — measures site traffic and shopping steps so we can find where visits end or checkout fails. A hidden tab or the last recorded step does not tell us why someone left. We do not send names, email addresses, shipping addresses, or payment details in these events.",
               "Google Customer Reviews and its store rating badge — as described above.",
               "Cloudflare, Render, and MongoDB Atlas — host the website and store order records.",
             ] },
@@ -73,7 +73,7 @@ export default function Privacy() {
           heading: "Updates to this policy",
           body: [
             "If we change anything material, we'll update this page and notify recent customers by email.",
-            "Last updated: October 4, 2026.",
+            "Last updated: October 9, 2026.",
           ],
         },
       ]}

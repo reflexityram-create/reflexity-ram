@@ -1,9 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  ANALYTICS_OPTOUT_KEY,
+  ANALYTICS_OWNER_KEY,
+  ANALYTICS_QA_KEY,
+  applyAnalyticsPreference,
+  applyAnalyticsRuntimeGuards,
   ecommerceItem,
+  markAnalyticsOwner,
+  pageContext,
+  pageViewParameters,
   readGaIdentifiers,
+  safePageTitle,
   shouldTrackLocation,
+  trackPageExit,
   trackEvent,
   trackPurchaseOnce,
 } from "../src/lib/analytics.js";
@@ -18,6 +28,85 @@ test("analytics only tracks canonical public storefront traffic", () => {
   assert.equal(shouldTrackLocation(new URL("https://reflexityram.com/review#t=r1.token")), false);
 });
 
+test("owner exclusion persists until the explicit reversible opt-in", () => {
+  const originalStorage = globalThis.localStorage;
+  const values = new Map();
+  globalThis.localStorage = {
+    getItem: (key) => values.get(key) || null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key),
+  };
+  try {
+    markAnalyticsOwner();
+    assert.equal(values.get(ANALYTICS_OWNER_KEY), "1");
+    assert.equal(shouldTrackLocation(new URL("https://reflexityram.com/shop")), false);
+    assert.equal(applyAnalyticsPreference(new URL("https://reflexityram.com/shop?analytics=on")), "on");
+    assert.equal(values.has(ANALYTICS_OWNER_KEY), false);
+    assert.equal(shouldTrackLocation(new URL("https://reflexityram.com/shop")), true);
+    applyAnalyticsPreference(new URL("https://reflexityram.com/shop?analytics=off"));
+    assert.equal(values.get(ANALYTICS_OPTOUT_KEY), "1");
+    assert.equal(shouldTrackLocation(new URL("https://reflexityram.com/shop")), false);
+  } finally {
+    globalThis.localStorage = originalStorage;
+  }
+});
+
+test("page metadata and exits contain safe paths only", () => {
+  const originalLocation = globalThis.location;
+  const originalGtag = globalThis.gtag;
+  const originalDocument = globalThis.document;
+  const calls = [];
+  globalThis.location = new URL("https://reflexityram.com/shop?email=buyer@example.com#token");
+  globalThis.document = { title: "Shop", referrer: "https://search.example/?q=buyer@example.com" };
+  globalThis.gtag = (...args) => calls.push(args);
+  try {
+    assert.deepEqual(pageContext("/checkout"), { page_type: "checkout", funnel_stage: "checkout" });
+    const params = pageViewParameters("/shop");
+    assert.equal(params.page_location, "https://reflexityram.com/shop");
+    assert.equal(params.page_referrer, "https://search.example");
+    assert.equal(safePageTitle("/order/RFX-SECRET"), "Order status — Reflexity RAM");
+    assert.equal(safePageTitle("/shop/hynix-16gb"), "Memory product — Reflexity RAM");
+    assert.equal(trackPageExit({ pathname: "/shop?email=buyer@example.com", engagedMs: 1600, reason: "hidden" }), true);
+    assert.equal(calls[0][2].page_path, "/shop");
+    assert.equal(calls[0][2].engaged_seconds, 2);
+    assert.equal(JSON.stringify(calls).includes("buyer@example.com"), false);
+  } finally {
+    globalThis.location = originalLocation;
+    globalThis.gtag = originalGtag;
+    globalThis.document = originalDocument;
+  }
+});
+
+test("qa is session-scoped, campaigns are validated, and order ids are canonicalized", () => {
+  const originalLocation = globalThis.location;
+  const originalGtag = globalThis.gtag;
+  const originalSession = globalThis.sessionStorage;
+  const values = new Map();
+  const calls = [];
+  globalThis.sessionStorage = { getItem: (key) => values.get(key) || null, setItem: (key, value) => values.set(key, value) };
+  globalThis.location = new URL("https://reflexityram.com/shop?qa=1&utm_source=google&utm_campaign=spring_sale&utm_term=buyer%40example.com");
+  globalThis.gtag = (...args) => calls.push(args);
+  try {
+    assert.equal(applyAnalyticsRuntimeGuards(globalThis.location), true);
+    assert.equal(values.get(ANALYTICS_QA_KEY), "1");
+    globalThis.location = new URL("https://reflexityram.com/order/RFX-SECRET?utm_source=google&utm_campaign=spring_sale");
+    assert.equal(shouldTrackLocation(globalThis.location), false);
+    values.delete(ANALYTICS_QA_KEY);
+    assert.equal(trackEvent("page_exit", { page_path: "/order/RFX-SECRET", engaged_seconds: 2 }), true);
+    const page = pageViewParameters("/shop");
+    assert.equal(page.utm_source, "google");
+    assert.equal(page.utm_campaign, "spring_sale");
+    assert.equal(page.utm_term, undefined);
+    assert.equal(calls[0][2].page_path, "/order/success");
+    assert.equal(calls[0][2].page_location, "https://reflexityram.com/order/success");
+    assert.equal(JSON.stringify(calls).includes("RFX-SECRET"), false);
+  } finally {
+    globalThis.location = originalLocation;
+    globalThis.gtag = originalGtag;
+    globalThis.sessionStorage = originalSession;
+  }
+});
+
 test("analytics emits valid events and normalized ecommerce items", () => {
   const originalLocation = globalThis.location;
   const originalGtag = globalThis.gtag;
@@ -27,7 +116,11 @@ test("analytics emits valid events and normalized ecommerce items", () => {
   try {
     assert.equal(trackEvent("add_to_cart", { value: 20 }), true);
     assert.equal(trackEvent("Invalid Event", {}), false);
-    assert.deepEqual(calls, [["event", "add_to_cart", { value: 20 }]]);
+    assert.equal(calls[0][0], "event");
+    assert.equal(calls[0][1], "add_to_cart");
+    assert.equal(calls[0][2].value, 20);
+    assert.equal(calls[0][2].page_path, "/shop/test");
+    assert.equal(calls[0][2].page_location, "https://reflexityram.com/shop/test");
     assert.deepEqual(ecommerceItem({ sku: "SKU-1", name: "RAM", generation: "DDR4", formFactor: "RDIMM", price: "20" }, 2), {
       item_id: "SKU-1",
       item_name: "RAM",
