@@ -33,13 +33,14 @@ A separate Checkout session per button (`POST /api/stripe/create-checkout-sessio
 percent coupon (`rfx-bank-debit-<pct>pct`, created on first use), no promotion-code box (Stripe will not take both), Canada only. The
 dashboard's payment-method list is left alone, so card sessions never show bank debit.
 
-1. The buyer authorizes the debit; Stripe sends `checkout.session.completed` with `payment_status: "unpaid"`. **Only if the
-   session's PaymentIntent is `processing`** (the debit is really in flight) the shop creates a **pending** order
-   (`paymentStatus: pending`, `status: pending`), holds the stock, emails the buyer "received, processing", alerts the owner.
-   `utils/orderTransitions.js` refuses to process or ship an unpaid order. Any other PaymentIntent state means no order yet:
-   `requires_payment_method` is how Stripe leaves a session after the bank refused the debit (so a retried `completed` cannot
-   create an order for a debit that already failed), and `requires_action` is a buyer who typed their account numbers by hand and
-   must still verify two micro-deposits. For that buyer the order appears, already paid, when the money clears (step 2).
+1. The buyer authorizes the debit; Stripe sends `checkout.session.completed` with `payment_status: "unpaid"`. The shop creates a
+   **pending** order (`paymentStatus: pending`, `status: pending`), holds the stock, emails the buyer "received, processing", alerts
+   the owner. `utils/orderTransitions.js` refuses to process or ship an unpaid order. **Not when no debit is under way**, judged from
+   the session's PaymentIntent: `requires_payment_method` is how Stripe leaves a session after the bank refused the debit (so a
+   retried `completed` cannot create an order for a debit that already failed), `requires_action` is a buyer who typed their account
+   numbers by hand and must still verify two micro-deposits, and `canceled` is cancelled. For the first two the order appears,
+   already paid, when the money clears (step 2). Any other state, including one Stripe adds later, counts as a debit under way:
+   leaving out a real debit would give a paying buyer no order, which is worse than the rare order for a debit that never started.
 2. `checkout.session.async_payment_succeeded` (up to 5 business days later): the order becomes `paid` / `processing`, the buyer gets the
    confirmation, the owner an alert, GA4 the purchase.
 3. `checkout.session.async_payment_failed`: the order is cancelled (`paymentStatus: failed`), the stock goes back, the buyer is told.
