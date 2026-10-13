@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A RAM stick, inside the adaptive icon's safe zone (the middle 66 of 108). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- board -->
+    <path
+        android:fillColor="#FFCF24"
+        android:pathData="M26,38 L82,38 Q86,38 86,42 L86,64 L26,64 L26,42 Q26,38 30,38 Z" />
+    <!-- chips -->
+    <path
+        android:fillColor="#17181A"
+        android:pathData="M31,43 L41,43 L41,56 L31,56 Z M45,43 L55,43 L55,56 L45,56 Z M59,43 L69,43 L69,56 L59,56 Z M73,43 L81,43 L81,56 L73,56 Z" />
+    <!-- gold contacts, with the notch in the middle -->
+    <path
+        android:fillColor="#FFCF24"
+        android:pathData="M28,67 L32,67 L32,73 L28,73 Z M35,67 L39,67 L39,73 L35,73 Z M42,67 L46,67 L46,73 L42,73 Z M49,67 L53,67 L53,73 L49,73 Z M58,67 L62,67 L62,73 L58,73 Z M65,67 L69,67 L69,73 L65,73 Z M72,67 L76,67 L76,73 L72,73 Z M79,67 L83,67 L83,73 L79,73 Z" />
+</vector>

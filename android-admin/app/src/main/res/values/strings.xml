@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Reflexity Admin</string>
+    <string name="channel_orders">Orders and payments</string>
+    <string name="channel_orders_desc">A new order, a payment that cleared or failed, an e-Transfer to watch for</string>
+    <string name="channel_updates">Shop updates</string>
+    <string name="channel_updates_desc">Refunds, reviews and other things worth knowing</string>
+    <string name="channel_quiet">Parcel progress</string>
+    <string name="channel_quiet_desc">Quiet notes: Canada Post accepted or delivered a parcel</string>
+    <string name="channel_service">Connection</string>
+    <string name="channel_service_desc">The small notice that shows the app is listening</string>
+    <string name="service_listening">Listening for orders and payments</string>
+    <string name="service_offline">Offline, reconnecting…</string>
+    <string name="public_title">Reflexity shop</string>
+    <string name="public_text">New activity. Unlock to read it.</string>
+</resources>
