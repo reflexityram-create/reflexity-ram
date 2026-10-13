@@ -58,6 +58,7 @@ function createAuthenticate({ jwtImpl = jwt, UserModel = User, DeviceModel = Adm
     }
 
     req.user = user;
+    req.authDeviceId = decoded.dev ? String(decoded.dev) : null;
     next();
   } catch (err) {
     if (err.name === 'TokenExpiredError') {
@@ -117,6 +118,18 @@ const requireAdmin = (req, res, next) => {
 };
 
 /**
+ * Routes that mint or manage long-lived credentials (pairing phones, promoting accounts) refuse a session that the phone
+ * app minted for itself: a stolen phone must not be able to pair a second device or make another admin, because removing
+ * the stolen phone would then leave those behind. The owner does these from a normal sign-in on the website.
+ */
+const denyDeviceSession = (req, res, next) => {
+  if (req.authDeviceId) {
+    return res.status(403).json({ error: 'Sign in on the website to do this. The phone app cannot.', code: 'DEVICE_SESSION_NOT_ALLOWED' });
+  }
+  return next();
+};
+
+/**
  * Generate access token
  */
 const generateAccessToken = (userId, authVersion = 0) => {
@@ -157,6 +170,7 @@ module.exports = {
   optionalAuth,
   requireAdmin,
   requireExplicitBearer,
+  denyDeviceSession,
   generateAccessToken,
   setAuthCookie,
   clearAuthCookie,

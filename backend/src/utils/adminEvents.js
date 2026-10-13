@@ -42,11 +42,22 @@ function describeOrder(order) {
 
 const orderPath = (order) => (order?._id ? `/admin/orders?order=${order._id}` : '/admin/orders');
 
+// One insert at a time within this process. An _id is made when the insert starts, so two alerts racing each other could
+// commit in the opposite order of their ids, and a phone that has already moved its cursor past the later id would never
+// see the earlier one. Taking turns keeps commit order and id order the same.
+let inserts = Promise.resolve();
+const inOrder = (task) => {
+  const run = inserts.then(task, task);
+  inserts = run.then(() => undefined, () => undefined);
+  return run;
+};
+
 async function recordAdminEvent(input, { Model = AdminEvent, emitter = bus, logger = console } = {}) {
   try {
     // Mongoose would queue this write for 10 s while the database is unreachable: an alert is not worth that wait.
     if (Model === AdminEvent && mongoose.connection.readyState !== 1) return null;
     const event = {
+      ...(input.dedupeKey ? { dedupeKey: clip(input.dedupeKey, 120) } : {}),
       type: clip(input.type, 40),
       title: clip(input.title, 120),
       body: clip(input.body, 300),
@@ -57,10 +68,12 @@ async function recordAdminEvent(input, { Model = AdminEvent, emitter = bus, logg
       event.orderId = input.order._id;
       event.orderNumber = clip(input.order.orderNumber, 80) || undefined;
     }
-    const saved = await Model.create(event);
+    const saved = await inOrder(() => Model.create(event));
     emitter.emit('event', saved);
     return saved;
   } catch (err) {
+    // Already announced under this key: nothing to do, and nothing to wake the phone for.
+    if (err?.code === 11000 && input?.dedupeKey) return null;
     logger.error(`Admin event "${input?.type}" was not recorded: ${err.message}`);
     return null;
   }

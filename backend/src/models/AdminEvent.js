@@ -12,6 +12,9 @@ const adminEventSchema = new mongoose.Schema({
   priority: { type: String, enum: ['high', 'normal', 'low'], default: 'normal' },
   // Where the app opens when the notification is tapped: a path on the storefront site.
   path: { type: String, default: '/admin/orders', trim: true, maxlength: 200 },
+  // "order.paid:<orderId>", "lead.new:<requestId>" ...: the same thing is announced at most once, however often the code
+  // that announces it runs again (a Stripe retry, a replayed webhook, a resubmitted form).
+  dedupeKey: { type: String, trim: true, maxlength: 120 },
   orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order' },
   orderNumber: { type: String, trim: true, maxlength: 80 },
   createdAt: { type: Date, default: Date.now },
@@ -22,5 +25,6 @@ const adminEventSchema = new mongoose.Schema({
 
 // The phone only ever asks for rows newer than the last one it saw (by _id); two weeks is plenty for a phone that was off.
 adminEventSchema.index({ createdAt: 1 }, { expireAfterSeconds: 14 * 24 * 60 * 60 });
+adminEventSchema.index({ dedupeKey: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model('AdminEvent', adminEventSchema);

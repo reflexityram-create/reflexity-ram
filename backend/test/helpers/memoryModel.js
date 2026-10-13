@@ -54,7 +54,9 @@ function applyUpdate(doc, update) {
   for (const [key, value] of Object.entries(update)) if (!operators.includes(key)) setPath(doc, key, value);
 }
 
-const chain = (value) => {
+const later = (value, latencyMs) => (latencyMs ? new Promise((resolve) => setTimeout(() => resolve(value), latencyMs)) : Promise.resolve(value));
+
+const chain = (value, latencyMs = 0) => {
   let result = value;
   const api = {
     sort(spec) {
@@ -68,40 +70,42 @@ const chain = (value) => {
     select() { return api; },
     populate() { return api; },
     lean() { return api; },
-    then(resolve, reject) { return Promise.resolve(result).then(resolve, reject); },
+    then(resolve, reject) { return later(result, latencyMs).then(resolve, reject); },
   };
   return api;
 };
 
-function memoryModel(initial = []) {
+// `latencyMs` makes every call answer that much later than it ran (the read or write itself still happens at once, like a
+// round trip to a database), which is what lets a test make several requests overlap.
+function memoryModel(initial = [], { latencyMs = 0 } = {}) {
   const docs = initial.map((doc) => ({ _id: new mongoose.Types.ObjectId(), ...clone(doc) }));
   const model = {
     docs,
     create: async (data) => {
       const doc = { _id: new mongoose.Types.ObjectId(), createdAt: new Date(), ...clone(data) };
       docs.push(doc);
-      return doc;
+      return later(doc, latencyMs);
     },
-    find: (filter) => chain(docs.filter((doc) => matches(doc, filter))),
-    findOne: (filter) => chain(docs.find((doc) => matches(doc, filter)) || null),
-    findById: (id) => chain(docs.find((doc) => String(doc._id) === String(id)) || null),
-    countDocuments: async (filter) => docs.filter((doc) => matches(doc, filter)).length,
+    find: (filter) => chain(docs.filter((doc) => matches(doc, filter)), latencyMs),
+    findOne: (filter) => chain(docs.find((doc) => matches(doc, filter)) || null, latencyMs),
+    findById: (id) => chain(docs.find((doc) => String(doc._id) === String(id)) || null, latencyMs),
+    countDocuments: async (filter) => later(docs.filter((doc) => matches(doc, filter)).length, latencyMs),
     exists: async (filter) => {
       const doc = docs.find((d) => matches(d, filter));
-      return doc ? { _id: doc._id } : null;
+      return later(doc ? { _id: doc._id } : null, latencyMs);
     },
     updateOne: async (filter, update) => {
       const doc = docs.find((d) => matches(d, filter));
-      if (!doc) return { matchedCount: 0, modifiedCount: 0 };
+      if (!doc) return later({ matchedCount: 0, modifiedCount: 0 }, latencyMs);
       applyUpdate(doc, update);
-      return { matchedCount: 1, modifiedCount: 1 };
+      return later({ matchedCount: 1, modifiedCount: 1 }, latencyMs);
     },
     findOneAndUpdate: async (filter, update, options = {}) => {
       const doc = docs.find((d) => matches(d, filter));
-      if (!doc) return null;
+      if (!doc) return later(null, latencyMs);
       const before = clone(doc);
       applyUpdate(doc, update);
-      return options.returnDocument === 'after' || options.new ? doc : before;
+      return later(options.returnDocument === 'after' || options.new ? doc : before, latencyMs);
     },
   };
   return model;

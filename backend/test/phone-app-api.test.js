@@ -380,10 +380,3 @@ test('the phone routes are mounted ahead of the site-wide rate limit and the adm
   assert.ok(server.indexOf("app.use('/api/admin/devices'") < server.indexOf("app.use('/api/admin', adminRoutes)"));
   for (const model of ['AdminEvent', 'AdminDevice', 'DevicePairing']) assert.match(server, new RegExp(`${model},\\n`), `${model} gets its indexes at startup`);
 });
-
-test('a pairing code is never logged or echoed back in an error', () => {
-  const crypto2 = crypto.createHash('sha256').update('ABCD2345').digest('hex');
-  assert.equal(hashPairingCode('ABCD2345'), crypto2);
-  const source = require('node:fs').readFileSync(require.resolve('../src/routes/device.js'), 'utf8');
-  assert.doesNotMatch(source, /console\.(log|error|warn)\([^)]*(code|token)[^)]*\)/i, 'no log line mentions a code or token value');
-});

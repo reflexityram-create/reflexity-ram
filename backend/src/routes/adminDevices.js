@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const AdminDevice = require('../models/AdminDevice');
 const DevicePairing = require('../models/DevicePairing');
 const { validate } = require('../middleware/validate');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireAdmin, requireExplicitBearer, denyDeviceSession } = require('../middleware/auth');
 const { newPairingCode, normalizePairingCode, hashPairingCode } = require('./device');
 const { recordAdminEvent } = require('../utils/adminEvents');
 
@@ -23,7 +23,8 @@ function createAdminDevicesRouter({
   PairingModel = DevicePairing,
   record = recordAdminEvent,
   now = Date.now,
-  guard = [authenticate, requireAdmin],
+  // Bearer header only (never the ambient cookie): these routes mint and delete long-lived credentials.
+  guard = [requireExplicitBearer, authenticate, requireAdmin],
 } = {}) {
   const router = express.Router();
   router.use(...guard);
@@ -32,16 +33,20 @@ function createAdminDevicesRouter({
     next();
   });
 
-  router.post('/pairing', async (req, res) => {
+  router.post('/pairing', denyDeviceSession, async (req, res) => {
     try {
       const at = new Date(now());
-      const open = await PairingModel.countDocuments({ user: req.user._id, usedAt: null, expiresAt: { $gt: at } });
-      if (open >= MAX_OPEN_CODES) {
-        return res.status(429).json({ error: 'Several pairing codes are already open. Use one of them or wait ten minutes.' });
-      }
+      const tooMany = () => res.status(429).json({ error: 'Several pairing codes are already open. Use one of them or wait ten minutes.' });
+      const openFilter = { user: req.user._id, usedAt: null, expiresAt: { $gt: at } };
+      if (await PairingModel.countDocuments(openFilter) >= MAX_OPEN_CODES) return tooMany();
       const code = newPairingCode();
       const expiresAt = new Date(at.getTime() + PAIRING_MINUTES * 60 * 1000);
-      await PairingModel.create({ user: req.user._id, codeHash: hashPairingCode(normalizePairingCode(code)), expiresAt });
+      const made = await PairingModel.create({ user: req.user._id, codeHash: hashPairingCode(normalizePairingCode(code)), expiresAt });
+      // Count again after the insert: several requests at once could all have passed the check above.
+      if (await PairingModel.countDocuments(openFilter) > MAX_OPEN_CODES) {
+        await PairingModel.updateOne({ _id: made._id }, { $set: { usedAt: at } });
+        return tooMany();
+      }
       return res.status(201).json({ code, expiresAt });
     } catch (err) {
       console.error('Pairing code error:', err.message);
@@ -67,7 +72,7 @@ function createAdminDevicesRouter({
     }
   });
 
-  router.delete('/:id', [param('id').custom((value) => mongoose.Types.ObjectId.isValid(value)).withMessage('Invalid device id')], validate, async (req, res) => {
+  router.delete('/:id', denyDeviceSession, [param('id').custom((value) => mongoose.Types.ObjectId.isValid(value)).withMessage('Invalid device id')], validate, async (req, res) => {
     try {
       const device = await DeviceModel.findOneAndUpdate(
         { _id: req.params.id, user: req.user._id, revokedAt: null },

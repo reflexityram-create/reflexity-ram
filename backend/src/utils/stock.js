@@ -150,6 +150,7 @@ const decrementStockForOrder = async (order) => {
       body: `${oversold.order.orderNumber} · ${oversold.items.join('; ')}`,
       priority: 'high',
       order: oversold.order,
+      dedupeKey: `order.oversold:${oversold.order._id}`,
     });
   }
   return decremented;

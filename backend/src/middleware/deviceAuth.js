@@ -7,6 +7,9 @@ const { bearerToken, authorizationHeader } = require('./auth');
 // scanners tell a device token from other credentials.
 const DEVICE_TOKEN_PATTERN = /^rfxd_[A-Za-z0-9_-]{43}$/;
 const LAST_SEEN_EVERY_MS = 60 * 1000;
+// A phone that has not asked for anything in this long is treated as gone (a lost phone, a copied backup): it has to be
+// paired again. A phone that is on asks every half minute, so a working one never gets near this.
+const STALE_AFTER_MS = 60 * 24 * 60 * 60 * 1000;
 
 const hashDeviceToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 const newDeviceToken = () => `rfxd_${crypto.randomBytes(32).toString('base64url')}`;
@@ -28,6 +31,10 @@ function createAuthenticateDevice({ DeviceModel = AdminDevice, UserModel = User,
       const device = await DeviceModel.findOne({ tokenHash: hashDeviceToken(token), revokedAt: null });
       if (!device) return res.status(401).json({ error: 'This device is not paired (or was removed)', code: 'DEVICE_REVOKED' });
 
+      const lastSeenAt = device.lastSeenAt ? new Date(device.lastSeenAt).getTime() : new Date(device.createdAt || 0).getTime();
+      if (lastSeenAt && now() - lastSeenAt > STALE_AFTER_MS) {
+        return res.status(401).json({ error: 'This device was idle too long. Pair it again.', code: 'DEVICE_REVOKED' });
+      }
       const user = await UserModel.findById(device.user).select('-password');
       if (!user || !user.isActive || user.role !== 'admin'
         || Number(user.authVersion || 0) !== Number(device.authVersion || 0)) {
@@ -49,6 +56,7 @@ function createAuthenticateDevice({ DeviceModel = AdminDevice, UserModel = User,
 }
 
 module.exports = {
+  STALE_AFTER_MS,
   DEVICE_TOKEN_PATTERN,
   createAuthenticateDevice,
   authenticateDevice: createAuthenticateDevice(),

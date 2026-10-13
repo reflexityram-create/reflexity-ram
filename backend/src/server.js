@@ -24,6 +24,7 @@ const reviewRoutes = require('./routes/reviews');
 const { createLeadRouter } = require('./routes/leads');
 const { createDeviceRouter } = require('./routes/device');
 const { createAdminDevicesRouter } = require('./routes/adminDevices');
+const { createDeviceLimiter, createPairLimiter } = require('./middleware/phoneLimiters');
 const { fixMerchantProductData } = require('./migrations/fixMerchantProductData');
 const { ensureCartOwnershipIndexes } = require('./migrations/ensureCartOwnershipIndexes');
 const { syncActiveProductPrices } = require('./migrations/syncStoreCurrency');
@@ -143,28 +144,9 @@ const authLimiter = rateLimit({
   message: { error: 'Too many authentication attempts, please try again later.' },
 });
 
-// The phone app (routes/device.js) asks for news every ~25 s, all day. It gets its own limits, mounted BEFORE the
-// site-wide limiter below, so it can neither be locked out by nor use up the budget of everyone sharing its IP.
-const deviceLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 600,
-  standardHeaders: true,
-  legacyHeaders: false,
-  store: new MongoRateLimitStore({ prefix: 'device' }),
-  passOnStoreError: false,
-  message: { error: 'Too many requests, please try again later.' },
-});
-
-// Pairing codes are short-lived and single-use, but a guess is still a guess: few attempts per IP.
-const devicePairLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  store: new MongoRateLimitStore({ prefix: 'devpair' }),
-  passOnStoreError: false,
-  message: { error: 'Too many pairing attempts, please try again later.' },
-});
+// The phone app's own limits (middleware/phoneLimiters.js), mounted BEFORE the site-wide limiter below.
+const deviceLimiter = createDeviceLimiter();
+const devicePairLimiter = createPairLimiter();
 
 const leadLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,

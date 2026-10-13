@@ -59,11 +59,11 @@ async function canonicalizeLeadSource(lead, WholesaleLotModel) {
   };
 }
 
-// What the owner's phone shows for a quote request: what they want, never who sent it (the email has the details).
+// What the owner's phone shows for a quote request: only the kind of request and the quantity. Everything else on the form is
+// free text typed by a stranger (name, phone, "item"), and this goes on a lock screen at high priority: the email has the rest.
 const leadAlertBody = (lead) => [
   { buy: 'Wants to buy', sell: 'Wants to sell', general: 'Question' }[lead.intent] || 'Request',
-  lead.itemTitle || lead.productType,
-  lead.quantity ? `qty ${lead.quantity}` : null,
+  Number.isInteger(lead.quantity) ? `qty ${lead.quantity}` : null,
 ].filter(Boolean).join(' · ');
 
 function createLeadRouter({ sendLead = sendLeadEmail, WholesaleLotModel = WholesaleLot, record = recordAdminEvent } = {}) {
@@ -89,7 +89,7 @@ function createLeadRouter({ sendLead = sendLeadEmail, WholesaleLotModel = Wholes
         const canonical = await canonicalizeLeadSource(lead, WholesaleLotModel);
         await sendLead(canonical);
         // The email is the record; this only taps the owner's phone. It never fails the request.
-        await record({ type: 'lead.new', title: 'New quote request', body: `${leadAlertBody(canonical)} · details in your email`, priority: 'high', path: '/admin/orders' });
+        await record({ type: 'lead.new', title: 'New quote request', body: `${leadAlertBody(canonical)} · details in your email`, priority: 'high', path: '/admin/orders', dedupeKey: `lead.new:${canonical.requestId}` });
         return res.status(202).json({ success: true });
       } catch (error) {
         if (error instanceof LeadSourceError) {
