@@ -68,10 +68,16 @@ item/product page.
    page, lead with the exact product value and, only after current readback,
    compare the same item with its own live eBay price. State dated CAD item-
    price savings; keep shipping, tax and any provincial difference separate.
-6. In eBay's description editor, enable **Show HTML**, then use the textarea
-   form input and wait for the editor's asynchronous readback. Save/revise once
-   only after the shown title, specifics, photo count, price, quantity, shipping
-   and description all match the target. Do not replay an uncertain revision.
+6. In eBay's description editor, enable **Show HTML**, focus its textarea,
+   use supported browser `computer` click → Ctrl+A → type the HTML → Tab,
+   then switch Show HTML off and verify the rendered rich-text iframe.
+   **Do not use `form_input` alone for this field:** verified 13 Oct 2026,
+   it changed the textarea DOM but eBay submitted the old rich-editor content,
+   despite a successful revision confirmation. Save/revise once only after
+   the rendered description, title, specifics, photo count, price, quantity
+   and shipping match. Then read the public item’s observed `desc_ifr` URL
+   and verify its actual HTML/text; a confirmation is not proof of saved copy.
+   Do not replay an uncertain revision without checking whether it saved.
 7. Verify the public eBay item and public Reflexity product separately. Record
    the item/product ID, condition, price, quantity and photo count. Re-open the
    active listing only if that public readback is incomplete or contradictory.
@@ -128,3 +134,9 @@ the price; check the visible product page, not only the catalog API. Current
 compact templates and exact item-price comparison pairs are in
 `.ai/artifacts/listing-copy-2026-10-13/copy-plan.json`; they are dated examples,
 not future fixed prices.
+
+A corrected bounded example is kept at
+`.ai/artifacts/listing-copy-2026-10-13/revise-copy.py`; it uses the supported
+bridge and proves rendered editor state plus public description readback.
+Rediscover its task tab/session/bridge before reuse; these handles are never
+permanent shortcuts.
