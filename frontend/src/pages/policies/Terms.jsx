@@ -36,6 +36,13 @@ export default function Terms() {
           ],
         },
         {
+          heading: "Carrier, tracking & service level",
+          body: [
+            "We choose the carrier and the service level for every order, including whether it ships with tracking. We aim to send every order with a tracking number, but we may ship without tracking when we decide it makes sense, even if tracking was mentioned on our site or is part of the shipping charge you paid.",
+            "If you paid for a specific tracked or faster service and we ship by a different one, we'll refund the difference in the shipping charge if you ask. A tracking number, when we send one, tracks the parcel; it is not a promise of a delivery date.",
+          ],
+        },
+        {
           heading: "Intellectual property",
           body: [
             "All site content (logo, copy, photography, layout) is owned by Reflexity RAM. Don't republish without permission.",
