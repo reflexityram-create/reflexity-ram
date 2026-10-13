@@ -214,6 +214,20 @@ test('the phone app is recognised by its user agent, and an ordinary browser is 
   assert.equal(isAdminApp('ReflexityAdminApp'), false, 'a name without a version is not the app');
 });
 
+test('the app and the page agree on the marker: what MainActivity appends is what appBridge reads, with the Config version', async () => {
+  const [activity, config] = await Promise.all([
+    read('../../android-admin/app/src/main/java/com/reflexityram/admin/MainActivity.java'),
+    read('../../android-admin/app/src/main/java/com/reflexityram/admin/Config.java'),
+  ]);
+  assert.match(activity, /settings\.setUserAgentString\(settings\.getUserAgentString\(\) \+ " ReflexityAdminApp\/" \+ Config\.APP_VERSION\);/);
+  const version = config.match(/APP_VERSION = "([^"]+)";/)?.[1];
+  assert.ok(version, 'Config.APP_VERSION is set');
+  // what the web view would send: its own user agent, a space, the marker and the version
+  const sent = `Mozilla/5.0 (Linux; Android 15; Pixel 8a Build/AP4A; wv) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36 ReflexityAdminApp/${version}`;
+  assert.equal(isAdminApp(sent), true);
+  assert.equal(appVersion(sent), version, 'the whole version is read back (a suffix the pattern cannot read would show here)');
+});
+
 test('an admin on a phone gets the tab bar on EVERY page (the store too); the admin sidebar steps aside; customers see nothing new', async () => {
   const [layout, bar, app, css] = await Promise.all([
     read('../src/components/AppLayout.jsx'), read('../src/components/AdminTabBar.jsx'), read('../src/App.jsx'), read('../src/index.css'),
@@ -225,6 +239,9 @@ test('an admin on a phone gets the tab bar on EVERY page (the store too); the ad
   assert.match(bar, /<nav className="admin-tabbar md:hidden"/);
   assert.match(bar, /aria-current=\{active \? 'page' : undefined\}/);
   assert.match(bar, /root\.dataset\.kbd = '1'/, 'the bar steps aside while the keyboard is open');
+  assert.match(bar, /if \(!isTextField\(document\.activeElement\)\) delete root\.dataset\.kbd;/, 'and it comes back when the keyboard closes');
+  assert.match(bar, /root\.dataset\.adminShell = '1'/, 'toasts are lifted above the bar (the css keys on it)');
+  assert.match(css, /html\[data-admin-shell\] \[data-sonner-toaster\]/);
   assert.match(bar, /document\.body\.classList\.add\('has-admin-bar'\)/);
   assert.match(app, /<AnalyticsTracker \/>\s*<AdminTabBar \/>/, 'mounted once, inside the router, above every route');
   assert.match(app, /<Route path="\/admin\/more" element=\{<AdminMore \/>\} \/>/);
@@ -237,6 +254,7 @@ test('"More" lists the rest, links to the store, and leaves out "Sign out" insid
   for (const [path, title] of [['/admin/users', 'Users'], ['/admin/security', 'Security and phone app'], ['/account?tab=settings', 'Account settings'], ['/', 'View the store']]) {
     assert.ok(more.includes(`to: '${path}'`) && more.includes(`title: '${title}'`), `${title} -> ${path}`);
   }
+  assert.match(more, /const inApp = isAdminApp\(\);/, 'only the app\'s own user agent hides Sign out');
   assert.match(more, /\{inApp \? \(\s*<p className="mt-6[^>]*data-testid="more-app-version"/);
   assert.match(more, /label="Sign out"[\s\S]*?testId="more-sign-out"/, 'a plain browser still gets a (confirmed) Sign out');
   assert.match(product, /className="product-buy-bar fixed bottom-0/, 'the product page buy bar can be lifted above the tab bar');
