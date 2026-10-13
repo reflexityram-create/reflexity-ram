@@ -20,7 +20,7 @@ const { isServerPurchaseTrackingEnabled, sanitizeAnalyticsIds } = require('../ut
 const { reportPaidOrderToGa4 } = require('../utils/purchaseAnalytics');
 const { decrementStockForOrder, shouldDecrementStockForFulfillment, cancelOrderAndRestoreStock } = require('../utils/stock');
 const { ensureStripePrice, ensureBankDebitCoupon } = require('../utils/stripeSync');
-const { BANK_DEBIT, bankDebitEnabled, paymentMethodSettings } = require('../utils/paymentMethods');
+const { BANK_DEBIT, bankDebitEnabled, paymentMethodSettings, automaticTaxEnabled } = require('../utils/paymentMethods');
 const { isDisposableEmail } = require('../utils/disposableEmail');
 const { isFullyRefundedCharge } = require('../utils/refunds');
 const { cancelReviewRequest } = require('../utils/reviewRequests');
@@ -256,12 +256,12 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
       billing_address_collection: 'auto',
 
       // ── Stripe Tax ─────────────────────────────────────────────────────────
-      // Canadian tax (HST/GST/PST by province) is calculated from the shipping
-      // address — requires a Canada tax registration in the Stripe dashboard.
-      // US customers: with no US registrations added, Stripe Tax charges $0.
-      // To collect US tax later (if nexus is established), add the state
-      // registrations in Stripe — no code change needed.
-      automatic_tax: { enabled: true },
+      // OFF unless STRIPE_AUTOMATIC_TAX=true (utils/paymentMethods.js). The shop charges no sales tax (no GST/HST
+      // registration), and with this on Stripe's page shows "Tax: Enter address to calculate" even though the answer is
+      // always $0: the checkout page and the Terms say "we don't charge tax", so Stripe's page must not hint otherwise.
+      // The day a registration is added in Stripe (Canada: HST/GST/PST by province, from the shipping address), set
+      // STRIPE_AUTOMATIC_TAX=true on the host, and make e-Transfer charge it too (docs/payments.md, "Tax").
+      ...(automaticTaxEnabled() ? { automatic_tax: { enabled: true } } : {}),
 
       customer_email: req.user?.email || undefined,
       client_reference_id: userId ? userId.toString() : sessionId,

@@ -11,9 +11,14 @@
 //   ETRANSFER_HOLD_HOURS=48            how long an unpaid e-Transfer order keeps its stock (default 48, 6 to 168)
 //   ETRANSFER_REMINDER_HOURS=24        when the "we have not received it yet" email goes out (default 24)
 //   ETRANSFER_MAX_UNITS=16             most items one e-Transfer order may hold (default 16, 1 to 200)
+//   STRIPE_AUTOMATIC_TAX=true          OFF by default. The shop charges no sales tax (no GST/HST registration), so a Stripe session carries
+//                                      no tax calculation and Stripe's page shows no "Tax: enter address to calculate" line. The day a
+//                                      registration is added in Stripe, switch this on (and e-Transfer must charge the tax too: docs/payments.md).
 //   ETRANSFER_MAX_TOTAL_CAD=3000       most one e-Transfer order may come to (default 3000, 50 to 20000). An unpaid order
 //                                      holds real stock for the whole hold, and most banks cap a single transfer: bigger
 //                                      orders pay by card (not held, no cap) or by arrangement.
+
+const { etransferAddressDiffersFromContact } = require('./contact');
 
 const BANK_DEBIT = 'bank_debit';
 const ETRANSFER = 'etransfer';
@@ -56,6 +61,8 @@ function paymentMethodSettings(env = process.env) {
   };
 }
 
+// Stripe Tax on the card and bank-debit sessions: only when the owner has switched it on (see the header).
+const automaticTaxEnabled = (env = process.env) => flag(env.STRIPE_AUTOMATIC_TAX);
 const bankDebitEnabled = (env = process.env) => paymentMethodSettings(env)[BANK_DEBIT].enabled;
 const etransferEnabled = (env = process.env) => paymentMethodSettings(env)[ETRANSFER].enabled;
 
@@ -66,7 +73,9 @@ function publicPaymentMethods(env = process.env) {
   return [
     { id: 'card', label: 'Card, Apple Pay or Google Pay', discountPct: 0 },
     ...(settings[BANK_DEBIT].enabled ? [{ id: BANK_DEBIT, label: 'Bank debit', discountPct: settings[BANK_DEBIT].discountPct }] : []),
-    ...(settings[ETRANSFER].enabled ? [{ id: ETRANSFER, label: 'Interac e-Transfer', discountPct: settings[ETRANSFER].discountPct, holdHours: settings[ETRANSFER].holdHours, maxUnits: settings[ETRANSFER].maxUnits, maxTotal: settings[ETRANSFER].maxTotal }] : []),
+    ...(settings[ETRANSFER].enabled ? [{ id: ETRANSFER, label: 'Interac e-Transfer', discountPct: settings[ETRANSFER].discountPct, holdHours: settings[ETRANSFER].holdHours, maxUnits: settings[ETRANSFER].maxUnits, maxTotal: settings[ETRANSFER].maxTotal,
+      // Whether the page may say "not our contact email" (true) without naming the address itself, which stays private until ordering.
+      contactDiffers: etransferAddressDiffersFromContact(settings[ETRANSFER].recipientEmail) }] : []),
   ];
 }
 
@@ -81,6 +90,7 @@ module.exports = {
   paymentMethodSettings,
   bankDebitEnabled,
   etransferEnabled,
+  automaticTaxEnabled,
   publicPaymentMethods,
   orderPaymentLabel,
 };

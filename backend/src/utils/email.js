@@ -3,6 +3,7 @@ const { CURRENCY } = require('../config/shipping');
 const { escapeHtml } = require('./htmlEscape');
 const { orderAccessUrl } = require('./orderAccessLink');
 const { trackingUrlFor } = require('./tracking');
+const { SUPPORT_EMAIL, etransferAddressDiffersFromContact } = require('./contact');
 
 let resend;
 const getResend = () => {
@@ -216,8 +217,6 @@ const sendShippingNotificationEmail = async ({ email, firstName, order, idempote
   return data;
 };
 
-const SUPPORT_EMAIL = 'reflexityram@gmail.com';
-
 /**
  * Send (or schedule, with `scheduledAt`) the post-delivery review request.
  * Resend holds a scheduled email for up to 30 days and returns its id, which
@@ -324,6 +323,12 @@ const torontoTime = (value) => new Date(value).toLocaleString('en-CA', { timeZon
 const cad = (value) => `$${Number(value || 0).toFixed(2)} ${DISPLAY_CURRENCY}`;
 const mono = (text) => `<span style="font-family:monospace;color:#f5f5f7;">${escapeHtml(text)}</span>`;
 
+// "Not our contact email": the e-Transfer address is a different mailbox from the one printed in the footer and at the foot of
+// every email, and a buyer who is about to send money should not have to guess which is which. Only said when it is true.
+const etransferAddressNote = (order) => (etransferAddressDiffersFromContact(order.etransfer?.recipientEmail)
+  ? [`Send the e-Transfer only to ${mono(order.etransfer.recipientEmail)}. Our contact email, ${escapeHtml(SUPPORT_EMAIL)}, is for questions only: please do not send the e-Transfer there.`]
+  : []);
+
 const PAYMENT_NOTICES = {
   // Interac e-Transfer: placed, waiting for the buyer's transfer.
   etransferInstructions: {
@@ -331,8 +336,9 @@ const PAYMENT_NOTICES = {
     title: 'One more step: send your e-Transfer',
     paragraphs: (order) => [
       `We received your order ${mono(order.orderNumber)} and are holding your items. It is confirmed, and shipped, as soon as your Interac e-Transfer arrives.`,
-      `<strong style="color:#f5f5f7;">Send exactly ${escapeHtml(cad(order.etransfer?.amountDue ?? order.total))}</strong> by Interac e-Transfer to ${mono(order.etransfer?.recipientEmail || '')}`
-        + ` and put ${mono(order.orderNumber)} in the message so we can match it.`,
+      `<strong style="color:#f5f5f7;">Send exactly ${escapeHtml(cad(order.etransfer?.amountDue ?? order.total))}</strong> by Interac e-Transfer to ${mono(order.etransfer?.recipientEmail || '')}.`
+        + ` You can put ${mono(order.orderNumber)} in the transfer's message: it is optional, but it helps us match your payment.`,
+      ...etransferAddressNote(order),
       `Do it before <strong style="color:#f5f5f7;">${escapeHtml(order.etransfer?.expiresAt ? torontoTime(order.etransfer.expiresAt) : 'the deadline')}</strong> (Toronto time), or the items go back on sale and the order is cancelled.`,
       'Deposit is automatic: you do not need a security question or password. We check payments by hand during the day, so allow a little time for the confirmation email.',
       `Only pay the address above. We never ask you to send money anywhere else. If an email tells you to, do not pay it and write to ${escapeHtml(SUPPORT_EMAIL)}.`,
@@ -344,8 +350,10 @@ const PAYMENT_NOTICES = {
     title: 'Still waiting for your e-Transfer',
     paragraphs: (order) => [
       `Your order ${mono(order.orderNumber)} is on hold, but we have not received the Interac e-Transfer yet.`,
-      `Send exactly ${escapeHtml(cad(order.etransfer?.amountDue ?? order.total))} to ${mono(order.etransfer?.recipientEmail || '')} with ${mono(order.orderNumber)} in the message`
-        + ` before ${escapeHtml(order.etransfer?.expiresAt ? torontoTime(order.etransfer.expiresAt) : 'the deadline')} (Toronto time).`,
+      `Send exactly ${escapeHtml(cad(order.etransfer?.amountDue ?? order.total))} to ${mono(order.etransfer?.recipientEmail || '')}`
+        + ` before ${escapeHtml(order.etransfer?.expiresAt ? torontoTime(order.etransfer.expiresAt) : 'the deadline')} (Toronto time).`
+        + ` Putting ${mono(order.orderNumber)} in the message is optional, but it helps us match your payment.`,
+      ...etransferAddressNote(order),
       `Already sent it? Thank you: we confirm payments by hand, so it can take a little while. Questions: ${escapeHtml(SUPPORT_EMAIL)}.`,
     ],
   },

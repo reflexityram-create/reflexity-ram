@@ -60,7 +60,10 @@ bank debits). A card order has no `paidAt` and is judged by its creation, exactl
    `POST /api/payments/etransfer/orders`. The order is saved **unpaid** and its stock is taken in the same transaction (all or nothing;
    the last unit goes to exactly one buyer). The buyer's cart is emptied **inside that same transaction**, so one cart can only ever
    become one order (a double click in two tabs, a retry or a script gets "your cart changed or was already ordered"). The buyer sees,
-   and is emailed, the address, the exact amount, and the order number to use as the message. One order is limited to
+   and is emailed, the address, the exact amount, and the order number to use as the message (optional, but it helps the owner match the
+   transfer). The page and both emails say plainly that this address is **not** the shop's contact email (`reflexityram@gmail.com`, see
+   `utils/contact.js`), and only when that is true: if the owner ever receives e-Transfers at the contact address itself, the sentence is
+   left out (`contactDiffers` in `GET /api/payments/methods` tells the page, without naming the address). One order is limited to
    `ETRANSFER_MAX_UNITS` items and `ETRANSFER_MAX_TOTAL_CAD` dollars; at most 3 open orders per buyer and 8 orders an hour per IP.
 2. The owner sees the deposit in the bank and, in the order's **Payment** panel, enters the amount received and presses "I received this
    e-Transfer". Only an exact match is accepted unless the owner explicitly accepts a different amount with a note. This makes the order
@@ -89,9 +92,10 @@ An independent review of this change fixed what could be fixed cheaply (everythi
 - **One transfer per order.** Most Canadian banks cap a single Interac transfer, which is why an order is limited to
   `ETRANSFER_MAX_TOTAL_CAD`. A buyer who does send two transfers can be accepted with "accept a different amount" and a note; there is
   no split-payment record.
-- **Tax.** The shop charges no sales tax today, so e-Transfer orders carry none. The day a GST/HST registration is added in Stripe
-  (card and bank debit then charge it through `automatic_tax`), `utils/etransfer.js` must charge it too, or e-Transfer orders will
-  silently under-collect.
+- **Tax.** The shop charges no sales tax today, so no order carries any. Card and bank-debit sessions are created WITHOUT `automatic_tax`,
+  so Stripe's page shows no "Tax: Enter address to calculate" line (with it on, the line showed even though the answer was always $0).
+  The day a GST/HST registration is added in Stripe, do both: set `STRIPE_AUTOMATIC_TAX=true` on the host (card and bank debit then
+  charge it through `automatic_tax`) AND make `utils/etransfer.js` charge it too, or e-Transfer orders will silently under-collect.
 - **Real bank debit.** Stripe accepted the session shape on the live account, but a real debit through a real bank has not been run
   end to end. The first one is the live test: it alerts the owner at each step, and the 8-day check above catches a lost event.
 
