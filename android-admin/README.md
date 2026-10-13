@@ -15,6 +15,10 @@ every new order, payment, refund and quote request. Server side: `docs/phone-app
   orders and payments" notice is Android's requirement for an app that keeps a connection open; it is the quietest channel and can be
   hidden in the app's notification settings without stopping the alerts.
 - **Tapping an alert** opens `/admin/orders?order=<id>` (the order's panel).
+- **The whole website, not only the admin.** The bottom bar (Orders, Products, Store, More) is on every page for an admin, so the Store
+  tab shows the normal customer website inside the app and the bar takes you straight back. Any page of the shop's own site opens in the
+  app; other sites (Stripe's payment page, links out) open in the phone's browser. The app adds `ReflexityAdminApp/<version>` to its
+  user agent so the page can tell (it hides "Sign out", which would only be undone by the app's own sign-in).
 - **Light or dark, like the phone.** The app theme (status bar, navigation bar, dialogs, drop-down lists) follows the phone's setting, and
   the app puts the same choice in the site's own theme setting (`reflexity-theme`) when it signs in, so the page and the system never
   disagree. Switching the phone between light and dark reloads the page you were on.
