@@ -31,14 +31,14 @@ export default function Security() {
 
   return (
     <AppLayout requireAdmin>
-      <div className="p-8 max-w-2xl">
-        <div className="mb-8">
+      <div className="p-4 md:p-8 max-w-2xl">
+        <div className="mb-6 md:mb-8">
           <h1 className="text-2xl font-bold tracking-tight">Security</h1>
           <p className="text-neutral-500 text-[13px] mt-1">Account and store security settings</p>
         </div>
 
         {/* Change password */}
-        <div className="glass rounded-2xl p-6 mb-6">
+        <div className="glass rounded-2xl p-4 md:p-6 mb-6">
           <div className="flex items-center gap-2 mb-4">
             <Lock size={16} className="text-neutral-400" />
             <h2 className="font-semibold">Change admin password</h2>

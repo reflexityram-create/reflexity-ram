@@ -10,6 +10,7 @@ const { notifyShipment } = require('../utils/shippingNotifications');
 const { scheduleReviewRequest } = require('../utils/reviewRequests');
 const { ensureStripePrice, syncStripeProductDetails } = require('../utils/stripeSync');
 const { cancelOrderAndRestoreStock } = require('../utils/stock');
+const { VIEW_NAMES, ordersFilter, orderCounts } = require('../utils/adminOrders');
 const { ORDER_STATUSES, canTransitionOrder } = require('../utils/orderTransitions');
 const { buildShippingPreparation } = require('../utils/shippingPreparation');
 const { ETRANSFER, BANK_DEBIT } = require('../utils/paymentMethods');
@@ -377,41 +378,29 @@ router.patch(
 
 // ─── ORDER MANAGEMENT ─────────────────────────────────────────────────────────
 
-// GET /api/admin/orders
+// GET /api/admin/orders: every order, newest first. `view` narrows it (see utils/adminOrders.js); `counts` says how many orders each
+// view holds, so the page can show what needs the owner whatever view is open. Nothing is ever hidden: there is no archive.
 router.get(
   '/orders',
   [
     queryValidator('page').optional().isInt({ min: 1 }).toInt(),
     queryValidator('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
+    queryValidator('view').optional().isIn(VIEW_NAMES),
     queryValidator('status').optional().isIn(['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded']),
     queryValidator('search').optional().trim(),
-    queryValidator('archived').optional().isIn(['true', 'false', 'all']),
-    // `awaiting` = placed but not paid yet (an e-Transfer to watch for, or a bank debit still clearing).
+    // `awaiting` = placed but not paid yet (an e-Transfer to watch for, or a bank debit still clearing). Older form of view=awaiting.
     queryValidator('payment').optional().isIn(['awaiting']),
   ],
   validate,
   async (req, res) => {
     try {
-      const { page = 1, limit = 20, status, search, archived, payment } = req.query;
-      const filter = {};
-      if (status) filter.status = status;
-      if (payment === 'awaiting') { filter.paymentStatus = 'pending'; filter.status = 'pending'; }
+      const { page = 1, limit = 20, status, search, payment, view } = req.query;
+      const filter = ordersFilter({ view, status, payment, search });
       // Looking at the orders is a good moment to expire/remind unpaid e-Transfer orders (throttled, never blocks).
       sweepEtransferOrdersThrottled().catch(() => {});
-      // By default hide archived orders. ?archived=true shows only archived,
-      // ?archived=all shows everything.
-      if (archived === 'true') filter.archived = true;
-      else if (archived === 'all') { /* no archived filter */ }
-      else filter.archived = { $ne: true };
-      if (search) {
-        filter.$or = [
-          { orderNumber: { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
-          { guestEmail: { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
-        ];
-      }
 
       const skip = (page - 1) * limit;
-      const [orders, total] = await Promise.all([
+      const [orders, total, counts] = await Promise.all([
         Order.find(filter)
           .populate('user', 'firstName lastName email')
           .sort({ createdAt: -1 })
@@ -419,11 +408,13 @@ router.get(
           .limit(limit)
           .lean(),
         Order.countDocuments(filter),
+        orderCounts(Order),
       ]);
 
       res.json({
         orders,
         pagination: { page, total, pages: Math.ceil(total / limit) },
+        counts,
       });
     } catch (err) {
       res.status(500).json({ error: 'Failed to fetch orders' });
@@ -487,38 +478,43 @@ router.patch(
       .withMessage('Invalid status'),
     body('trackingNumber').optional().trim().isLength({ max: 100 }),
     body('note').optional().trim().isLength({ max: 500 }),
+    // true = "I am sending this one without a tracking number" (the Terms let the shop choose the service). Never assumed.
+    body('noTracking').optional().isBoolean().toBoolean(),
   ],
   validate,
   async (req, res) => {
     try {
-      const { status, trackingNumber, note } = req.body;
+      const { status, trackingNumber, note, noTracking } = req.body;
       const current = await Order.findById(req.params.id).select('status paymentStatus trackingNumber');
       if (!current) return res.status(404).json({ error: 'Order not found' });
       if (!canTransitionOrder(current.status, status, current.paymentStatus)) {
         return res.status(409).json({ error: `Cannot change order from ${current.status} to ${status}` });
       }
-      // A shipped order must give the buyer a carrier number they can follow.
-      // Keep an already-saved number usable for legacy/admin retries, while
-      // refusing a first shipment update that would send an untrackable email.
+      // A shipped order gives the buyer a carrier number they can follow, unless the owner says this one goes without
+      // tracking (noTracking: true): then the order is marked untracked and the buyer's email says so.
+      // Keep an already-saved number usable for legacy/admin retries.
       const cleanTrackingNumber = typeof trackingNumber === 'string' ? trackingNumber.trim() : '';
       const existingTrackingNumber = typeof current.trackingNumber === 'string' ? current.trackingNumber.trim() : '';
       const shippedTrackingNumber = cleanTrackingNumber || existingTrackingNumber;
-      if (status === 'shipped' && !shippedTrackingNumber) {
-        return res.status(422).json({ error: 'Tracking number is required before marking an order shipped' });
+      const untracked = status === 'shipped' && !shippedTrackingNumber && noTracking === true;
+      if (status === 'shipped' && !shippedTrackingNumber && !untracked) {
+        return res.status(422).json({ error: 'Tracking number is required before marking an order shipped (or choose to ship without tracking)' });
       }
       const updates = {
         status,
         $push: {
           statusHistory: {
             status,
-            note: note || `Status updated to ${status}`,
+            note: note || (untracked ? 'Shipped without a tracking number' : `Status updated to ${status}`),
             timestamp: new Date(),
           },
         },
       };
 
-      if (status === 'shipped') updates.trackingNumber = shippedTrackingNumber;
-      else if (cleanTrackingNumber) updates.trackingNumber = cleanTrackingNumber;
+      if (status === 'shipped') {
+        if (shippedTrackingNumber) updates.trackingNumber = shippedTrackingNumber;
+        else updates.untracked = true;
+      } else if (cleanTrackingNumber) updates.trackingNumber = cleanTrackingNumber;
       if (status === 'shipped') { updates.shippedAt = new Date(); updates['shippingNotification.status'] = 'pending'; }
       if (status === 'delivered') updates.deliveredAt = new Date();
       if (status === 'cancelled') updates.cancelledAt = new Date();
@@ -653,26 +649,6 @@ router.post(
     } catch (err) {
       console.error('Review request email failed:', err.message);
       res.status(502).json({ error: 'The review email could not be sent. Try again in a minute.' });
-    }
-  }
-);
-
-// PATCH /api/admin/orders/:id/archive — toggle archived (declutter, not delete)
-router.patch(
-  '/orders/:id/archive',
-  [body('archived').isBoolean()],
-  validate,
-  async (req, res) => {
-    try {
-      const order = await Order.findByIdAndUpdate(
-        req.params.id,
-        { archived: req.body.archived },
-        { returnDocument: 'after' }
-      );
-      if (!order) return res.status(404).json({ error: 'Order not found' });
-      res.json({ order });
-    } catch (err) {
-      res.status(500).json({ error: 'Failed to archive order' });
     }
   }
 );

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BellRing, Loader2, Smartphone, Trash2 } from 'lucide-react';
+import { BellRing, Loader2, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
 import { adminApi } from '@/lib/api';
+import ConfirmButton from '@/components/admin/ConfirmButton';
 import { codeCountdown, isLive, lastSeenLabel } from '@/lib/phoneApp';
 
 // The owner's phone app (android-admin/): signed in for good and a notification for every order and change.
@@ -51,7 +52,6 @@ export default function PhoneAppPanel() {
   };
 
   const remove = async (device) => {
-    if (!window.confirm(`Remove "${device.label}"? It is signed out at once and stops getting alerts.`)) return;
     setBusy(device.id);
     try {
       await adminApi.revokeDevice(device.id);
@@ -63,7 +63,7 @@ export default function PhoneAppPanel() {
   };
 
   return (
-    <div className="glass rounded-2xl p-6 mb-6" data-testid="phone-app-panel">
+    <div className="glass rounded-2xl p-4 md:p-6 mb-6" data-testid="phone-app-panel">
       <div className="flex items-center gap-2 mb-1">
         <Smartphone size={16} className="text-neutral-400" />
         <h2 className="font-semibold">Phone app</h2>
@@ -79,7 +79,7 @@ export default function PhoneAppPanel() {
       ) : (
         <ul className="divide-y divide-white/5 mb-4" data-testid="phone-app-devices">
           {devices.map((device) => (
-            <li key={device.id} className="flex items-center justify-between gap-3 py-2.5 text-[13px]">
+            <li key={device.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5 text-[13px]">
               <div className="min-w-0">
                 <div className="font-medium truncate">{device.label}</div>
                 <div className="text-[12px] text-neutral-500 flex items-center gap-1.5">
@@ -87,10 +87,16 @@ export default function PhoneAppPanel() {
                   {lastSeenLabel(device.lastSeenAt, tick)}{device.appVersion ? ` · v${device.appVersion}` : ''}
                 </div>
               </div>
-              <button type="button" onClick={() => remove(device)} disabled={busy === device.id}
-                className="btn-ghost py-1 px-2.5 text-[11px] flex items-center gap-1 text-neutral-500 hover:text-red-400" aria-label={`Remove ${device.label}`}>
-                {busy === device.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />} Remove
-              </button>
+              <ConfirmButton
+                variant="danger"
+                label="Remove"
+                confirmLabel="Yes, remove it"
+                message={`Remove "${device.label}"? It is signed out at once and stops getting alerts.`}
+                busy={busy === device.id}
+                onConfirm={() => remove(device)}
+                className="!min-h-10 !px-4 text-[12px]"
+                testId={`phone-remove-${device.id}`}
+              />
             </li>
           ))}
         </ul>
@@ -105,10 +111,10 @@ export default function PhoneAppPanel() {
       )}
 
       <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={makeCode} disabled={busy === 'code'} className="btn-primary flex items-center gap-2">
+        <button type="button" onClick={makeCode} disabled={busy === 'code'} className="btn-primary min-h-11 flex items-center gap-2">
           {busy === 'code' && <Loader2 size={13} className="animate-spin" />} Pair a phone
         </button>
-        <button type="button" onClick={sendTest} disabled={busy === 'test' || !devices?.length} className="btn-secondary flex items-center gap-2">
+        <button type="button" onClick={sendTest} disabled={busy === 'test' || !devices?.length} className="btn-secondary min-h-11 flex items-center gap-2">
           {busy === 'test' ? <Loader2 size={13} className="animate-spin" /> : <BellRing size={13} />} Send test alert
         </button>
       </div>

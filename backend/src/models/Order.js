@@ -112,11 +112,14 @@ const orderSchema = new mongoose.Schema({
     cancelledAt: { type: Date },
     lastError: { type: String },
   },
-  // Admins can archive orders to declutter the list without deleting the
-  // financial record. Archived orders are hidden from the default view.
+  // Legacy: the old Archive button set this. Nothing reads it any more (the admin list shows every order); it stays so the
+  // orders that were archived keep their record.
   archived: { type: Boolean, default: false },
   shippingMethod: { type: String },
   trackingNumber: { type: String },
+  // Marked shipped by the owner on purpose without a tracking number (the Terms let the shop choose the service). The
+  // shipping email says so and the buyer's order page shows it.
+  untracked: { type: Boolean, default: false },
   trackingUrl: { type: String },
   // Latest Canada Post scan for a shipped order (utils/trackingSync.js).
   trackingLatest: {

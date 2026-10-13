@@ -168,13 +168,17 @@ test('coming back from a bank debit reports no purchase, and the owner confirms 
   assert.match(processing, /trackEvent\('checkout_return', \{ outcome: 'processing' \}\)/);
   assert.doesNotMatch(processing, /trackPurchaseOnce/);
   const panel = await read('../src/components/admin/PaymentPanel.jsx');
-  assert.match(panel, /window\.confirm\(text\)/);
+  // the owner is asked once, IN THE PAGE (a browser dialog does not show in the phone app's web view), and only then is the payment recorded
+  assert.match(panel, /<ConfirmButton[\s\S]*?message=\{confirmText\}[\s\S]*?onConfirm=\{markReceived\}[\s\S]*?disabled=\{!amountOk\}/);
+  assert.doesNotMatch(panel, /window\.confirm/);
+  assert.match(panel, /onSubmit=\{\(event\) => event\.preventDefault\(\)\}/, 'pressing Enter in the amount box records nothing');
   assert.match(panel, /adminApi\.markEtransferReceived\(order\._id, \{/);
   assert.match(panel, /if \(method === 'stripe' && state\.key === 'paid'\) return null;/);
   assert.match(panel, /data\?\.code === 'AMOUNT_MISMATCH'/);
   const orders = await read('../src/pages/admin/Orders.jsx');
-  assert.match(orders, /<PaymentPanel order=\{order\} onChanged=\{\(\) => reloadOrder\(\)\} \/>/);
-  assert.match(orders, /payment: awaiting \? 'awaiting' : undefined,/);
+  assert.match(orders, /\{!paymentShownAbove && <PaymentPanel order=\{order\} onChanged=\{\(\) => reloadOrder\(\)\} \/>\}/);
+  assert.match(orders, /<OrderActions order=\{order\} step=\{step\}/);
+  assert.match(orders, /view: v === 'all' \? undefined : v/);
 });
 
 test('the terms name each way to pay, the 5-day bank debit, and the 48-hour e-Transfer', async () => {

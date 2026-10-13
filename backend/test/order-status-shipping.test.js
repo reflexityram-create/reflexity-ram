@@ -185,3 +185,87 @@ test('saving tracking rejects empty numbers, unpaid orders and already shipped o
   h.getCurrent().status = 'shipped';
   assert.equal((await request(h.app, 'PATCH', path, { trackingNumber: 'CP123' }, h.headers)).status, 409);
 });
+
+// ── shipping WITHOUT tracking (the Terms let the shop choose the service; the form used to force a number, so an order
+//    was once shipped with the tracking number "error" and the buyer was emailed it) ──────────────────────────────────
+const NO_TRACKING_ID = '64b7f0c2a1b2c3d4e5f60719';
+const noTrackingOrder = (extra = {}) => ({
+  _id: NO_TRACKING_ID, orderNumber: 'RFX-NOTRACK-1', status: 'processing', paymentStatus: 'paid',
+  guestEmail: 'buyer@example.com', shippingAddress: { firstName: 'Buyer' }, statusHistory: [], ...extra,
+});
+const ship = (harness, body) => request(harness.app, 'PATCH', `/api/admin/orders/${NO_TRACKING_ID}/status`, { status: 'shipped', ...body }, harness.headers);
+
+test('the owner can ship WITHOUT tracking on purpose: the order is marked untracked and the buyer is emailed once, with no number', async (t) => {
+  sent.length = 0;
+  const harness = setup(t, noTrackingOrder());
+  const response = await ship(harness, { noTracking: true });
+  assert.equal(response.status, 200);
+  const saved = harness.getCurrent();
+  assert.equal(saved.status, 'shipped');
+  assert.equal(saved.untracked, true);
+  assert.equal(saved.trackingNumber, undefined, 'no placeholder number is invented');
+  assert.equal(saved.statusHistory.at(-1).note, 'Shipped without a tracking number');
+  assert.equal(sent.length, 1, 'the buyer is emailed');
+  assert.equal(sent[0].order.trackingNumber, undefined);
+  assert.equal(response.body.shippingNotification.status, 'sent');
+  assert.equal(saved.shippingNotification.status, 'sent');
+
+  const again = await ship(harness, { noTracking: true });
+  assert.equal(again.status, 409, 'a shipped order cannot be shipped again');
+  assert.equal(sent.length, 1, 'no second email');
+});
+
+test('a tracking number always wins over "no tracking": the order stays tracked and keeps its number', async (t) => {
+  sent.length = 0;
+  const harness = setup(t, noTrackingOrder());
+  const response = await ship(harness, { noTracking: true, trackingNumber: ' CP999 ' });
+  assert.equal(response.status, 200);
+  assert.equal(harness.getCurrent().trackingNumber, 'CP999');
+  assert.notEqual(harness.getCurrent().untracked, true);
+  assert.equal(sent[0].order.trackingNumber, 'CP999');
+
+  const saved = setup(t, noTrackingOrder({ trackingNumber: 'CP-SAVED' }));
+  const viaSaved = await ship(saved, { noTracking: true });
+  assert.equal(viaSaved.status, 200);
+  assert.equal(saved.getCurrent().trackingNumber, 'CP-SAVED', 'a number saved earlier is used, not dropped');
+  assert.notEqual(saved.getCurrent().untracked, true);
+});
+
+test('"no tracking" is never assumed: without it a number is still required, and only a real boolean is accepted', async (t) => {
+  sent.length = 0;
+  const harness = setup(t, noTrackingOrder());
+  for (const body of [{}, { noTracking: false }, { noTracking: 'false' }, { noTracking: 0 }]) {
+    const refused = await ship(harness, body);
+    assert.equal(refused.status, 422, JSON.stringify(body));
+    assert.match(refused.body.error, /Tracking number is required/);
+  }
+  for (const junk of ['yes please', 'maybe', { a: 1 }]) {
+    assert.equal((await ship(harness, { noTracking: junk })).status, 400, JSON.stringify(junk));
+  }
+  // a list is not the boolean true: whatever the answer, it must not ship the order untracked
+  assert.notEqual((await ship(harness, { noTracking: [1] })).status, 200);
+  assert.equal(harness.getCurrent().status, 'processing');
+  assert.equal(harness.updates.length, 0);
+  assert.equal(sent.length, 0);
+});
+
+test('"no tracking" opens no door around payment: an unpaid order still cannot ship, tracked or not', async (t) => {
+  sent.length = 0;
+  const harness = setup(t, noTrackingOrder({ status: 'pending', paymentStatus: 'pending' }));
+  const refused = await ship(harness, { noTracking: true });
+  assert.equal(refused.status, 409);
+  assert.equal(harness.getCurrent().status, 'pending');
+  assert.equal(harness.getCurrent().untracked, undefined);
+  assert.equal(sent.length, 0);
+});
+
+test('a failed buyer email for an untracked shipment is reported, and the order is still shipped and untracked', async (t) => {
+  sent.length = 0;
+  shippingEmailError = new Error('Resend unavailable');
+  const harness = setup(t, noTrackingOrder());
+  const response = await ship(harness, { noTracking: true });
+  assert.equal(response.status, 200);
+  assert.equal(response.body.shippingNotification.status, 'failed');
+  assert.equal(harness.getCurrent().untracked, true);
+  assert.equal(sent.length, 0);
+});

@@ -183,10 +183,13 @@ const sendOrderConfirmationEmail = async ({ email, firstName, order }) => {
 const sendShippingNotificationEmail = async ({ email, firstName, order, idempotencyKey }) => {
   const orderUrl = orderAccessUrl(FRONTEND_URL, order, email);
   const trackingUrl = trackingUrlFor(order);
+  // Sent on purpose without a tracking number (the owner chose it): say so plainly, and let a reply reach the shop.
+  const untracked = !order.trackingNumber;
 
   const { data, error } = await getResend().emails.send({
     from: FROM_EMAIL,
     to: email,
+    ...(untracked ? { replyTo: SUPPORT_EMAIL } : {}),
     subject: `Your order has shipped — ${order.orderNumber}`,
     html: `
       <!DOCTYPE html>
@@ -199,6 +202,7 @@ const sendShippingNotificationEmail = async ({ email, firstName, order, idempote
             <h1 style="font-size:22px;font-weight:700;margin:0 0 12px;">Your order is on its way!</h1>
             <p style="color:#a0a0aa;margin:0 0 24px;line-height:1.6;">Hi ${escapeHtml(firstName)}, your order <span style="font-family:monospace;color:#f5f5f7;">${escapeHtml(order.orderNumber)}</span> has been shipped.</p>
             ${trackingUrl && order.trackingNumber ? `<p style="color:#a0a0aa;font-size:13px;">Canada Post tracking number: <a href="${escapeHtml(trackingUrl)}" style="font-family:monospace;color:#f5f5f7;">${escapeHtml(order.trackingNumber)}</a></p>` : ''}
+            ${untracked ? `<p style="color:#a0a0aa;font-size:13px;line-height:1.6;">This parcel was sent without a tracking number, so there is nothing to follow online. Delivery usually takes 3–6 business days after dispatch. If it has not arrived by then, reply to this email and we will look into it.</p>` : ''}
             <a href="${escapeHtml(trackingUrl || orderUrl)}" style="display:inline-block;background:#f5f5f7;color:#050505;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;font-size:13px;margin-top:16px;">${trackingUrl ? 'Track your package' : 'View your order'}</a>
             ${trackingUrl ? `<p style="margin:16px 0 0;font-size:13px;"><a href="${escapeHtml(orderUrl)}" style="color:#a0a0aa;">View your order</a></p>` : ''}
           </div>

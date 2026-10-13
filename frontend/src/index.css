@@ -879,3 +879,153 @@ html.light .admin-label {
     .tap-list { gap: 0 !important; }
     .tap-list > a { display: flex; align-items: center; min-height: 40px; }
 }
+
+/* ─── Admin on a phone ─────────────────────────────────────────────────────────
+   A bottom tab bar instead of two header rows, cards instead of wide tables, and full-screen sheets. Everything here is
+   either phone-only (under 768px) or new, so the desktop admin looks exactly as before. */
+
+/* Sheets (an order, a product): a full screen on a phone, the centred glass dialog from 768px up. */
+.sheet-panel { background: var(--bg); }
+.sheet-body { padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); }
+@media (min-width: 768px) {
+    .sheet-panel {
+        background: var(--glass-bg);
+        backdrop-filter: blur(18px) saturate(160%);
+        -webkit-backdrop-filter: blur(18px) saturate(160%);
+        border: 1px solid var(--card-border);
+        box-shadow: var(--card-shadow);
+        border-radius: 1rem;
+    }
+    .sheet-body { padding-bottom: 0; }
+}
+
+/* Bottom tab bar (admins, phone only). It takes the page colour so the phone's own navigation bar under it matches. */
+.admin-tabbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    display: flex;
+    align-items: stretch;
+    background: var(--bg);
+    border-top: 1px solid var(--border-strong);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+html[data-kbd] .admin-tabbar { display: none; }
+.admin-tab {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 58px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--fg-muted);
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.admin-tab svg { width: 22px; height: 22px; }
+.admin-tab.is-active { color: var(--fg-strong); font-weight: 600; }
+.admin-tab.is-active::before {
+    content: "";
+    position: absolute;
+    top: -1px;
+    left: 24%;
+    right: 24%;
+    height: 3px;
+    border-radius: 0 0 3px 3px;
+    background: var(--brand-yellow);
+}
+.admin-main { padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px)); }
+@media (min-width: 768px) { .admin-main { padding-bottom: 0; } }
+/* A toast must not sit under the tab bar. */
+@media (max-width: 767px) {
+    html[data-admin-shell] [data-sonner-toaster] {
+        --offset-bottom: calc(74px + env(safe-area-inset-bottom, 0px)) !important;
+        --mobile-offset-bottom: calc(74px + env(safe-area-inset-bottom, 0px)) !important;
+    }
+}
+
+/* Filter chips: plain buttons in a row that scrolls sideways on a phone (no dropdown to open). */
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 40px;
+    padding: 0 0.95rem;
+    border-radius: 999px;
+    border: 1px solid var(--btn-secondary-border);
+    background: transparent;
+    color: var(--fg);
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    flex-shrink: 0;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+.chip:hover { background: var(--btn-secondary-bg-hover); }
+.chip[aria-pressed="true"] { background: var(--brand-yellow); border-color: var(--brand-yellow); color: var(--brand-ink); }
+.chip-count {
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--pill-bg);
+    border: 1px solid var(--pill-border);
+    color: var(--pill-fg);
+}
+.chip[aria-pressed="true"] .chip-count { background: rgba(23, 24, 26, 0.14); border-color: transparent; color: var(--brand-ink); }
+.chip-count.needs-you { background: var(--brand-yellow); border-color: transparent; color: var(--brand-ink); }
+.chip-row { scrollbar-width: none; }
+.chip-row::-webkit-scrollbar { display: none; }
+
+/* A list row on a phone: the whole card is the button. */
+.admin-card {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0.95rem 1rem;
+    border-radius: 1rem;
+    background: var(--bg-elev);
+    border: 1px solid var(--card-border);
+    box-shadow: var(--card-shadow);
+    color: inherit;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+button.admin-card:active { background: var(--glass-bg-hover); border-color: var(--border-strong); }
+/* The yellow edge is an inset shadow, not a thicker border, so a card that needs the owner lines up with the others. */
+.admin-card.needs-you { box-shadow: inset 4px 0 0 var(--brand-yellow); }
+
+/* A destructive action (cancel an order, deactivate a product): red outline, same size as the other buttons. */
+.btn-danger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.85rem 1.4rem;
+    border-radius: 999px;
+    background: transparent;
+    color: #f2706f;
+    font-weight: 600;
+    font-size: 0.9rem;
+    border: 1px solid rgba(242, 112, 111, 0.5);
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+.btn-danger:hover { background: rgba(242, 112, 111, 0.1); }
+.btn-danger:disabled { opacity: 0.55; cursor: not-allowed; }
+html.light .btn-danger { color: #b42318; border-color: rgba(180, 35, 24, 0.45); }
+html.light .btn-danger:hover { background: rgba(180, 35, 24, 0.07); }

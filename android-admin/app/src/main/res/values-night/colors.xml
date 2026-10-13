@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Night palette: the site dark theme (page #08090a, text #f2f2ee). -->
+<resources>
+    <color name="bg">#08090A</color>
+    <color name="brand">#FFCF24</color>
+    <color name="ink">#17181A</color>
+    <color name="text">#F2F2EE</color>
+    <color name="muted">#A6A8AD</color>
+    <color name="hint">#666670</color>
+    <color name="error">#FF8A80</color>
+</resources>

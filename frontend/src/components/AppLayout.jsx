@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link, useLocation, Navigate } from 'react-router-dom';
 import { User, ShoppingBag, Shield, Settings as SettingsIcon, Package, Users, LogOut, ChevronRight, Cpu } from 'lucide-react';
 import useAuthStore from '@/lib/authStore';
@@ -16,7 +17,8 @@ const USER_ITEMS = [
   // never two "Orders" rows for the same user.
   { to: '/account?tab=orders', tab: 'orders', label: 'Orders', icon: ShoppingBag, customerOnly: true },
   // Hidden for accounts that sign in with Google and have no password to change.
-  { to: '/account?tab=security', tab: 'security', label: 'Security', icon: Shield, passwordOnly: true },
+  // Admins change their password (and manage the phone app) on the admin Security page below, so this entry is for customers.
+  { to: '/account?tab=security', tab: 'security', label: 'Security', icon: Shield, passwordOnly: true, customerOnly: true },
   { to: '/account?tab=settings', tab: 'settings', label: 'Settings', icon: SettingsIcon },
 ];
 
@@ -25,11 +27,41 @@ const ADMIN_ITEMS = [
   { to: '/admin/products', label: 'Products', icon: Package },
   { to: '/admin/orders', label: 'Orders', icon: ShoppingBag },
   { to: '/admin/users', label: 'Users', icon: Users },
+  { to: '/admin/security', label: 'Security', icon: Shield },
+];
+
+// An admin on a phone gets these as a tab bar at the bottom (Orders first: it is what the alerts open) instead of the sidebar.
+const ADMIN_TABS = [
+  { to: '/admin/orders', label: 'Orders', icon: ShoppingBag },
+  { to: '/admin/products', label: 'Products', icon: Package },
+  { to: '/admin/users', label: 'Users', icon: Users },
+  { to: '/admin/security', label: 'Security', icon: Shield },
+  { to: '/account?tab=settings', label: 'Settings', icon: SettingsIcon, path: '/account' },
 ];
 
 export default function AppLayout({ children, requireAdmin = false }) {
   const { user, logout, isInitialized } = useAuthStore();
   const location = useLocation();
+  const signedInAdmin = user?.role === 'admin';
+
+  // An admin on a phone has the tab bar; hide it while a field has the keyboard open, and keep toasts above it.
+  useEffect(() => {
+    if (!signedInAdmin) return undefined;
+    const root = document.documentElement;
+    root.dataset.adminShell = '1';
+    const isTextField = (el) => Boolean(el) && (el.isContentEditable || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT'
+      || (el.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'submit', 'file', 'range'].includes(el.type)));
+    const onFocusIn = (event) => { if (isTextField(event.target)) root.dataset.kbd = '1'; };
+    const onFocusOut = () => window.setTimeout(() => { if (!isTextField(document.activeElement)) delete root.dataset.kbd; }, 60);
+    document.addEventListener('focusin', onFocusIn);
+    document.addEventListener('focusout', onFocusOut);
+    return () => {
+      document.removeEventListener('focusin', onFocusIn);
+      document.removeEventListener('focusout', onFocusOut);
+      delete root.dataset.adminShell;
+      delete root.dataset.kbd;
+    };
+  }, [signedInAdmin]);
 
   if (!isInitialized) {
     return (
@@ -61,7 +93,7 @@ export default function AppLayout({ children, requireAdmin = false }) {
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row">
-      <aside className="app-layout-aside sticky top-0 z-40 flex w-full shrink-0 flex-col border-b md:static md:z-auto md:w-56 md:border-b-0 md:border-r"
+      <aside className={`app-layout-aside sticky top-0 z-40 flex w-full shrink-0 flex-col border-b md:static md:z-auto md:w-56 md:border-b-0 md:border-r ${isAdmin ? 'max-md:hidden' : ''}`}
         style={{ background: "var(--bg-elev)", borderColor: "var(--border)" }}>
         {/* Brand */}
         <div className="flex items-center justify-between border-b p-3 md:block md:p-5" style={{ borderColor: 'var(--border)' }}>
@@ -108,7 +140,22 @@ export default function AppLayout({ children, requireAdmin = false }) {
         </div>
       </aside>
 
-      <main className="min-w-0 flex-1 overflow-auto">{children}</main>
+      <main className={`min-w-0 flex-1 overflow-auto ${isAdmin ? 'admin-main' : ''}`}>{children}</main>
+
+      {isAdmin && (
+        <nav className="admin-tabbar md:hidden" aria-label="Admin sections" data-testid="admin-tabbar">
+          {ADMIN_TABS.map((tab) => {
+            const Icon = tab.icon;
+            const active = tab.path ? location.pathname === tab.path : location.pathname === tab.to || location.pathname.startsWith(`${tab.to}/`);
+            return (
+              <Link key={tab.to} to={tab.to} className={`admin-tab ${active ? 'is-active' : ''}`} aria-current={active ? 'page' : undefined} data-testid={`admin-tab-${tab.label.toLowerCase()}`}>
+                <Icon aria-hidden="true" />
+                <span>{tab.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      )}
     </div>
   );
 }

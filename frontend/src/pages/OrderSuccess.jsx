@@ -41,6 +41,11 @@ const headline = (order) => {
   }
   switch (order.status) {
     case 'shipped':
+      // Sent on purpose without a tracking number: say so instead of promising a carrier scan that will never come.
+      if (order.untracked) {
+        return { Icon: Truck, title: 'Your order is on its way',
+          text: `Shipped${order.shippedAt ? ` ${dayLabel(order.shippedAt)}` : ''} without a tracking number, so there is nothing to follow online. Delivery usually takes 3–6 business days after dispatch. If it has not arrived by then, email reflexityram@gmail.com.` };
+      }
       return { Icon: Truck, title: 'Your order is on its way',
         text: `Shipped${order.shippedAt ? ` ${dayLabel(order.shippedAt)}` : ''} with Canada Post. ${order.trackingLatest?.expectedDeliveryDate
           ? `Canada Post expects to deliver it ${dayLabel(`${order.trackingLatest.expectedDeliveryDate}T12:00:00Z`)}.`

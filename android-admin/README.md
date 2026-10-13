@@ -15,6 +15,14 @@ every new order, payment, refund and quote request. Server side: `docs/phone-app
   orders and payments" notice is Android's requirement for an app that keeps a connection open; it is the quietest channel and can be
   hidden in the app's notification settings without stopping the alerts.
 - **Tapping an alert** opens `/admin/orders?order=<id>` (the order's panel).
+- **Light or dark, like the phone.** The app theme (status bar, navigation bar, dialogs, drop-down lists) follows the phone's setting, and
+  the app puts the same choice in the site's own theme setting (`reflexity-theme`) when it signs in, so the page and the system never
+  disagree. Switching the phone between light and dark reloads the page you were on.
+- **Dialogs.** A web view shows no alert/confirm/prompt box unless the app does it (without it `confirm()` quietly answers "no"), so the app
+  shows them as native dialogs, for the shop's own pages only. The admin screens ask in the page itself and do not depend on this.
+- **Back.** The Back button first asks the page to close what is open on top (an order, a product: `window.rfxHandleBack`, see
+  `frontend/src/lib/appBridge.js`), then goes back in the page, and at the top of the first page leaves the app (the sign-in page
+  used to sit behind it, so Back bounced forever).
 - Alert text has order numbers, amounts and item names only. On a locked screen only the headline shows.
 
 ## Build and install
@@ -42,7 +50,7 @@ Alerts must arrive with the screen off. The app asks once to be exempt from batt
 
 | | |
 | --- | --- |
-| `MainActivity` | pairing screen, the web view, session renewal, file chooser for uploads |
+| `MainActivity` | pairing screen, the web view, session renewal, light/dark, dialogs, Back, file chooser for uploads |
 | `EventService` | the foreground long-poll loop; reconnects with back-off and when the network returns |
 | `Notifier` | channels (orders / updates / quiet / connection) and notification text |
 | `Api`, `Store`, `Config` | HTTP calls, encrypted storage, the two URLs |

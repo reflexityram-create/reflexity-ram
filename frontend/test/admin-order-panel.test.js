@@ -7,11 +7,12 @@ import test from "node:test";
 const read = (file) => readFile(new URL(`../src/${file}`, import.meta.url), "utf8");
 
 test("the order detail reads the order again after a status change instead of dropping the shipping panel", async () => {
-  const source = await read("pages/admin/Orders.jsx");
-  const handler = source.slice(source.indexOf("const handleStatusUpdate"), source.indexOf("return (", source.indexOf("const handleStatusUpdate")));
+  const [source, actions] = await Promise.all([read("pages/admin/Orders.jsx"), read("components/admin/OrderActions.jsx")]);
+  const handler = actions.slice(actions.indexOf("const changeStatus"), actions.indexOf("const cancelButton"));
   assert.match(source, /const reloadOrder = async \(fallback\) => \{[\s\S]*?adminApi\.getOrder\(orderId\)[\s\S]*?setOrder\(data\.order\)/);
-  assert.match(handler, /updateOrderStatus\(orderId, statusForm\)[\s\S]*?await reloadOrder\(data\.order\)/);
-  assert.doesNotMatch(handler, /setOrder\(data\.order\)/, "the status response has no shippingPreparation");
+  assert.match(source, /<OrderActions order=\{order\} step=\{step\} onChanged=\{\(next\) => reloadOrder\(next\)\} \/>/);
+  assert.match(handler, /updateOrderStatus\(order\._id, payload\)[\s\S]*?await onChanged\(data\.order\)/);
+  assert.doesNotMatch(handler, /setOrder\(/, "the status response has no shippingPreparation");
 });
 
 test("a review request or any other order update goes through the same reload", async () => {

@@ -51,8 +51,8 @@ api.interceptors.response.use(
       }
     }
     
-    // Log CORS or Network errors specifically for debugging
-    if (!response) {
+    // Log CORS or Network errors specifically for debugging (a request the page cancelled on purpose is not one)
+    if (!response && error?.code !== 'ERR_CANCELED') {
       console.error('[API] Network Error / CORS issue. Check if backend is alive and allows this origin:', window.location.origin);
     }
 
@@ -187,7 +187,6 @@ export const adminApi = {
   getOrder: (id, config = {}) => api.get(`/admin/orders/${id}`, config),
   updateOrderTracking: (id, trackingNumber) => api.patch(`/admin/orders/${id}/tracking`, { trackingNumber }),
   updateOrderStatus: (id, data) => api.patch(`/admin/orders/${id}/status`, data),
-  archiveOrder: (id, archived) => api.patch(`/admin/orders/${id}/archive`, { archived }),
   markEtransferReceived: (id, data) => api.post(`/admin/orders/${id}/etransfer/received`, data),
   refundEtransfer: (id, data) => api.post(`/admin/orders/${id}/etransfer/refund`, data),
   sendReviewRequest: (id) => api.post(`/admin/orders/${id}/review-request`),

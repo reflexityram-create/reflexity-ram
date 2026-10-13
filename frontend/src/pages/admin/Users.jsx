@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Loader2, ChevronLeft, ChevronRight, Shield, ShieldOff } from 'lucide-react';
 import { toast } from 'sonner';
 import AppLayout from '@/components/AppLayout';
+import ConfirmButton from '@/components/admin/ConfirmButton';
 import { adminApi } from '@/lib/api';
 import useAuthStore from '@/lib/authStore';
 
@@ -63,13 +64,62 @@ export default function AdminUsers() {
 
   return (
     <AppLayout requireAdmin>
-      <div className="p-8">
-        <div className="mb-6">
+      <div className="p-4 md:p-8">
+        <div className="mb-4 md:mb-6">
           <h1 className="text-2xl font-bold tracking-tight">Users</h1>
           <p className="text-neutral-500 text-[13px] mt-0.5">{pagination.total} total users</p>
         </div>
 
-        <div className="glass rounded-2xl overflow-hidden">
+        {/* Phone: one card per person, with the two things you can do to them (each asks first) */}
+        <ul className="space-y-2.5 md:hidden" data-testid="users-cards">
+          {loading && users.length === 0 ? (
+            <li className="glass rounded-2xl p-8 text-center text-neutral-500"><Loader2 size={16} className="animate-spin inline mr-2" />Loading…</li>
+          ) : users.length === 0 ? (
+            <li className="glass rounded-2xl p-8 text-center text-neutral-500">No users found</li>
+          ) : users.map((u) => {
+            const you = u._id === currentUser?._id;
+            return (
+              <li key={u._id} className="admin-card space-y-3" data-testid="user-card">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-[15px] truncate">{u.firstName} {u.lastName}{you && <span className="ml-2 text-[11px] font-normal text-neutral-500">You</span>}</div>
+                    <div className="text-[13px] text-neutral-400 break-all">{u.email}</div>
+                    <div className="text-[11px] text-neutral-500 mt-0.5">Joined {new Date(u.createdAt).toLocaleDateString()}{u.phone ? ` · ${u.phone}` : ''}</div>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <span className={`pill text-[10px] py-0.5 ${u.role === 'admin' ? 'pill-accent' : 'pill-blue'}`}>{u.role}</span>
+                    <span className={`pill text-[10px] py-0.5 ${u.isActive ? 'pill-accent' : 'text-neutral-500'}`}>{u.isActive ? 'Active' : 'Inactive'}</span>
+                  </div>
+                </div>
+                {!u.isEmailVerified && <div className="text-[12px] text-amber-700 dark:text-amber-400">Email not verified</div>}
+                {!you && (
+                  <div className="space-y-2">
+                    <ConfirmButton
+                      variant="secondary"
+                      label={u.role === 'admin' ? 'Remove admin' : 'Make admin'}
+                      confirmLabel={u.role === 'admin' ? 'Yes, remove admin' : 'Yes, make them admin'}
+                      message={u.role === 'admin' ? `${u.firstName} will lose access to this admin area.` : `${u.firstName} will see every order, customer and setting here.`}
+                      busy={updatingId === u._id}
+                      onConfirm={() => toggleRole(u)}
+                      className="w-full"
+                    />
+                    <ConfirmButton
+                      variant={u.isActive ? 'danger' : 'secondary'}
+                      label={u.isActive ? 'Deactivate' : 'Activate'}
+                      confirmLabel={u.isActive ? 'Yes, deactivate' : 'Yes, activate'}
+                      message={u.isActive ? `${u.firstName} will not be able to sign in.` : `${u.firstName} will be able to sign in again.`}
+                      busy={updatingId === u._id}
+                      onConfirm={() => toggleActive(u)}
+                      className="w-full"
+                    />
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+
+        <div className="glass rounded-2xl overflow-hidden hidden md:block">
           <div className="overflow-x-auto">
             <table className="w-full text-[13px]">
               <thead>
