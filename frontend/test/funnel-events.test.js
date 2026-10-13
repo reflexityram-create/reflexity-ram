@@ -35,14 +35,14 @@ test('checkout begins on entry and reports a bounded error reason', async () => 
   assert.match(checkout, /'network_error'/);
 });
 
-test('checkout return records complete, pending, error and missing-session outcomes', async () => {
+test('checkout return records complete, processing (a bank debit still clearing), pending, error and missing-session outcomes', async () => {
   const returned = await source('pages/CheckoutReturn.jsx');
-  for (const outcome of ['missing_session', 'complete', 'pending', 'error']) {
+  for (const outcome of ['missing_session', 'complete', 'processing', 'pending', 'error']) {
     assert.match(returned, new RegExp(`outcome: ['"]${outcome}['"]`));
   }
   assert.match(returned, /trackPurchaseOnce\(data\)/);
   const payloads = [...returned.matchAll(/trackEvent\('checkout_return',\s*\{([\s\S]*?)\}\)/g)].map((match) => match[1]);
-  assert.equal(payloads.length, 4);
+  assert.equal(payloads.length, 5);
   for (const payload of payloads) {
     assert.doesNotMatch(payload, /email|address/i);
   }

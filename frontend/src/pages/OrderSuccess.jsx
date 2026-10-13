@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { CheckCircle, Package, Truck, Loader2, AlertTriangle } from 'lucide-react';
+import { CheckCircle, Package, Truck, Loader2, AlertTriangle, Clock, Copy, Check } from 'lucide-react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { ordersApi } from '@/lib/api';
@@ -9,6 +9,7 @@ import { imageUrl } from '@/lib/imageUrl';
 import useAuthStore from '@/lib/authStore';
 import OrderTracking from '@/components/OrderTracking';
 import { startOrderUpdates } from '@/lib/orderUpdates';
+import { torontoDeadline } from '@/lib/paymentMethods';
 
 const STATUS_STEPS = [
   { id: 'pending', label: 'Order placed' },
@@ -27,6 +28,17 @@ const dayLabel = (value) => (value
 // shipping email links to later, so the headline follows the order's status.
 const headline = (order) => {
   const email = order.user?.email || order.guestEmail;
+  // Placed but not paid yet: an e-Transfer to send, or a bank debit that is still clearing.
+  if (order.paymentStatus === 'pending' && order.status === 'pending') {
+    if (order.paymentMethod === 'etransfer') {
+      return { Icon: Clock, title: 'Order placed: now send your e-Transfer',
+        text: `We are holding your items${order.etransfer?.expiresAt ? ` until ${torontoDeadline(order.etransfer.expiresAt)}` : ''}. Your order is confirmed, and ships, as soon as we receive the transfer.` };
+    }
+    if (order.paymentMethod === 'bank_debit') {
+      return { Icon: Clock, title: 'Order received: your bank is processing the payment',
+        text: 'A bank debit takes up to 5 business days to clear. We ship as soon as it does, and we will email you.' };
+    }
+  }
   switch (order.status) {
     case 'shipped':
       return { Icon: Truck, title: 'Your order is on its way',
@@ -44,6 +56,26 @@ const headline = (order) => {
       return { Icon: CheckCircle, title: 'Order confirmed!', text: email ? `Thank you for your order. A confirmation email has been sent to ${email}.` : 'Thank you for your order.' };
   }
 };
+
+// One line of the e-Transfer instructions, with a button to copy it into the banking app.
+function CopyRow({ label, value, copyValue, testId }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(copyValue ?? value); setCopied(true); window.setTimeout(() => setCopied(false), 1500); }
+    catch { /* the value is selectable on the page */ }
+  };
+  return (
+    <div className="flex items-center justify-between gap-3 py-2.5 border-t border-white/5 first:border-t-0" data-testid={testId}>
+      <div className="min-w-0">
+        <div className="text-neutral-500 text-[11px] uppercase tracking-widest">{label}</div>
+        <div className="mono text-[14px] break-all select-all">{value}</div>
+      </div>
+      <button type="button" onClick={copy} className="btn-secondary min-h-11 shrink-0" aria-label={`Copy ${label.toLowerCase()}`}>
+        {copied ? <Check size={14} /> : <Copy size={14} />}{copied ? 'Copied' : 'Copy'}
+      </button>
+    </div>
+  );
+}
 
 export default function OrderSuccess() {
   const { orderNumber } = useParams();
@@ -114,7 +146,22 @@ export default function OrderSuccess() {
               );
             })()}
 
-            <GoogleCustomerReviewsOptIn order={order} />
+            {/* The review survey is for orders that are actually paid for. */}
+            {order.paymentStatus === 'paid' && <GoogleCustomerReviewsOptIn order={order} />}
+
+            {order.etransfer && (
+              <div className="glass rounded-2xl p-6 mb-6" data-testid="etransfer-instructions">
+                <h3 className="font-semibold tracking-tight text-[15px] mb-1">Send your Interac e-Transfer</h3>
+                <p className="text-[13px] text-neutral-400 mb-3">In your banking app choose Interac e-Transfer, then send:</p>
+                <CopyRow label="Send to" value={order.etransfer.recipientEmail} testId="et-recipient" />
+                <CopyRow label="Amount (exactly)" value={`$${Number(order.etransfer.amountDue).toFixed(2)} CAD`} copyValue={Number(order.etransfer.amountDue).toFixed(2)} testId="et-amount" />
+                <CopyRow label="Message (so we can match it)" value={order.etransfer.message} testId="et-message" />
+                <p className="text-[13px] text-neutral-400 mt-3">
+                  {order.etransfer.expiresAt ? <>Send it before <strong className="text-neutral-200">{torontoDeadline(order.etransfer.expiresAt)}</strong>, or the order is cancelled and the items go back on sale. </> : null}
+                  The deposit is automatic: no security question or password. We check payments by hand during the day, then confirm by email. Only ever pay the address shown here.
+                </p>
+              </div>
+            )}
 
             {/* Status tracker */}
             <div className="glass rounded-2xl p-6 mb-6">

@@ -313,6 +313,96 @@ const sendTrackingUpdateEmail = async ({ email, firstName, order, kind }) => {
   return data;
 };
 
+// ─── Payment notices: bank debit and Interac e-Transfer orders ─────────────────
+// These orders exist before the money has cleared, so the buyer hears about each step by email. Each notice has its own
+// subject, headline and paragraphs; the shell and the "View your order" button are shared.
+const torontoTime = (value) => new Date(value).toLocaleString('en-CA', { timeZone: 'America/Toronto', dateStyle: 'medium', timeStyle: 'short' });
+const cad = (value) => `$${Number(value || 0).toFixed(2)} ${DISPLAY_CURRENCY}`;
+const mono = (text) => `<span style="font-family:monospace;color:#f5f5f7;">${escapeHtml(text)}</span>`;
+
+const PAYMENT_NOTICES = {
+  // Interac e-Transfer: placed, waiting for the buyer's transfer.
+  etransferInstructions: {
+    subject: (order) => `Send your e-Transfer to confirm order ${order.orderNumber}`,
+    title: 'One more step: send your e-Transfer',
+    paragraphs: (order) => [
+      `We received your order ${mono(order.orderNumber)} and are holding your items. It is confirmed, and shipped, as soon as your Interac e-Transfer arrives.`,
+      `<strong style="color:#f5f5f7;">Send exactly ${escapeHtml(cad(order.etransfer?.amountDue ?? order.total))}</strong> by Interac e-Transfer to ${mono(order.etransfer?.recipientEmail || '')}`
+        + ` and put ${mono(order.orderNumber)} in the message so we can match it.`,
+      `Do it before <strong style="color:#f5f5f7;">${escapeHtml(order.etransfer?.expiresAt ? torontoTime(order.etransfer.expiresAt) : 'the deadline')}</strong> (Toronto time), or the items go back on sale and the order is cancelled.`,
+      'Deposit is automatic: you do not need a security question or password. We check payments by hand during the day, so allow a little time for the confirmation email.',
+      `Only pay the address above. We never ask you to send money anywhere else. If an email tells you to, do not pay it and write to ${escapeHtml(SUPPORT_EMAIL)}.`,
+    ],
+  },
+  etransferReminder: {
+    subject: (order) => `We have not received your e-Transfer yet: ${order.orderNumber}`,
+    title: 'Still waiting for your e-Transfer',
+    paragraphs: (order) => [
+      `Your order ${mono(order.orderNumber)} is on hold, but we have not received the Interac e-Transfer yet.`,
+      `Send exactly ${escapeHtml(cad(order.etransfer?.amountDue ?? order.total))} to ${mono(order.etransfer?.recipientEmail || '')} with ${mono(order.orderNumber)} in the message`
+        + ` before ${escapeHtml(order.etransfer?.expiresAt ? torontoTime(order.etransfer.expiresAt) : 'the deadline')} (Toronto time).`,
+      `Already sent it? Thank you: we confirm payments by hand, so it can take a little while. Questions: ${escapeHtml(SUPPORT_EMAIL)}.`,
+    ],
+  },
+  etransferExpired: {
+    subject: (order) => `Order ${order.orderNumber} was cancelled: no e-Transfer received`,
+    title: 'Your order was cancelled',
+    paragraphs: (order) => [
+      `We did not receive the Interac e-Transfer for order ${mono(order.orderNumber)} in time, so we released the items and cancelled the order. Nothing was charged.`,
+      `Sent it just now, or still want the items? Write to ${escapeHtml(SUPPORT_EMAIL)} straight away and we will see if we can still help. Otherwise you are welcome to order again.`,
+    ],
+  },
+  // Bank debit (pre-authorized debit through Stripe): the debit is submitted, the bank takes days to confirm it.
+  bankDebitReceived: {
+    subject: (order) => `We received your order ${order.orderNumber}: bank debit processing`,
+    title: 'Order received: your bank is processing the payment',
+    paragraphs: (order) => [
+      `Thank you! Your order ${mono(order.orderNumber)} is placed and your items are held for you.`,
+      `A bank debit takes up to 5 business days to clear. <strong style="color:#f5f5f7;">We ship as soon as it does</strong> and will email you right away.`,
+      `If the debit does not go through we will email you, and nothing is shipped. Questions: ${escapeHtml(SUPPORT_EMAIL)}.`,
+    ],
+  },
+  bankDebitFailed: {
+    subject: (order) => `Your bank debit for order ${order.orderNumber} did not go through`,
+    title: 'Your payment did not go through',
+    paragraphs: (order) => [
+      `Your bank did not complete the debit for order ${mono(order.orderNumber)} (for example, not enough funds, or the account details could not be confirmed), so the order was cancelled and nothing was shipped.`,
+      `You are welcome to order again and pay another way. Questions: ${escapeHtml(SUPPORT_EMAIL)}.`,
+    ],
+  },
+};
+
+const sendPaymentNoticeEmail = async ({ email, firstName, order, kind, idempotencyKey }) => {
+  const notice = PAYMENT_NOTICES[kind];
+  if (!notice) throw new Error(`Unknown payment notice: ${kind}`);
+  const orderUrl = orderAccessUrl(FRONTEND_URL, order, email);
+  const { data, error } = await getResend().emails.send({
+    from: FROM_EMAIL,
+    to: email,
+    replyTo: SUPPORT_EMAIL,
+    subject: notice.subject(order),
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+      <body style="margin:0;padding:0;background:#0a0a0c;font-family:'Figtree',system-ui,sans-serif;color:#f5f5f7;">
+        <div style="max-width:560px;margin:40px auto;padding:0 20px;">
+          <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:40px;">
+            <div style="margin-bottom:32px;"><span style="font-size:20px;font-weight:700;">Reflexity RAM</span></div>
+            <h1 style="font-size:22px;font-weight:700;margin:0 0 16px;">${escapeHtml(notice.title)}</h1>
+            <p style="color:#a0a0aa;margin:0 0 16px;line-height:1.6;">Hi ${escapeHtml(firstName || 'there')},</p>
+            ${notice.paragraphs(order).map((paragraph) => `<p style="color:#a0a0aa;margin:0 0 16px;line-height:1.6;font-size:14px;">${paragraph}</p>`).join('')}
+            <a href="${escapeHtml(orderUrl)}" style="display:inline-block;background:#f5f5f7;color:#050505;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;font-size:13px;margin-top:8px;">View your order</a>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+  }, idempotencyKey ? { idempotencyKey } : undefined);
+  if (error) { console.error('Resend error detail:', JSON.stringify(error)); throw new Error(`Email send failed: ${error.message || JSON.stringify(error)}`); }
+  return data;
+};
+
 module.exports = {
   sendVerificationEmail,
   sendPasswordResetEmail,
@@ -321,4 +411,6 @@ module.exports = {
   sendTrackingUpdateEmail,
   sendReviewRequestEmail,
   cancelScheduledEmail,
+  sendPaymentNoticeEmail,
+  PAYMENT_NOTICES,
 };

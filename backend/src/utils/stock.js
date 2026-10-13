@@ -156,6 +156,84 @@ const decrementStockForOrder = async (order) => {
   return decremented;
 };
 
+// ─── Holding stock for an order that is not paid yet (Interac e-Transfer) ───────
+// A paid order that cannot be filled is the owner's problem to fix (decrementStockForOrder clamps and flags it). An
+// UNPAID order has no such excuse: it must either get every unit or not exist, so these helpers take stock strictly.
+class InsufficientStockError extends Error {
+  constructor(item, available) {
+    super(`Not enough stock for ${item?.sku || item?.slug || 'an item'}`);
+    this.name = 'InsufficientStockError';
+    this.status = 409;
+    this.available = available;
+    this.publicMessage = available > 0
+      ? `Only ${available} of "${item?.name}" ${available === 1 ? 'is' : 'are'} left now. Update your cart and try again.`
+      : `"${item?.name}" just sold out.`;
+  }
+}
+
+// Inside a transaction: take every line's quantity or throw (which rolls the whole transaction back).
+const takeStockStrict = async (items, session) => {
+  for (const item of items) {
+    if (!item.product) continue;
+    const taken = await Product.findOneAndUpdate(
+      { _id: item.product, stockQuantity: { $gte: item.qty } },
+      { $inc: { stockQuantity: -item.qty } },
+      { new: false, session }
+    );
+    if (!taken) {
+      const current = await Product.findById(item.product).select('stockQuantity').session(session).lean();
+      throw new InsufficientStockError(item, Math.max(0, Number(current?.stockQuantity) || 0));
+    }
+    await syncStockLabels(item.product, session);
+  }
+};
+
+/**
+ * Create an order and take its stock in one transaction: all of it, or neither (throws InsufficientStockError).
+ * The order is saved with stockDecremented: true, so cancelling or expiring it gives the stock back exactly
+ * (cancelOrderAndRestoreStock).
+ */
+const createOrderWithReservation = async (data) => {
+  let created = null;
+  await withStockTransaction(async (session) => {
+    created = null;
+    const [order] = await Order.create([{
+      ...data,
+      stockDecremented: true,
+      items: data.items.map((item) => ({ ...item, decrementedQty: item.qty })),
+    }], { session });
+    await takeStockStrict(order.items, session);
+    created = order;
+    return true;
+  });
+  return created;
+};
+
+/**
+ * Apply `updates` to the order that matches `filter` AND take its stock, atomically: if the stock is gone the update is
+ * rolled back and InsufficientStockError is thrown. Used to bring back an e-Transfer order whose hold had already
+ * expired when the money arrived. Returns the updated order, or null when nothing matched the filter.
+ */
+const claimOrderWithReservation = async (orderId, filter, updates) => {
+  let claimed = null;
+  await withStockTransaction(async (session) => {
+    claimed = null;
+    const order = await Order.findOneAndUpdate(
+      { _id: orderId, stockDecremented: { $ne: true }, ...filter },
+      updates,
+      { returnDocument: 'after', session }
+    );
+    if (!order) return false;
+    await takeStockStrict(order.items, session);
+    await Order.updateOne({ _id: order._id }, {
+      $set: { stockDecremented: true, items: order.items.map((item) => ({ ...item.toObject(), decrementedQty: item.qty })) },
+    }, { session });
+    claimed = await Order.findById(order._id).session(session);   // what was just saved, not the copy from before the stock was taken
+    return true;
+  });
+  return claimed;
+};
+
 const restoreStockInSession = async (orderId, session) => {
   const claimed = await Order.findOneAndUpdate(
     { _id: orderId, stockDecremented: true },
@@ -204,6 +282,9 @@ const cancelOrderAndRestoreStock = async (orderId, updates, expected) => {
 };
 
 module.exports = {
+  InsufficientStockError,
+  createOrderWithReservation,
+  claimOrderWithReservation,
   deriveStockState,
   syncStockLabels,
   decrementStockForOrder,

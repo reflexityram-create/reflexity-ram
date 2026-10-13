@@ -12,6 +12,9 @@ const { ensureStripePrice, syncStripeProductDetails } = require('../utils/stripe
 const { cancelOrderAndRestoreStock } = require('../utils/stock');
 const { ORDER_STATUSES, canTransitionOrder } = require('../utils/orderTransitions');
 const { buildShippingPreparation } = require('../utils/shippingPreparation');
+const {
+  EtransferError, markEtransferReceived, recordEtransferRefund, sweepEtransferOrdersThrottled,
+} = require('../utils/etransfer');
 
 const router = express.Router();
 
@@ -374,13 +377,18 @@ router.get(
     queryValidator('status').optional().isIn(['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded']),
     queryValidator('search').optional().trim(),
     queryValidator('archived').optional().isIn(['true', 'false', 'all']),
+    // `awaiting` = placed but not paid yet (an e-Transfer to watch for, or a bank debit still clearing).
+    queryValidator('payment').optional().isIn(['awaiting']),
   ],
   validate,
   async (req, res) => {
     try {
-      const { page = 1, limit = 20, status, search, archived } = req.query;
+      const { page = 1, limit = 20, status, search, archived, payment } = req.query;
       const filter = {};
       if (status) filter.status = status;
+      if (payment === 'awaiting') { filter.paymentStatus = 'pending'; filter.status = 'pending'; }
+      // Looking at the orders is a good moment to expire/remind unpaid e-Transfer orders (throttled, never blocks).
+      sweepEtransferOrdersThrottled().catch(() => {});
       // By default hide archived orders. ?archived=true shows only archived,
       // ?archived=all shows everything.
       if (archived === 'true') filter.archived = true;
@@ -549,6 +557,61 @@ router.patch(
       res.json({ order: fresh || order, ...(shippingNotification ? { shippingNotification } : {}) });
     } catch (err) {
       res.status(500).json({ error: 'Failed to update order status' });
+    }
+  }
+);
+
+// ─── Interac e-Transfer orders (utils/etransfer.js) ───────────────────────────
+// The money arrives in the owner's bank, outside the site, so these two actions are how the order learns of it.
+const sendEtransferError = (res, err, fallback) => {
+  if (err instanceof EtransferError) return res.status(err.status).json({ error: err.publicMessage, ...(err.code ? { code: err.code } : {}) });
+  console.error(fallback, err);
+  return res.status(500).json({ error: fallback });
+};
+
+// POST /api/admin/orders/:id/etransfer/received — "I saw the deposit": only this makes the order paid and shippable.
+router.post(
+  '/orders/:id/etransfer/received',
+  [
+    param('id').custom((v) => isValidObjectId(v)).withMessage('Invalid order ID'),
+    body('amount').isFloat({ gt: 0, max: 100000 }).withMessage('Enter the amount you received').toFloat(),
+    body('confirmation').optional({ values: 'falsy' }).isString().trim().isLength({ max: 60 }),
+    body('note').optional({ values: 'falsy' }).isString().trim().isLength({ max: 300 }),
+    body('acceptDifferentAmount').optional().isBoolean().toBoolean(),
+  ],
+  validate,
+  async (req, res) => {
+    try {
+      await markEtransferReceived(req.params.id, {
+        amount: req.body.amount,
+        confirmation: req.body.confirmation,
+        note: req.body.note,
+        acceptDifferentAmount: req.body.acceptDifferentAmount === true,
+        admin: req.user,
+      });
+      const order = await Order.findById(req.params.id).populate('user', 'firstName lastName email phone').lean();
+      res.json({ order });
+    } catch (err) {
+      sendEtransferError(res, err, 'Failed to mark the e-Transfer received');
+    }
+  }
+);
+
+// POST /api/admin/orders/:id/etransfer/refund — record that the money was sent back (do the e-Transfer first).
+router.post(
+  '/orders/:id/etransfer/refund',
+  [
+    param('id').custom((v) => isValidObjectId(v)).withMessage('Invalid order ID'),
+    body('note').optional({ values: 'falsy' }).isString().trim().isLength({ max: 300 }),
+  ],
+  validate,
+  async (req, res) => {
+    try {
+      await recordEtransferRefund(req.params.id, { note: req.body.note, admin: req.user });
+      const order = await Order.findById(req.params.id).populate('user', 'firstName lastName email phone').lean();
+      res.json({ order });
+    } catch (err) {
+      sendEtransferError(res, err, 'Failed to record the refund');
     }
   }
 );

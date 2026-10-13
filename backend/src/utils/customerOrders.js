@@ -28,6 +28,20 @@ const itemForCustomer = (item) => {
   };
 };
 
+// An Interac e-Transfer order that is still waiting for its money: what the buyer has to send, where, and by when.
+// Shown only while it is waiting; the address is the one they were told when ordering (kept on the order).
+const etransferInstructions = (value) => {
+  if (value.paymentMethod !== 'etransfer' || value.paymentStatus !== 'pending' || value.status !== 'pending') return undefined;
+  const etransfer = value.etransfer || {};
+  if (!etransfer.recipientEmail) return undefined;
+  return {
+    recipientEmail: etransfer.recipientEmail,
+    amountDue: etransfer.amountDue ?? value.total,
+    message: value.orderNumber,
+    expiresAt: etransfer.expiresAt,
+  };
+};
+
 /**
  * Explicit customer-facing order shape. Payment-provider identifiers,
  * inventory bookkeeping, archival flags, and admin-only notes never leave the
@@ -45,6 +59,8 @@ const customerOrderResponse = (order) => {
     shippingAddress: addressForCustomer(value.shippingAddress),
     status: value.status,
     paymentStatus: value.paymentStatus,
+    paymentMethod: value.paymentMethod || 'stripe',
+    ...(etransferInstructions(value) ? { etransfer: etransferInstructions(value) } : {}),
     subtotal: value.subtotal,
     shippingCost: value.shippingCost,
     // US orders: the part of shippingCost that is the prepaid import duties and fees, so receipts can show it on its own line.

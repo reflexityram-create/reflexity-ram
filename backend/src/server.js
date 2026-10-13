@@ -23,6 +23,8 @@ const feedRoutes = require('./routes/feed');
 const reviewRoutes = require('./routes/reviews');
 const { createLeadRouter } = require('./routes/leads');
 const { createDeviceRouter } = require('./routes/device');
+const { createPaymentsRouter } = require('./routes/payments');
+const { sweepEtransferOrdersThrottled } = require('./utils/etransfer');
 const { createAdminDevicesRouter } = require('./routes/adminDevices');
 const { createDeviceLimiter, createPairLimiter } = require('./middleware/phoneLimiters');
 const { fixMerchantProductData } = require('./migrations/fixMerchantProductData');
@@ -148,6 +150,17 @@ const authLimiter = rateLimit({
 const deviceLimiter = createDeviceLimiter();
 const devicePairLimiter = createPairLimiter();
 
+// An e-Transfer order holds stock without being paid for: a few per hour per IP is plenty for a real buyer.
+const etransferLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new MongoRateLimitStore({ prefix: 'etransfer' }),
+  passOnStoreError: false,
+  message: { error: 'Too many orders from this connection. Please try again later or email us.' },
+});
+
 const leadLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 8,
@@ -159,7 +172,8 @@ const leadLimiter = rateLimit({
 });
 
 app.use('/api/device/pair', devicePairLimiter);
-app.use('/api/device', deviceLimiter, createDeviceRouter());
+// onPoll: the phone is the one thing that asks often, so it also sweeps unpaid e-Transfer orders (expire / remind).
+app.use('/api/device', deviceLimiter, createDeviceRouter({ onPoll: () => sweepEtransferOrdersThrottled() }));
 
 app.use(globalLimiter);
 
@@ -177,6 +191,8 @@ app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/cart', cartRoutes);
+app.use('/api/payments/etransfer', etransferLimiter);
+app.use('/api/payments', createPaymentsRouter());
 app.use('/api/orders', orderRoutes);
 app.use('/api/admin/wholesale', adminWholesaleRoutes);
 app.use('/api/admin/devices', createAdminDevicesRouter());

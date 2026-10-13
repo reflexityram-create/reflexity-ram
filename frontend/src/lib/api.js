@@ -143,12 +143,21 @@ export const stripeApi = {
   // only to attribute the purchase it reports to GA4.
   // `shipping` is only sent when the buyer chose something other than the flat rate: { country, serviceCode } outside
   // Canada, { country: 'CA', faster, signature } (two yes/no choices, no prices) for Faster shipping or a signature inside it.
-  createCheckoutSession: (analytics, shipping) => api.post('/stripe/create-checkout-session', {
+  // `paymentMethod` is only sent for bank debit ('bank_debit'); card checkout sends exactly what it always did.
+  createCheckoutSession: (analytics, shipping, paymentMethod) => api.post('/stripe/create-checkout-session', {
     ...(analytics && Object.keys(analytics).length > 0 ? { analytics } : {}),
     ...(shipping ? { shipping } : {}),
+    ...(paymentMethod && paymentMethod !== 'card' ? { paymentMethod } : {}),
   }),
   sessionStatus: (sessionId) =>
     api.get('/stripe/session-status', { params: { session_id: sessionId } }),
+};
+
+// ─── Other ways to pay ────────────────────────────────────────────────────────
+// Which methods are on and what each saves; and the Interac e-Transfer order (bank debit is a Stripe session above).
+export const paymentsApi = {
+  methods: () => publicApi.get('/payments/methods'),
+  createEtransferOrder: (payload) => api.post('/payments/etransfer/orders', payload),
 };
 
 // ─── Admin API ────────────────────────────────────────────────────────────────
@@ -179,6 +188,8 @@ export const adminApi = {
   updateOrderTracking: (id, trackingNumber) => api.patch(`/admin/orders/${id}/tracking`, { trackingNumber }),
   updateOrderStatus: (id, data) => api.patch(`/admin/orders/${id}/status`, data),
   archiveOrder: (id, archived) => api.patch(`/admin/orders/${id}/archive`, { archived }),
+  markEtransferReceived: (id, data) => api.post(`/admin/orders/${id}/etransfer/received`, data),
+  refundEtransfer: (id, data) => api.post(`/admin/orders/${id}/etransfer/refund`, data),
   sendReviewRequest: (id) => api.post(`/admin/orders/${id}/review-request`),
 
   // Phone app (Security page)
