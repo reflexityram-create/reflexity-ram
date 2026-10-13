@@ -381,6 +381,8 @@ export default function Product() {
                 )}
               </div>
 
+              <ProductDescription description={p.description} />
+
               <div className="flex items-center gap-3 mb-6">
                 <span
                   className={`pill ${
@@ -628,6 +630,32 @@ export default function Product() {
       />
       <Footer />
     </>
+  );
+}
+
+export function ProductDescription({ description }) {
+  if (typeof description !== "string" || !description.trim()) return null;
+
+  const paragraphs = description
+    .trim()
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+
+  if (!paragraphs.length) return null;
+
+  return (
+    <section
+      aria-label="Product description"
+      className="mb-5 space-y-2 text-[14px] leading-relaxed text-neutral-300"
+      data-testid="product-description"
+    >
+      {paragraphs.map((paragraph, index) => (
+        <p key={`${index}-${paragraph.slice(0, 32)}`} className={index === 0 ? "text-neutral-100" : ""}>
+          {paragraph}
+        </p>
+      ))}
+    </section>
   );
 }
 
