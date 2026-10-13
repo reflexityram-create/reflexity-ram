@@ -337,7 +337,7 @@ test('alerts are clipped, bounded to admin pages, and never throw', async () => 
   const quiet = { error() {} };
   const failed = await recordAdminEvent({ type: 'x', title: 'y' }, { Model: { create: async () => { throw new Error('db down'); } }, emitter, logger: quiet });
   assert.equal(failed, null, 'a broken alert does not break the caller');
-  assert.equal(heard, 3, 'and nobody is told about an event that was not saved');
+  assert.equal(heard, saved.length, 'and nobody is told about an event that was not saved');
 });
 
 test('with no database connection an alert is skipped at once instead of queueing for ten seconds', async () => {
