@@ -800,8 +800,13 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
     const afterFailure = session({ payment_intent: { id: 'pi_bankdebit_1', status: 'requires_payment_method', latest_charge: null } });
     await withStripe(() => afterFailure, async ({ fulfillCheckoutSession, settleBankDebitFailed, bankDebitInFlight }) => {
       assert.equal(bankDebitInFlight(afterFailure), false);
+      assert.equal(bankDebitInFlight(session({ payment_intent: { status: 'requires_action' } })), false, 'waiting for the buyer to verify');
+      assert.equal(bankDebitInFlight(session({ payment_intent: { status: 'canceled' } })), false);
       assert.equal(bankDebitInFlight(session()), true, 'a processing PaymentIntent is a debit in flight');
-      assert.equal(bankDebitInFlight(session({ payment_intent: 'pi_not_expanded' })), false, 'an unexpanded PaymentIntent proves nothing');
+      // the unknown fails SAFE for a real buyer: a state this code has never heard of, or a PaymentIntent that was not expanded, still gets an order
+      assert.equal(bankDebitInFlight(session({ payment_intent: { status: 'some_future_state' } })), true);
+      assert.equal(bankDebitInFlight(session({ payment_intent: 'pi_not_expanded' })), true);
+      assert.equal(bankDebitInFlight(session({ payment_intent: undefined })), true);
       assert.equal(await settleBankDebitFailed('cs_test_bankdebit_1'), null, 'no order yet, so nothing to cancel');
       assert.equal(await fulfillCheckoutSession('cs_test_bankdebit_1'), null, 'the retried "completed" must not create an order for a debit that already failed');
       assert.equal(await Order.countDocuments(), 0);

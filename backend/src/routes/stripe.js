@@ -369,14 +369,16 @@ const isDelayedBankDebit = (session) => (
 );
 // "Complete and unpaid" is also how Stripe leaves a session after the bank REFUSED the debit (its PaymentIntent is back at
 // requires_payment_method), and a buyer who typed their account numbers by hand has a PaymentIntent that is waiting for the
-// BUYER to verify micro-deposits (requires_action), not for the bank. Only a PaymentIntent that is `processing` has a debit
-// in flight, so only then is there an order to hold stock for. Without this, a failure Stripe reported before our `completed`
-// handler had run (it was being retried) was followed by an order that nothing would ever cancel. If the money does clear,
+// BUYER to verify micro-deposits (requires_action), not for the bank. In those states (and a cancelled PaymentIntent) no debit
+// is under way, so there is no order to hold stock for. Without this, a failure Stripe reported before our `completed` handler
+// had run (it was being retried) was followed by an order that nothing would ever cancel. If the money does clear,
 // async_payment_succeeded creates the order, already paid.
-const bankDebitInFlight = (session) => {
-  const pi = session?.payment_intent;
-  return Boolean(pi) && typeof pi === 'object' && pi.status === 'processing';
-};
+// Only the states where NOTHING is under way are listed. Anything else (`processing`, which is what a real debit shows, and any
+// state Stripe may add) counts as in flight: wrongly leaving out a real debit would give a paying buyer no order, no email and
+// no stock held, which is worse than the rare order for a debit that never started (the 8-day check and the owner's phone
+// catch that one).
+const NO_DEBIT_UNDER_WAY = new Set(['requires_payment_method', 'requires_action', 'canceled']);
+const bankDebitInFlight = (session) => !NO_DEBIT_UNDER_WAY.has(session?.payment_intent?.status);
 const AWAITING_BANK_DEBIT_NOTE = 'AWAITING bank debit: do not ship until this order shows as paid (the bank takes up to 5 business days).';
 
 const fulfillCheckoutSession = async (checkoutSessionId) => {
