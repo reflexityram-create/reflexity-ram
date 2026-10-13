@@ -3,6 +3,7 @@ const {
   MAX_EVENT_AGE_MS,
   isServerPurchaseTrackingEnabled,
   sendPurchaseEvent,
+  purchaseTimeMs,
 } = require('./ga4');
 
 // Reports one paid order to GA4, exactly once, without ever throwing.
@@ -22,8 +23,9 @@ async function reportPaidOrderToGa4(order, {
   try {
     if (!order?._id || order.paymentStatus !== 'paid' || !isEnabled()) return false;
 
-    const createdAtMs = order.createdAt ? new Date(order.createdAt).getTime() : now();
-    if (Number.isFinite(createdAtMs) && now() - createdAtMs > MAX_EVENT_AGE_MS) return false;
+    // Measured from when it was PAID (a bank debit clears days after it was placed), else from when it was created.
+    const eventAtMs = purchaseTimeMs(order, now());
+    if (Number.isFinite(eventAtMs) && now() - eventAtMs > MAX_EVENT_AGE_MS) return false;
 
     const claimed = await OrderModel.findOneAndUpdate(
       { _id: order._id, analyticsPurchaseSentAt: null },

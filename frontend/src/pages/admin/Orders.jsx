@@ -6,6 +6,8 @@ import AppLayout from '@/components/AppLayout';
 import { adminApi } from '@/lib/api';
 import { imageUrl } from '@/lib/imageUrl';
 import ShippingPreparationPanel from '@/components/admin/ShippingPreparationPanel';
+import PaymentPanel from '@/components/admin/PaymentPanel';
+import { TONE_CLASS, paymentState, showPaymentLabel } from '@/lib/orderPayment';
 import { NEXT_STATUS, statusOptions } from '@/lib/adminOrderStatus';
 // The status filter's options. Kept in the same order as NEXT_STATUS and
 // matching the values the admin orders API accepts.
@@ -238,6 +240,9 @@ function OrderDetailModal({ orderId, onClose }) {
               )}
             </div>
 
+            {/* Before shipping: is it paid? (an e-Transfer order is only paid when the owner says so here) */}
+            <PaymentPanel order={order} onChanged={() => reloadOrder()} />
+
             <ShippingPreparationPanel preparation={order.shippingPreparation} />
 
             <ReviewEmailPanel order={order} onUpdated={(next) => reloadOrder(next)} />
@@ -293,6 +298,7 @@ export default function AdminOrders() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
   const [archivedView, setArchivedView] = useState(false);
+  const [awaitingOnly, setAwaitingOnly] = useState(false);
   const [page, setPage] = useState(1);
   // A phone notification opens /admin/orders?order=<id>: that order's panel opens straight away.
   const [searchParams, setSearchParams] = useSearchParams();
@@ -304,12 +310,13 @@ export default function AdminOrders() {
     if (searchParams.has('order')) setSearchParams({}, { replace: true });
   };
 
-  const load = (p = page, s = statusFilter, arch = archivedView) => {
-    setLoading(true);
+  const load = (p = page, s = statusFilter, arch = archivedView, awaiting = awaitingOnly, quiet = false) => {
+    if (!quiet) setLoading(true);
     adminApi.listOrders({
       page: p,
       limit: 20,
-      status: s || undefined,
+      status: awaiting ? undefined : (s || undefined),
+      payment: awaiting ? 'awaiting' : undefined,
       archived: arch ? 'true' : 'false',
     })
       .then(({ data }) => {
@@ -320,7 +327,19 @@ export default function AdminOrders() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [page, statusFilter, archivedView]);
+  useEffect(() => { load(); }, [page, statusFilter, archivedView, awaitingOnly]);
+
+  // A new order should show up without a manual refresh (the phone app keeps this page open): reload quietly every minute
+  // and whenever the page comes back to the front, but never while an order's panel is open (it would not disturb it, yet
+  // there is nothing to gain).
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === 'visible' && !selectedOrderId) load(page, statusFilter, archivedView, awaitingOnly, true);
+    };
+    const timer = window.setInterval(refresh, 60000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', refresh); };
+  }, [page, statusFilter, archivedView, awaitingOnly, selectedOrderId]);
 
   const handleArchive = async (id, archived) => {
     try {
@@ -352,6 +371,14 @@ export default function AdminOrders() {
               <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
             ))}
           </select>
+          <button
+            type="button"
+            onClick={() => { setAwaitingOnly(v => !v); setPage(1); }}
+            className={awaitingOnly ? 'btn-primary' : 'btn-secondary'}
+            data-testid="orders-awaiting-filter"
+          >
+            {awaitingOnly ? 'Showing: awaiting payment' : 'Awaiting payment'}
+          </button>
           <button
             type="button"
             onClick={() => { setArchivedView(v => !v); setPage(1); }}
@@ -397,6 +424,9 @@ export default function AdminOrders() {
                         <span className={`pill ${STATUS_PILLS[o.status] || ''} text-[10px] py-0.5`}>
                           {o.status}
                         </span>
+                        {showPaymentLabel(o) && (
+                          <span className={`pill ${TONE_CLASS[paymentState(o).tone]} text-[10px] py-0.5 ml-1.5`} data-testid="order-payment-label">{paymentState(o).label}</span>
+                        )}
                       </td>
                       <td className="p-4 text-right mono">${o.total?.toFixed(2)}</td>
                       <td className="p-4 text-right text-neutral-500">

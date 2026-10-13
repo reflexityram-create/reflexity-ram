@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { TrendingUp, Package, ShoppingBag, Users, AlertTriangle, Loader2 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import { adminApi } from '@/lib/api';
+import { TONE_CLASS, paymentState, showPaymentLabel } from '@/lib/orderPayment';
 
 const STATUS_PILLS = {
   pending: 'pill-amber',
@@ -72,7 +73,7 @@ export default function Dashboard() {
                 icon={ShoppingBag}
                 label="Total orders"
                 value={data?.stats.totalOrders || 0}
-                sub={`${data?.stats.pendingOrders || 0} pending`}
+                sub={`${data?.stats.pendingOrders || 0} pending${data?.stats.awaitingPayment > 0 ? ` · ${data.stats.awaitingPayment} awaiting payment` : ''}`}
               />
               <StatCard
                 icon={Package}
@@ -125,6 +126,9 @@ export default function Dashboard() {
                             <span className={`pill ${STATUS_PILLS[o.status] || 'pill-blue'} text-[10px] py-0.5`}>
                               {o.status}
                             </span>
+                            {showPaymentLabel(o) && (
+                              <span className={`pill ${TONE_CLASS[paymentState(o).tone]} text-[10px] py-0.5 ml-1.5`} data-testid="order-payment-label">{paymentState(o).label}</span>
+                            )}
                           </td>
                           <td className="py-3 text-right mono">${o.total?.toFixed(2)}</td>
                           <td className="py-3 text-right text-neutral-500">

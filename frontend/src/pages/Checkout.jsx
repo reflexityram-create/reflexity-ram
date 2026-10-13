@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Lock, Loader2, ShieldCheck, Truck, ArrowRight, CreditCard, Package, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import useCartStore from '@/lib/cartStore';
-import { stripeApi, shippingApi } from '@/lib/api';
+import { stripeApi, shippingApi, paymentsApi } from '@/lib/api';
 import CountryPicker from '@/components/CountryPicker';
 import { useSEO } from '@/lib/seo';
 import { imageUrl } from '@/lib/imageUrl';
 import { formatStorePrice, FASTER_SHIPPING_MAX_STICKS, SIGNATURE_PRICE, STORE_CURRENCY_CODE, STORE_CURRENCY_NAME } from '@/lib/currency';
 import { ACCEPTED_PAYMENTS_SENTENCE } from '@/lib/payments';
+import { BANK_DEBIT, CARD, ETRANSFER, discountFor, etransferSizeProblem, offeredMethods, savingsLabel } from '@/lib/paymentMethods';
 import { ecommerceItem, readGaIdentifiers, trackEvent } from '@/lib/analytics';
 
 // Checkout is handled by Stripe's hosted Checkout page:
@@ -38,10 +39,38 @@ function SpeedRow({ selected, onSelect, title, detail, price, testId }) {
   );
 }
 
+// One way to pay: a radio row with what it saves and what happens next.
+function PaymentRow({ selected, onSelect, method, goods, disabledReason = '' }) {
+  const saves = savingsLabel(goods, method.discountPct, formatStorePrice);
+  const disabled = Boolean(disabledReason);
+  return (
+    <label className={`flex items-start justify-between gap-3 rounded-xl border px-3 py-2.5 transition-colors ${disabled ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`} data-testid={`checkout-pay-${method.id}`}
+      style={{ borderColor: selected ? 'var(--brand-yellow)' : 'var(--border-strong)', background: selected ? 'var(--input-bg-focus)' : 'transparent' }}>
+      <span className="flex items-start gap-2.5">
+        <input type="radio" name="payment-method" className="mt-1" checked={selected && !disabled} disabled={disabled} onChange={onSelect} />
+        <span className="text-[14px]">{method.title}
+          <span className="block text-[12px] text-neutral-500">{method.how}</span>
+          {disabled && (
+            <span className="block text-[12px] text-amber-600 dark:text-amber-400 mt-1" data-testid={`checkout-pay-${method.id}-unavailable`}>
+              Not available for this order: {disabledReason} Pay by card, or email us for a larger order.
+            </span>
+          )}
+        </span>
+      </span>
+      {saves && !disabled && <span className="text-[12px] font-semibold text-emerald-500 whitespace-nowrap">{saves}</span>}
+    </label>
+  );
+}
+
 export default function Checkout() {
   useSEO({ title: 'Checkout — Reflexity RAM' });
   const { items, subtotal, shipping, shippingFaster, itemCount, fetchCart, isLoading } = useCartStore();
+  const navigate = useNavigate();
   const [redirecting, setRedirecting] = useState(false);
+  // How the buyer pays. The server says which methods are on (card is always there); picking a cheaper one takes a
+  // percentage off the goods, applied by the server when the order is made.
+  const [methods, setMethods] = useState(() => offeredMethods([]));
+  const [methodId, setMethodId] = useState(CARD);
   // Outside Canada the buyer pays what Canada Post charges for their country.
   const [destination, setDestination] = useState('CA');
   const [countries, setCountries] = useState([]);
@@ -63,9 +92,29 @@ export default function Checkout() {
     : (useFaster ? shippingFaster : Number(shipping || 0)) + (signature ? SIGNATURE_PRICE : 0);
   const dutiesAmount = international && country === 'US' ? Number(quote.duties?.amount || 0) : 0;
   const totalBeforeTax = Number(subtotal || 0) + Number(shippingAmount || 0) + dutiesAmount;
+  // A method that cannot take this cart (an e-Transfer order over the shop's size limit) is shown with the reason, and is never the chosen one.
+  const sizeProblemFor = (m) => (m.id === ETRANSFER
+    ? etransferSizeProblem({
+      units: Number(itemCount) || 0,
+      total: Number(subtotal || 0) + Number(shippingAmount || 0) - discountFor(subtotal, m.discountPct),
+      maxUnits: m.maxUnits,
+      maxTotal: m.maxTotal,
+    }, formatStorePrice)
+    : '');
+  // Outside Canada only the card checkout exists (bank debit and e-Transfer are for Canadian bank accounts).
+  const picked = methods.find((m) => m.id === methodId);
+  const method = international ? methods[0] : (picked && !sizeProblemFor(picked) ? picked : methods[0]);
+  const paymentDiscount = discountFor(subtotal, method.discountPct);
+  const total = totalBeforeTax - paymentDiscount;
   const beginCheckoutTracked = useRef(false);
 
   useEffect(() => { fetchCart(); }, []);
+
+  useEffect(() => {
+    paymentsApi.methods()
+      .then(({ data }) => setMethods(offeredMethods(data?.methods)))
+      .catch(() => { /* card only: the page works without the list */ });
+  }, []);
 
   useEffect(() => {
     if (isLoading || beginCheckoutTracked.current || items.length === 0) return;
@@ -108,7 +157,16 @@ export default function Checkout() {
     }
   };
 
+  // Interac e-Transfer is not Stripe: the buyer gives an address on our own page and sends the money from their bank.
+  const startEtransfer = () => {
+    const delivery = { faster: useFaster, signature };
+    try { window.sessionStorage.setItem('rfx_checkout_delivery', JSON.stringify(delivery)); } catch { /* storage blocked: the page falls back to Standard */ }
+    trackEvent('add_payment_info', { currency: STORE_CURRENCY_CODE, value: total, payment_type: ETRANSFER, items: items.map((item) => ecommerceItem(item, item.qty)) });
+    navigate('/checkout/e-transfer', { state: delivery });
+  };
+
   const startCheckout = async () => {
+    if (method.id === ETRANSFER) { startEtransfer(); return; }
     setRedirecting(true);
     try {
       // Never blocks checkout: resolves {} when analytics is unavailable or blocked.
@@ -119,6 +177,7 @@ export default function Checkout() {
           : (useFaster || signature)
             ? { country: 'CA', faster: useFaster, signature }
             : undefined,
+        method.id === BANK_DEBIT ? BANK_DEBIT : undefined,
       );
       // Which delivery the buyer chose, for GA4's shipping_tier report (Standard, Faster, "Faster + signature", ...).
       const tier = international
@@ -132,7 +191,8 @@ export default function Checkout() {
       });
       trackEvent('checkout_redirect', {
         currency: STORE_CURRENCY_CODE,
-        value: totalBeforeTax,
+        value: total,
+        payment_type: method.id,
         items: items.map((item) => ecommerceItem(item, item.qty)),
       });
       window.location.href = data.url; // hand off to Stripe's hosted checkout
@@ -311,6 +371,20 @@ export default function Checkout() {
                     )}
                   </div>
 
+                  {!international && methods.length > 1 && (
+                    <fieldset className="mb-5 space-y-2" data-testid="checkout-payment-methods">
+                      <legend className="text-[13px] text-neutral-400 mb-1">Pay with</legend>
+                      {methods.map((m) => (
+                        <PaymentRow key={m.id} method={m} goods={subtotal} selected={method.id === m.id} onSelect={() => setMethodId(m.id)} disabledReason={sizeProblemFor(m)} />
+                      ))}
+                      {method.discountPct > 0 && (
+                        <p className="text-[12px] text-neutral-500" data-testid="checkout-payment-note">
+                          The discount is taken off the goods, not the shipping. Promotion codes cannot be combined with it: choose card to use one.
+                        </p>
+                      )}
+                    </fieldset>
+                  )}
+
                   <dl className="space-y-3 text-[15px]">
                     <div className="flex justify-between gap-4">
                       <dt className="text-neutral-400">Subtotal ({itemCount} {itemCount === 1 ? 'item' : 'items'})</dt>
@@ -326,6 +400,12 @@ export default function Checkout() {
                             : 'Canada Post, tracked: $14 for 1–2 sticks, $25 for 3 or more'}</span></dt>
                       <dd className="mono">{shippingAmount === undefined ? '—' : formatStorePrice(shippingAmount)}</dd>
                     </div>
+                    {paymentDiscount > 0 && (
+                      <div className="flex justify-between gap-4" data-testid="checkout-payment-discount">
+                        <dt className="text-neutral-400">Discount <span className="block text-[13px]">{method.discountPct}% off the goods for paying by {method.title}</span></dt>
+                        <dd className="mono text-emerald-500">-{formatStorePrice(paymentDiscount)}</dd>
+                      </div>
+                    )}
                     {dutiesAmount > 0 && (
                       <div className="flex justify-between gap-4" data-testid="checkout-us-duties">
                         <dt className="text-neutral-400">US import duties and fees <span className="block text-[13px]">Prepaid, nothing due on delivery</span></dt>
@@ -339,7 +419,7 @@ export default function Checkout() {
                   </dl>
                   <div className="flex justify-between items-baseline gap-4 border-t border-white/10 mt-4 pt-4 mb-5">
                     <span className="font-semibold">Total</span>
-                    <span className="mono font-semibold text-[18px]">{formatStorePrice(totalBeforeTax)}</span>
+                    <span className="mono font-semibold text-[18px]">{formatStorePrice(total)}</span>
                   </div>
 
                   <button
@@ -350,19 +430,29 @@ export default function Checkout() {
                   >
                     {redirecting
                       ? (<><Loader2 size={16} className="animate-spin" /> Opening secure checkout…</>)
-                      : (<><Lock size={15} /> Continue to secure checkout <ArrowRight size={16} /></>)}
+                      : (<><Lock size={15} /> {method.cta} <ArrowRight size={16} /></>)}
                   </button>
                   <p className="text-[12px] text-neutral-500 text-center mt-3">All prices are in {STORE_CURRENCY_NAME}.</p>
 
                   <div className="mt-5 space-y-3 text-[13px] text-neutral-400">
                     <div className="flex items-start gap-2.5">
                       <ShieldCheck size={16} className="shrink-0 mt-0.5" />
-                      <span>Payment and address handled securely by Stripe</span>
+                      <span>{method.id === ETRANSFER
+                        ? 'You send the e-Transfer yourself, from your own bank. Nothing is charged by us.'
+                        : 'Payment and address handled securely by Stripe'}</span>
                     </div>
                     <div className="flex items-start gap-2.5" data-testid="checkout-payments">
                       <CreditCard size={16} className="shrink-0 mt-0.5" />
                       <span>{ACCEPTED_PAYMENTS_SENTENCE}</span>
                     </div>
+                    {method.id !== CARD && (
+                      <div className="flex items-start gap-2.5" data-testid="checkout-payment-how">
+                        <Lock size={16} className="shrink-0 mt-0.5" />
+                        <span>{method.id === BANK_DEBIT
+                          ? 'Bank debit: your account is confirmed by Stripe. The debit clears in up to 5 business days and we ship the day it does.'
+                          : `e-Transfer: we email you the address and the message to use. Your items are held for ${method.holdHours || 48} hours; we ship once the transfer arrives.`}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </aside>

@@ -7,7 +7,8 @@
     "dev": "nodemon src/server.js",
     "seed": "node src/scripts/seed.js",
     "test": "node --test test/*.test.js",
-    "test:atlas": "RUN_ATLAS_TRANSACTION_TESTS=1 node --test test/atlas-stock-transaction.integration.test.js"
+    "test:atlas": "RUN_ATLAS_TRANSACTION_TESTS=1 node --test test/atlas-stock-transaction.integration.test.js",
+    "test:payments": "node --test test/payments-mongo.integration.test.js"
   },
   "keywords": [],
   "author": "",

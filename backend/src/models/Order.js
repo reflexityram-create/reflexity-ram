@@ -62,7 +62,27 @@ const orderSchema = new mongoose.Schema({
     enum: ['pending', 'paid', 'failed', 'refunded'],
     default: 'pending',
   },
+  // 'stripe' = card and wallets through Stripe Checkout (the default and every order before 2026-10-13), 'bank_debit' =
+  // Stripe pre-authorized debit (clears days later), 'etransfer' = Interac e-Transfer confirmed by the owner by hand.
   paymentMethod: { type: String, default: 'stripe' },
+  // The percent discount the payment method gave on the goods (bank debit / e-Transfer); `discount` holds the dollars.
+  paymentDiscountPct: { type: Number },
+  // When the money actually arrived, for a method that clears after the order was placed (bank debit, e-Transfer). A card
+  // order is paid when it is created, so it has none and everything that needs "when was it paid" falls back to createdAt.
+  paidAt: { type: Date },
+  // Interac e-Transfer orders only (utils/etransfer.js). The order is saved unpaid with its stock held; the owner marks
+  // the transfer received, or the hold lapses at expiresAt and the stock goes back.
+  etransfer: {
+    recipientEmail: { type: String },   // the address the buyer was told to pay, kept so a later change cannot confuse an open order
+    amountDue: { type: Number },
+    expiresAt: { type: Date },
+    reminderSentAt: { type: Date },
+    expiredAt: { type: Date },
+    receivedAt: { type: Date },
+    receivedAmount: { type: Number },
+    confirmation: { type: String },     // the bank's e-Transfer confirmation number, if the owner typed it in
+    confirmedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  },
   stripePaymentIntentId: { type: String },
   stripeCheckoutSessionId: { type: String },
   stripeChargeId: { type: String },
@@ -136,6 +156,8 @@ const orderSchema = new mongoose.Schema({
 
 orderSchema.index({ user: 1, createdAt: -1 });
 orderSchema.index({ status: 1 });
+// The e-Transfer sweeper (expire / remind) looks only at unpaid e-Transfer orders.
+orderSchema.index({ paymentMethod: 1, paymentStatus: 1, status: 1, 'etransfer.expiresAt': 1 });
 // UNIQUE: the DB enforces one order per PaymentIntent even if the app-level
 // duplicate check races (two simultaneous submissions of the same PI).
 // sparse: allows legacy/manual orders without a PI.

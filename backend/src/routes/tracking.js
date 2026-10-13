@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const express = require('express');
 const { isConfigured } = require('../utils/canadaPost');
 const { syncShippedOrders } = require('../utils/trackingSync');
+const { sweepEtransferOrders } = require('../utils/etransfer');
 
 const router = express.Router();
 
@@ -19,6 +20,15 @@ const tokenMatches = (given) => {
 router.post('/sync', async (req, res) => {
   const given = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   if (!tokenMatches(given)) return res.status(401).json({ error: 'Unauthorized' });
+  // The same 15-minute call also expires or reminds unpaid Interac e-Transfer orders. It runs first and on its own, so an
+  // unconfigured carrier (below) never stops it and a failure here never stops the tracking sync. The answer to the cron stays
+  // exactly the tracking summary; what the sweep did goes to the log.
+  try {
+    const swept = await sweepEtransferOrders();
+    if (swept.expired || swept.reminded || swept.errors) console.log(`e-Transfer sweep: ${JSON.stringify(swept)}`);
+  } catch (err) {
+    console.error('e-Transfer sweep error:', err.message);
+  }
   if (!isConfigured()) return res.status(503).json({ error: 'Canada Post tracking is not configured' });
   try {
     res.json(await syncShippedOrders());

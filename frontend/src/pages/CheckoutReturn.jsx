@@ -38,6 +38,16 @@ export default function CheckoutReturn() {
         const { data } = await stripeApi.sessionStatus(checkoutSessionId);
         if (cancelled) return;
 
+        // A bank debit that is still clearing: the order exists and is held for the buyer, but it is not paid yet. Show it,
+        // without reporting a purchase (the server reports it when the money clears).
+        if (data.status === 'processing' && data.orderNumber) {
+          trackEvent('checkout_return', { outcome: 'processing' });
+          clearCartLocal();
+          const emailParam = data.email ? `?email=${encodeURIComponent(data.email)}` : '';
+          navigate(`/order/${data.orderNumber}${emailParam}`, { replace: true });
+          return;
+        }
+
         if (data.status === 'complete' && data.orderNumber) {
           // When the server reports the purchase itself (GA4 Measurement Protocol), reporting
           // it here too would double-count; the browser path is only the fallback.

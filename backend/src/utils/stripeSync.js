@@ -95,4 +95,32 @@ const syncStripeProductDetails = async (product) => {
   }
 };
 
-module.exports = { ensureStripePrice, syncStripeProductDetails, STRIPE_ENABLED };
+// The coupon behind the bank-debit discount: one reusable percent-off coupon per percentage, created the first time it is
+// needed (id rfx-bank-debit-1pct, 1.5% -> rfx-bank-debit-1p5pct). Stripe applies it to the goods only, never the shipping.
+const bankDebitCouponId = (pct) => `rfx-bank-debit-${String(pct).replace('.', 'p')}pct`;
+
+const ensureBankDebitCoupon = async (pct) => {
+  if (!stripe) return null;
+  const id = bankDebitCouponId(pct);
+  try {
+    const found = await stripe.coupons.retrieve(id);
+    if (found?.valid !== false) return found.id;
+  } catch (err) {
+    if (err?.code !== 'resource_missing' && err?.statusCode !== 404) throw err;
+  }
+  try {
+    const created = await stripe.coupons.create({
+      id,
+      percent_off: pct,
+      duration: 'once',
+      name: `Bank debit discount (${pct}%)`,
+      metadata: { purpose: 'bank-debit-discount' },
+    });
+    return created.id;
+  } catch (err) {
+    if (err?.code === 'resource_already_exists') return id;   // another request made it first
+    throw err;
+  }
+};
+
+module.exports = { ensureStripePrice, syncStripeProductDetails, ensureBankDebitCoupon, bankDebitCouponId, STRIPE_ENABLED };

@@ -66,6 +66,21 @@ test('nothing is sent when tracking is off, the order is unpaid, or it is too ol
   assert.equal(OrderModel.state.sentAt, null, 'skipped orders must not be claimed');
 });
 
+test('a bank debit or e-Transfer that cleared days after it was placed is still reported, dated and aged from when it was paid (review F4)', async () => {
+  const day = 24 * 3600 * 1000;
+  const sends = [];
+  const send = async (order) => { sends.push(order); return { sent: true }; };
+  const run = (order) => reportPaidOrderToGa4(order, { OrderModel: fakeOrderModel(), send, isEnabled: enabled, now: () => NOW, logger });
+
+  // placed four days ago, paid an hour ago: reported
+  assert.equal(await run({ ...paid, createdAt: new Date(NOW - 4 * day), paidAt: new Date(NOW - 3600 * 1000) }), true);
+  // the same order with no paid date (a card order that old) is judged by its creation, exactly as before
+  assert.equal(await run({ ...paid, createdAt: new Date(NOW - 4 * day) }), false);
+  // paid itself too long ago for GA4 to accept
+  assert.equal(await run({ ...paid, createdAt: new Date(NOW - 9 * day), paidAt: new Date(NOW - 4 * day) }), false);
+  assert.equal(sends.length, 1);
+});
+
 test('database or sender failures are swallowed so fulfilment is never blocked', async () => {
   const exploding = { findOneAndUpdate: () => { throw new Error('db down'); } };
   assert.equal(await reportPaidOrderToGa4(paid, { OrderModel: exploding, isEnabled: enabled, now: () => NOW, logger }), false);

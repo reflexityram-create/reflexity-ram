@@ -63,6 +63,27 @@ services:
       # United States is simply not offered (utils/zonos.js).
       - key: ZONOS_API_KEY
         sync: false
+      # Other ways to pay (utils/paymentMethods.js, docs/payments.md). All OFF unless set to "true". Bank debit needs Stripe's
+      # pre-authorized debit capability (active on the account). Interac e-Transfer also needs ETRANSFER_RECIPIENT_EMAIL: the
+      # address that receives the transfers (auto-deposit on); without it e-Transfer is never offered.
+      - key: BANK_DEBIT_ENABLED
+        sync: false
+      - key: BANK_DEBIT_DISCOUNT_PCT
+        sync: false
+      - key: ETRANSFER_ENABLED
+        sync: false
+      - key: ETRANSFER_RECIPIENT_EMAIL
+        sync: false
+      - key: ETRANSFER_DISCOUNT_PCT
+        sync: false
+      - key: ETRANSFER_HOLD_HOURS
+        sync: false
+      - key: ETRANSFER_REMINDER_HOURS
+        sync: false
+      - key: ETRANSFER_MAX_UNITS
+        sync: false
+      - key: ETRANSFER_MAX_TOTAL_CAD
+        sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET

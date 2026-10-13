@@ -25,6 +25,7 @@ const Shop = lazy(() => import("@/pages/Shop"));
 const Product = lazy(() => import("@/pages/Product"));
 const Cart = lazy(() => import("@/pages/Cart"));
 const Checkout = lazy(() => import("@/pages/Checkout"));
+const CheckoutEtransfer = lazy(() => import("@/pages/CheckoutEtransfer"));
 const OrderSuccess = lazy(() => import("@/pages/OrderSuccess"));
 const ReviewOrder = lazy(() => import("@/pages/ReviewOrder"));
 const CheckoutReturn = lazy(() => import("@/pages/CheckoutReturn"));
@@ -143,6 +144,7 @@ export default function App() {
           <Route path="/shop/:slug" element={<Product />} />
           <Route path="/cart" element={<Cart />} />
           <Route path="/checkout" element={<Checkout />} />
+          <Route path="/checkout/e-transfer" element={<CheckoutEtransfer />} />
           <Route path="/order/success" element={<CheckoutReturn />} />
           <Route path="/order/:orderNumber" element={<OrderSuccess />} />
           <Route path="/review" element={<ReviewOrder />} />
