@@ -58,28 +58,34 @@ item/product page.
 3. Use one clean, corporate, white-background, shadowless product photo with a
    readable original label. Preserve the actual module and label facts; do not
    invent a different label, test result, accessory, warranty or stock claim.
-   Do not put website addresses or offsite purchase/savings prompts in eBay
-   images. On October13, four older images contained website watermarks and
-   were replaced with the existing clean originals during policy recovery.
+   Latest owner correction on October13 reverses the watermark removal: keep
+   the approved website-watermarked16/64GB images. Do not silently replace
+   them with unbranded originals during copy edits. Preserve exact label pixels.
    The October 13 instruction for Samsung32 removed the old second photo, so
    do not re-add it without a new user request.
 4. Keep the first paragraph buyer-oriented and compact: exact part, condition,
    compatibility help and dispatch/return terms that are actually offered.
    Use a short specifications block, then precise purchase/quantity wording.
    Avoid filler, repeated headers and unverified claims.
-5. Latest correction (13 Oct 2026): Seller Hub explicitly hid all5
-   listings for **Offering to Buy or Sell Outside of eBay** after direct-order
-   savings text and the spaced website address were published. The spaced
-   domain is not a working solution. To resolve this violation, retain plain
-   **Reflexity RAM** branding, concise product facts and eBay-only shopping
-   links; remove external website addresses (including letter-spaced forms),
-   website-order prompts and offsite price/savings promotions from listings
-   and the bio. Keep the verified direct/eBay price comparison on the Reflexity
-   website, matching MPN/condition/unit and separating shipping/tax.
+5. Latest owner-selected layout (13 Oct 2026): show **Reflexity RAM**, then
+   a compact factual comparison: Website CADX · eBay CADY · Difference CADZ
+   per module, with shipping/taxes excluded. Add the exact same-MPN website
+   product-page link. Display the website name with the requested letter
+   spacing/capitalization **R E F L E X I T Y R A M . C O M**. No "shop at",
+   "buy direct", "order from our website" or other purchase instruction;
+   just the prices, difference and product information. Bio uses the same
+   informational wording and a refreshed, supported savings range.
+   Refresh both prices immediately before writing; preserve price/stock and
+   the owner's approved watermarked photos. Do not silently strip the owner's
+   requested information or revert images. The own website retains its same
+   matched price comparison. This owner preference does not establish a
+   policy exemption: successful save/public HTML is not proof that eBay has
+   cleared a violation. Existing cases were still hidden after prior edits.
+   Check Seller Hub after every trial and report actual enforcement status.
    Published [Links policy](https://www.ebay.ca/help/default/default/links-policy?id=4248)
    and [Profile policy](https://www.ebay.com/help/policies/listing-policies/search-and-browse-manipulation-policy?id=4234)
-   explain the restriction. Inspect any photo text too if a violation persists.
-   Do not invent an exception or present formatting tricks as policy approval.
+   restrict offsite promotion; do not claim spacing/capitalization guarantees
+   acceptance. Keep moderation cases/reviews distinct from published wording.
 6. In eBay's description editor, enable **Show HTML**, focus its textarea,
    use supported browser `computer` click → Ctrl+A → type the HTML → Tab,
    then switch Show HTML off and verify the rendered rich-text iframe.
@@ -171,7 +177,7 @@ without switching accounts. Do not preserve obsolete draft IDs as shortcuts.
 Verified 13 Oct 2026: the listing-copy release renders stored descriptions as
 safe plain-text paragraphs beneath the price; check the visible product page, not only the catalog API. Current
 compact templates and exact item-price comparison pairs are in
-`.ai/artifacts/policy-fix-2026-10-13/copy-plan.json`; they are dated examples,
+`.ai/artifacts/info-copy-2026-10-13/copy-plan.json`; they are dated examples,
 not future fixed prices.
 
 A corrected bounded example is kept at
