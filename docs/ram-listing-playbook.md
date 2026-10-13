@@ -58,6 +58,9 @@ item/product page.
 3. Use one clean, corporate, white-background, shadowless product photo with a
    readable original label. Preserve the actual module and label facts; do not
    invent a different label, test result, accessory, warranty or stock claim.
+   Do not put website addresses or offsite purchase/savings prompts in eBay
+   images. On October13, four older images contained website watermarks and
+   were replaced with the existing clean originals during policy recovery.
    The October 13 instruction for Samsung32 removed the old second photo, so
    do not re-add it without a new user request.
 4. Keep the first paragraph buyer-oriented and compact: exact part, condition,
