@@ -591,7 +591,7 @@ export default function Product() {
 
         {/* Sticky mobile buy bar */}
         <div
-          className="fixed bottom-0 left-0 right-0 z-40 lg:hidden border-t border-white/10 bg-black/85 backdrop-blur-xl px-4 py-3 flex items-center gap-3"
+          className="product-buy-bar fixed bottom-0 left-0 right-0 z-40 lg:hidden border-t border-white/10 bg-black/85 backdrop-blur-xl px-4 py-3 flex items-center gap-3"
           data-testid="mobile-buy-bar"
         >
           <div className="min-w-0 flex-1">

@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { Toaster, toast } from "sonner";
 
 import ScrollToTop from "@/components/ScrollToTop";
+import AdminTabBar from "@/components/AdminTabBar";
 import { useApplyTheme, useTheme } from "@/lib/theme";
 import useAuthStore from "@/lib/authStore";
 import { AUTH_TOKEN_KEY } from "@/lib/authSession";
@@ -62,6 +63,7 @@ const AdminProducts = lazy(() => import("@/pages/admin/Products"));
 const AdminOrders = lazy(() => import("@/pages/admin/Orders"));
 const AdminUsers = lazy(() => import("@/pages/admin/Users"));
 const AdminSecurity = lazy(() => import("@/pages/admin/Security"));
+const AdminMore = lazy(() => import("@/pages/admin/More"));
 
 export default function App() {
   useApplyTheme();
@@ -111,6 +113,7 @@ export default function App() {
       <BrowserRouter>
         <ScrollToTop />
         <AnalyticsTracker />
+        <AdminTabBar />
         <Suspense fallback={null}><Routes>
           {/* Store */}
           <Route path="/" element={<Home />} />
@@ -171,6 +174,7 @@ export default function App() {
           <Route path="/admin/orders" element={<AdminOrders />} />
           <Route path="/admin/users" element={<AdminUsers />} />
           <Route path="/admin/security" element={<AdminSecurity />} />
+          <Route path="/admin/more" element={<AdminMore />} />
 
           <Route path="/categories" element={<Categories />} />
           <Route path="/auth/callback" element={<AuthCallback />} />

@@ -265,6 +265,8 @@ public final class MainActivity extends Activity {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setMediaPlaybackRequiresUserGesture(true);
         settings.setSupportZoom(false);
+        // Lets the page know it is inside the app (frontend/src/lib/appBridge.js: isAdminApp), e.g. to leave out "Sign out".
+        settings.setUserAgentString(settings.getUserAgentString() + " ReflexityAdminApp/" + Config.APP_VERSION);
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {

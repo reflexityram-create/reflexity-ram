@@ -941,8 +941,11 @@ html[data-kbd] .admin-tabbar { display: none; }
     border-radius: 0 0 3px 3px;
     background: var(--brand-yellow);
 }
-.admin-main { padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px)); }
-@media (min-width: 768px) { .admin-main { padding-bottom: 0; } }
+/* The bar is on every page for an admin (the store included): room under the page, and the product page's own buy bar rides above it. */
+@media (max-width: 767px) {
+    body.has-admin-bar { padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px)); }
+    body.has-admin-bar .product-buy-bar { bottom: calc(58px + env(safe-area-inset-bottom, 0px)); }
+}
 /* A toast must not sit under the tab bar. */
 @media (max-width: 767px) {
     html[data-admin-shell] [data-sonner-toaster] {
@@ -1005,7 +1008,9 @@ html[data-kbd] .admin-tabbar { display: none; }
     -webkit-tap-highlight-color: transparent;
     transition: background-color 0.15s ease, border-color 0.15s ease;
 }
-button.admin-card:active { background: var(--glass-bg-hover); border-color: var(--border-strong); }
+button.admin-card:active, a.admin-card:active { background: var(--glass-bg-hover); border-color: var(--border-strong); }
+/* A card laid out as one row (icon, text, arrow): the display set above would otherwise beat a utility class. */
+.admin-card.admin-card-row { display: flex; align-items: center; gap: 0.75rem; }
 /* The yellow edge is an inset shadow, not a thicker border, so a card that needs the owner lines up with the others. */
 .admin-card.needs-you { box-shadow: inset 4px 0 0 var(--brand-yellow); }
 

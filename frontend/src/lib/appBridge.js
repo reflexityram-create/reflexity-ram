@@ -21,3 +21,8 @@ export function handleBack() {
 }
 
 if (typeof window !== 'undefined') window.rfxHandleBack = handleBack;
+
+// The phone app adds "ReflexityAdminApp/<version>" to the web view's user agent, so a page can tell it is inside the app.
+const APP_AGENT = /ReflexityAdminApp\/([\w.]+)/;
+export const isAdminApp = (agent = typeof navigator === 'undefined' ? '' : navigator.userAgent) => APP_AGENT.test(agent);
+export const appVersion = (agent = typeof navigator === 'undefined' ? '' : navigator.userAgent) => (agent.match(APP_AGENT) || [])[1] || '';
