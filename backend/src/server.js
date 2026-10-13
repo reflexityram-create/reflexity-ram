@@ -25,6 +25,7 @@ const { createLeadRouter } = require('./routes/leads');
 const { createDeviceRouter } = require('./routes/device');
 const { createPaymentsRouter } = require('./routes/payments');
 const { sweepEtransferOrdersThrottled } = require('./utils/etransfer');
+const { syncShippedOrdersThrottled } = require('./utils/trackingSync');
 const { createAdminDevicesRouter } = require('./routes/adminDevices');
 const { createDeviceLimiter, createPairLimiter } = require('./middleware/phoneLimiters');
 const { fixMerchantProductData } = require('./migrations/fixMerchantProductData');
@@ -319,6 +320,17 @@ mongoose
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`   Stripe: ${STRIPE_ENABLED ? 'enabled' : 'disabled'}`);
     });
+    // The jobs that must not depend on GitHub's thinned-out schedule: expire/remind unpaid e-Transfer orders and follow tracked parcels
+    // (mark shipped on Canada Post's first scan, mark delivered, email the buyer). Each throttles itself to its own interval and never
+    // throws; they run a minute after a start (a deploy restarts the server) and then every five minutes while the server is awake.
+    if (process.env.NODE_ENV !== 'test') {
+      const backgroundJobs = () => {
+        sweepEtransferOrdersThrottled().catch(() => {});
+        syncShippedOrdersThrottled().catch(() => {});
+      };
+      setTimeout(backgroundJobs, 60 * 1000).unref();
+      setInterval(backgroundJobs, 5 * 60 * 1000).unref();
+    }
   })
   .catch((err) => {
     console.error('❌ MongoDB connection error:', err.message);

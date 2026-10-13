@@ -1,8 +1,9 @@
 name: Canada Post tracking sync
 
-# Every 15 minutes the site checks tracked paid orders with Canada Post, marks
-# delivered orders and emails buyers (backend/src/utils/trackingSync.js).
-# Scheduled here because the Render free plan sleeps between requests.
+# Asks the site to check tracked paid orders with Canada Post: mark shipped on the first scan, mark delivered, email buyers
+# (backend/src/utils/trackingSync.js). The cron below says every 15 minutes, but GitHub only runs it about four times a day (measured:
+# 33 runs in 8 days), so the server also runs the same job itself every 15 minutes while it is awake (server.js). This schedule stays
+# because it wakes a sleeping Render free instance and is the only trigger when nothing keeps the server awake.
 on:
   schedule:
     - cron: '7,22,37,52 * * * *'

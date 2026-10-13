@@ -167,7 +167,12 @@ test('the ship card asks for a number or "no tracking number", says what the buy
   assert.match(actions, /<ConfirmButton[\s\S]*?label="Mark as shipped"[\s\S]*?disabled=\{!request\.ok\}/);
   assert.match(actions, /label="Mark as delivered"[\s\S]*?BUYER_EMAIL\.deliver/);
   assert.match(actions, /variant="danger"[\s\S]*?label="Cancel this order"[\s\S]*?BUYER_EMAIL\.cancel/);
-  assert.match(actions, /updateOrderTracking\(order\._id, trackingNumber\.trim\(\)\)/, 'saving a number alone is still possible, under "More options"');
+  assert.match(actions, /updateOrderTracking\(order\._id, trackingNumber\.trim\(\)\)/, 'saving a number alone is still possible');
+  // ...and it is a visible choice, not a hidden one: "let Canada Post mark it shipped" sits under the primary button, only for a new number
+  assert.match(actions, /const canLetCanadaPostDoIt = number\.trim\(\) !== '' && number\.trim\(\) !== String\(order\.trackingNumber \|\| ''\)\.trim\(\);/);
+  assert.match(actions, /\{canLetCanadaPostDoIt && \(\s*<div className="space-y-2" data-testid="order-let-canada-post">/);
+  assert.match(actions, /Save the number, let Canada Post mark it shipped/);
+  assert.match(actions, /data-testid="order-tracking-saved"/, 'a saved number says what the site will do with it');
 });
 
 test('the confirm button asks in the page, so it works in the phone app web view', async () => {
