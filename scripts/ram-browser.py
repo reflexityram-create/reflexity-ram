@@ -26,7 +26,7 @@ PROFILES = {"ebay": "yusuf", "reflexity": "reflexity"}
 URLS = {
     ("ebay", "active"): "https://www.ebay.ca/sh/lst/active",
     ("ebay", "drafts"): "https://www.ebay.ca/sh/lst/drafts",
-    ("ebay", "create"): "https://www.ebay.ca/sl/sell",
+    ("ebay", "create"): "https://www.ebay.ca/sl/prelist/suggest?sr=shstart",
     ("reflexity", "admin-products"): "https://reflexityram.com/admin/products",
     # Source-verified query opens the Add modal directly.
     ("reflexity", "create"): "https://reflexityram.com/admin/products?new=1",
