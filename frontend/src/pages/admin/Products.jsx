@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppLayout from '@/components/AppLayout';
+import AdminSheet from '@/components/admin/AdminSheet';
 import { WholesaleLotsSection } from '@/pages/admin/WholesaleAdmin';
 import { adminApi } from '@/lib/api';
 import { formatStorePrice } from '@/lib/currency';
@@ -279,17 +280,8 @@ function ProductModal({ product, onClose, onSave }) {
   const formFactors = formFactorsForLine(form.line);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-auto">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-3xl glass rounded-2xl p-6 my-6">
-
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="font-bold text-lg">{isEdit ? 'Edit product' : 'New product'}</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-neutral-500 hover:text-white hover:bg-white/5">
-            <X size={16} />
-          </button>
-        </div>
-
+    <AdminSheet titleId="product-sheet-title" title={isEdit ? 'Edit product' : 'New product'} onClose={onClose} closeLabel="Close product editor" wide>
+      <div>
         <form onSubmit={handleSubmit} className="space-y-5">
 
           {/* PRODUCT */}
@@ -430,16 +422,49 @@ function ProductModal({ product, onClose, onSave }) {
             </div>
           </div>
 
-          <div className="flex gap-3 pt-1">
-            <button type="button" onClick={onClose} className="btn-ghost flex-1">Cancel</button>
-            <button type="submit" disabled={saving} className="btn-primary flex-1 flex items-center justify-center gap-2">
+          {/* On a phone the buttons stay at the bottom of the screen while the form scrolls */}
+          <div className="sticky bottom-[calc(-1rem-env(safe-area-inset-bottom,0px))] -mx-4 -mb-4 flex gap-3 border-t bg-[var(--bg)] px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] md:static md:m-0 md:border-0 md:bg-transparent md:p-0 md:pt-1" style={{ borderColor: 'var(--border-strong)' }}>
+            <button type="button" onClick={onClose} className="btn-secondary min-h-11 flex-1">Cancel</button>
+            <button type="submit" disabled={saving} className="btn-primary min-h-11 flex-1 flex items-center justify-center gap-2">
               {saving && <Loader2 size={14} className="animate-spin" />}
               {isEdit ? 'Save changes' : 'Create product'}
             </button>
           </div>
         </form>
       </div>
-    </div>
+    </AdminSheet>
+  );
+}
+
+// One product as a card on a phone: tap it to edit; the two buttons under it are the things you do without opening it.
+function ProductCard({ product, busy, onEdit, onToggle }) {
+  const out = product.stockQuantity === 0;
+  const stockTone = out ? 'text-red-500' : product.stock === 'low' ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400';
+  return (
+    <li className="admin-card !p-0 overflow-hidden" data-testid="product-card">
+      <button type="button" onClick={onEdit} className="flex w-full items-center gap-3 p-3.5 text-left" aria-label={`Edit ${product.name}`}>
+        <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-white/5">
+          {product.images?.[0]
+            ? <img src={imageUrl(product.images[0])} alt="" className="h-full w-full object-cover" />
+            : <div className="flex h-full w-full items-center justify-center text-neutral-600"><ImageIcon size={16} /></div>}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="line-clamp-2 text-[14px] font-medium leading-snug">{product.name}</div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
+            <span className="mono text-[13px] font-semibold">{formatStorePrice(product.price)}</span>
+            <span className={`font-medium ${stockTone}`}>{out ? 'Out of stock' : `${product.stockQuantity} in stock`}</span>
+            {!product.isActive && <span className="pill text-[10px] py-0.5 text-neutral-500">Inactive</span>}
+          </div>
+        </div>
+        <ChevronRight size={16} className="shrink-0 text-neutral-500" aria-hidden="true" />
+      </button>
+      <div className="flex gap-2 border-t px-3.5 py-2.5" style={{ borderColor: 'var(--border)' }}>
+        <Link to={`/shop/${product.slug}`} className="btn-secondary min-h-11 flex-1 !px-3 text-[13px]">View in store</Link>
+        <button type="button" onClick={onToggle} disabled={busy} className={`min-h-11 flex-1 !px-3 text-[13px] ${product.isActive ? 'btn-danger' : 'btn-secondary'}`} data-testid="product-card-toggle">
+          {busy ? <Loader2 size={14} className="animate-spin" /> : product.isActive ? 'Deactivate' : 'Reactivate'}
+        </button>
+      </div>
+    </li>
   );
 }
 
@@ -507,36 +532,54 @@ export default function AdminProducts() {
     load();
   };
 
-  const handleStatusChange = async (product) => {
-    const nextActive = !product.isActive;
-    if (!confirm(`${nextActive ? 'Reactivate' : 'Deactivate'} this product?`)) return;
+  // Shows (reactivate) or hides (deactivate) a product on the store. Returns true when it worked.
+  const setActive = async (product, nextActive) => {
     setDeletingId(product._id);
     try {
       if (nextActive) await adminApi.updateProduct(product._id, { isActive: true });
       else await adminApi.deleteProduct(product._id);
-      toast.success(`Product ${nextActive ? 'reactivated' : 'deactivated'}`);
       load();
+      return true;
     } catch {
       toast.error(`Failed to ${nextActive ? 'reactivate' : 'deactivate'} product`);
+      return false;
     } finally {
       setDeletingId(null);
     }
   };
 
+  // The table (tablet and desktop) asks first.
+  const handleStatusChange = async (product) => {
+    const nextActive = !product.isActive;
+    if (!confirm(`${nextActive ? 'Reactivate' : 'Deactivate'} this product?`)) return;
+    if (await setActive(product, nextActive)) toast.success(`Product ${nextActive ? 'reactivated' : 'deactivated'}`);
+  };
+
+  // The phone cards act at once and offer Undo instead of a dialog (hiding a product is always reversible).
+  const quickToggle = async (product) => {
+    const nextActive = !product.isActive;
+    if (!(await setActive(product, nextActive))) return;
+    toast(`${nextActive ? 'Reactivated' : 'Deactivated'} ${product.name.slice(0, 40)}`, {
+      duration: 8000,
+      action: { label: 'Undo', onClick: () => setActive(product, !nextActive) },
+    });
+  };
+
   return (
     <AppLayout requireAdmin>
-      <div className="p-8">
-        <div className="flex items-center justify-between mb-6">
+      <div className="p-4 md:p-8">
+        <div className="flex items-start justify-between gap-3 mb-4 md:mb-6">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Products</h1>
             <p className="text-neutral-500 text-[13px] mt-0.5">{pagination.total} retail products · wholesale lots below</p>
           </div>
           <button
             onClick={() => { setModalProduct({}); setModalOpen(true); }}
-            className="btn-primary flex items-center gap-2"
+            className="btn-primary min-h-11 flex shrink-0 items-center gap-2 !px-4 md:!px-[1.4rem]"
+            aria-label="Add product"
           >
             <Plus size={14} />
-            Add product
+            <span className="hidden sm:inline">Add product</span><span className="sm:hidden">Add</span>
           </button>
         </div>
 
@@ -549,8 +592,19 @@ export default function AdminProducts() {
           </div>
         )}
 
-        {/* Table */}
-        <div className="glass rounded-2xl overflow-hidden">
+        {/* Phone: cards. The whole card opens the editor. */}
+        <ul className="space-y-2.5 md:hidden" data-testid="products-cards">
+          {loading && products.length === 0 ? (
+            <li className="glass rounded-2xl p-8 text-center text-neutral-500"><Loader2 size={16} className="animate-spin inline mr-2" />Loading…</li>
+          ) : products.length === 0 ? (
+            <li className="glass rounded-2xl p-8 text-center text-neutral-500">No products found</li>
+          ) : products.map((p) => (
+            <ProductCard key={p._id} product={p} busy={deletingId === p._id} onEdit={() => { setModalProduct(p); setModalOpen(true); }} onToggle={() => quickToggle(p)} />
+          ))}
+        </ul>
+
+        {/* Tablet and desktop: the table */}
+        <div className="glass rounded-2xl overflow-hidden hidden md:block">
           <div className="overflow-x-auto">
             <table className="w-full text-[13px]">
               <thead>
@@ -663,14 +717,14 @@ export default function AdminProducts() {
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page <= 1}
-                  className="btn-ghost py-1.5 px-3 flex items-center gap-1"
+                  className="btn-ghost py-1.5 px-3 flex items-center gap-1 min-h-11"
                 >
                   <ChevronLeft size={13} /> Prev
                 </button>
                 <button
                   onClick={() => setPage(p => Math.min(pagination.pages, p + 1))}
                   disabled={page >= pagination.pages}
-                  className="btn-ghost py-1.5 px-3 flex items-center gap-1"
+                  className="btn-ghost py-1.5 px-3 flex items-center gap-1 min-h-11"
                 >
                   Next <ChevronRight size={13} />
                 </button>

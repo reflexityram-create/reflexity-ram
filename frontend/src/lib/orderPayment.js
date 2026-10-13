@@ -19,7 +19,12 @@ export function paymentState(order) {
 }
 
 // The same order may be shown in a list: only the states that are not a plain paid card order need a second label there.
-export const showPaymentLabel = (order) => paymentState(order).key !== 'paid' || (order?.paymentMethod && order.paymentMethod !== 'stripe');
+// (An unpaid order that was cancelled already says "cancelled" as its status: a second "Cancelled" beside it adds nothing.)
+export const showPaymentLabel = (order) => {
+  const key = paymentState(order).key;
+  if (key === 'cancelled') return false;
+  return key !== 'paid' || Boolean(order?.paymentMethod && order.paymentMethod !== 'stripe');
+};
 
 export const TONE_CLASS = { ok: 'pill-accent', warn: 'pill-amber', bad: 'text-red-500', muted: 'text-neutral-500' };
 

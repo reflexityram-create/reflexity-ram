@@ -2,9 +2,11 @@ package com.reflexityram.admin;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.net.Uri;
@@ -19,6 +21,8 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
+import android.webkit.JsPromptResult;
+import android.webkit.JsResult;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
@@ -47,9 +51,12 @@ import java.util.concurrent.Executors;
 public final class MainActivity extends Activity {
     private static final int REQ_FILE = 11;
     private static final int REQ_NOTIFICATIONS = 12;
-    private static final String ERROR_HTML = "<html><body style='background:#0a0a0c;color:#f5f5f7;font-family:sans-serif;padding:32px'>"
-            + "<h2>Can't reach the shop</h2><p style='color:#a0a0aa'>Check the connection, then</p>"
-            + "<p><a style='color:#ffcf24;font-size:18px' href='rfx://retry'>Try again</a></p></body></html>";
+    // Light by default, dark when the phone is: the web view reports the app theme as prefers-color-scheme.
+    private static final String ERROR_HTML = "<html><head><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='color-scheme' content='light dark'>"
+            + "<style>body{background:#fafaf7;color:#17181a;font-family:sans-serif;padding:32px}p.m{color:#55585e}a{color:#8a5a00;font-size:18px}"
+            + "@media (prefers-color-scheme:dark){body{background:#08090a;color:#f2f2ee}p.m{color:#a6a8ad}a{color:#ffcf24}}</style></head><body>"
+            + "<h2>Can't reach the shop</h2><p class='m'>Check the connection, then</p>"
+            + "<p><a href='rfx://retry'>Try again</a></p></body></html>";
 
     private final ExecutorService background = Executors.newSingleThreadExecutor();
     private final Handler ui = new Handler(Looper.getMainLooper());
@@ -59,11 +66,17 @@ public final class MainActivity extends Activity {
     private ValueCallback<Uri[]> fileCallback;
     private String pendingPath = Config.HOME_PATH;
     private boolean tokenPlanted = false;
+    /** Set when the admin page is loaded right after the sign-in page, so the sign-in page can be dropped from the history once it has loaded. */
+    private boolean clearHistoryNext = false;
+    private int nightMode;
+    private String restorePath;
     private OnBackInvokedCallback backCallback;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        nightMode = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
+        if (savedInstanceState != null) restorePath = savedInstanceState.getString("rfx_path");
         store = new Store(this);
         Notifier.createChannels(this);
         root = new FrameLayout(this);
@@ -75,12 +88,24 @@ public final class MainActivity extends Activity {
         });
         setContentView(root);
         if (Build.VERSION.SDK_INT >= 33) {
-            backCallback = () -> {
-                if (web != null && web.canGoBack()) web.goBack(); else finish();
-            };
+            backCallback = this::goBackOrExit;
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, backCallback);
         }
         route(getIntent());
+    }
+
+    /** The phone switched between light and dark: the colours come from resources and the site's theme is planted from them, so start over on the same page. */
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        if ((newConfig.uiMode & Configuration.UI_MODE_NIGHT_MASK) != nightMode) recreate();
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        String url = web == null ? null : web.getUrl();
+        if (url != null && url.startsWith(Config.SITE)) outState.putString("rfx_path", url.substring(Config.SITE.length()));
     }
 
     @Override
@@ -113,7 +138,19 @@ public final class MainActivity extends Activity {
     @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
-        if (web != null && web.canGoBack()) web.goBack(); else super.onBackPressed();
+        goBackOrExit();
+    }
+
+    /**
+     * Back closes whatever the page has open on top (an order, a product), else goes back in the page, else leaves the app. The page
+     * answers through window.rfxHandleBack (frontend/src/lib/appBridge.js); an older page without it simply answers nothing.
+     */
+    private void goBackOrExit() {
+        if (web == null) { finish(); return; }
+        web.evaluateJavascript("(function(){return !!(window.rfxHandleBack && window.rfxHandleBack());})()", result -> {
+            if ("true".equals(result)) return;
+            if (web != null && web.canGoBack()) web.goBack(); else finish();
+        });
     }
 
     // ── what the app was asked to do ──────────────────────────────────────────
@@ -128,7 +165,10 @@ public final class MainActivity extends Activity {
         String path = Config.HOME_PATH;
         if (data != null && isSite(data) && data.getEncodedPath() != null && data.getEncodedPath().startsWith("/admin")) {
             path = data.getEncodedPath() + (data.getEncodedQuery() != null ? "?" + data.getEncodedQuery() : "");
+        } else if (restorePath != null && restorePath.startsWith("/")) {
+            path = restorePath;
         }
+        restorePath = null;
         showAdmin(path);
     }
 
@@ -141,20 +181,20 @@ public final class MainActivity extends Activity {
         int pad = dp(28);
         column.setPadding(pad, dp(72), pad, pad);
 
-        column.addView(text("Reflexity Admin", 26, Color.WHITE, true));
+        column.addView(text("Reflexity Admin", 26, getColor(R.color.text), true));
         column.addView(text("Open Admin > Security > Phone app on the website, press \"Pair a phone\" and type the code here.", 15, getColor(R.color.muted), false), spaced(dp(12)));
 
         EditText input = new EditText(this);
         input.setHint("ABCD-EFGH");
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         input.setTextSize(24);
-        input.setTextColor(Color.WHITE);
-        input.setHintTextColor(0xFF666670);
+        input.setTextColor(getColor(R.color.text));
+        input.setHintTextColor(getColor(R.color.hint));
         input.setGravity(Gravity.CENTER);
         input.setLetterSpacing(0.15f);
         column.addView(input, spaced(dp(28)));
 
-        TextView status = text(message == null ? "" : message, 14, 0xFFFF8A80, false);
+        TextView status = text(message == null ? "" : message, 14, getColor(R.color.error), false);
         Button pair = new Button(this);
         pair.setText("Pair this phone");
         pair.setBackgroundColor(getColor(R.color.brand));
@@ -170,7 +210,7 @@ public final class MainActivity extends Activity {
                 ui.post(() -> {
                     if (error == null) { onPaired(); return; }
                     pair.setEnabled(true);
-                    status.setTextColor(0xFFFF8A80);
+                    status.setTextColor(getColor(R.color.error));
                     status.setText(error);
                 });
             });
@@ -240,8 +280,10 @@ public final class MainActivity extends Activity {
                 if (url == null) return;
                 if (url.equals(Config.BRIDGE_PAGE)) {
                     // Same origin as the admin site: plant the session, then open the page that was asked for.
-                    plantToken(() -> view.loadUrl(Config.SITE + pendingPath));
+                    plantToken(() -> { clearHistoryNext = true; view.loadUrl(Config.SITE + pendingPath); });
                 } else if (url.startsWith(Config.SITE)) {
+                    // The sign-in page is not a place to go back to: once the real page is up, Back at its top leaves the app.
+                    if (clearHistoryNext) { clearHistoryNext = false; view.clearHistory(); }
                     // The site signed itself out (its own "Sign out" button): sign back in and reload.
                     view.evaluateJavascript("(function(){return localStorage.getItem('rfx_token') ? 'ok' : 'missing';})()", result -> {
                         if (result != null && result.contains("missing") && store.sessionJwt() != null) plantToken(view::reload);
@@ -255,6 +297,39 @@ public final class MainActivity extends Activity {
             }
         });
         web.setWebChromeClient(new WebChromeClient() {
+            // A web view shows no alert, confirm or prompt box unless the app does it: without these, window.confirm() answers "no" and a
+            // button that asks first does nothing. Only the shop's own pages may ask.
+            @Override
+            public boolean onJsAlert(WebView view, String url, String message, JsResult result) {
+                if (!askableUrl(url)) { result.cancel(); return true; }
+                new AlertDialog.Builder(MainActivity.this).setMessage(message)
+                        .setPositiveButton(android.R.string.ok, (d, w) -> result.confirm())
+                        .setOnCancelListener(d -> result.cancel()).show();
+                return true;
+            }
+
+            @Override
+            public boolean onJsConfirm(WebView view, String url, String message, JsResult result) {
+                if (!askableUrl(url)) { result.cancel(); return true; }
+                new AlertDialog.Builder(MainActivity.this).setMessage(message)
+                        .setPositiveButton(android.R.string.ok, (d, w) -> result.confirm())
+                        .setNegativeButton(android.R.string.cancel, (d, w) -> result.cancel())
+                        .setOnCancelListener(d -> result.cancel()).show();
+                return true;
+            }
+
+            @Override
+            public boolean onJsPrompt(WebView view, String url, String message, String defaultValue, JsPromptResult result) {
+                if (!askableUrl(url)) { result.cancel(); return true; }
+                EditText field = new EditText(MainActivity.this);
+                field.setText(defaultValue);
+                new AlertDialog.Builder(MainActivity.this).setMessage(message).setView(field)
+                        .setPositiveButton(android.R.string.ok, (d, w) -> result.confirm(field.getText().toString()))
+                        .setNegativeButton(android.R.string.cancel, (d, w) -> result.cancel())
+                        .setOnCancelListener(d -> result.cancel()).show();
+                return true;
+            }
+
             @Override
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
                 if (fileCallback != null) fileCallback.onReceiveValue(null);
@@ -325,7 +400,10 @@ public final class MainActivity extends Activity {
     private void plantToken(Runnable then) {
         String jwt = store.sessionJwt();
         if (jwt == null || web == null) { if (then != null) then.run(); return; }
-        String js = "(function(){try{localStorage.setItem('rfx_token'," + JSONObject.quote(jwt) + ");localStorage.removeItem('rfx-auth');return 'ok';}catch(e){return 'blocked';}})()";
+        // The site's own theme setting follows the phone (light or dark), so the page, the status bar and every dialog agree.
+        String theme = isNight() ? "dark" : "light";
+        String js = "(function(){try{localStorage.setItem('rfx_token'," + JSONObject.quote(jwt) + ");localStorage.removeItem('rfx-auth');"
+                + "localStorage.setItem('reflexity-theme',JSON.stringify({state:{theme:'" + theme + "'},version:0}));return 'ok';}catch(e){return 'blocked';}})()";
         web.evaluateJavascript(js, result -> {
             tokenPlanted = result != null && result.contains("ok");
             if (then != null) then.run();
@@ -362,6 +440,14 @@ public final class MainActivity extends Activity {
         if (requestCode != REQ_FILE || fileCallback == null) return;
         fileCallback.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode, data));
         fileCallback = null;
+    }
+
+    private boolean isNight() {
+        return (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+    }
+
+    private static boolean askableUrl(String url) {
+        return url != null && isSite(Uri.parse(url));
     }
 
     /** True for the shop's own pages (same scheme, host and port as Config.SITE, with or without "www."): the only ones the web view may show. */

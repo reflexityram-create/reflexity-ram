@@ -109,7 +109,7 @@ export default function Account() {
   return (
     <>
     <AppLayout>
-      <div className="p-8 max-w-4xl" data-testid="account-page">
+      <div className="p-4 md:p-8 max-w-4xl" data-testid="account-page">
         <div className="mb-8">
           <h1 className="text-2xl font-bold tracking-tight">Account</h1>
           {user && (

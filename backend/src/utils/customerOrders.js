@@ -70,6 +70,8 @@ const customerOrderResponse = (order) => {
     total: value.total,
     shippingMethod: value.shippingMethod,
     trackingNumber: value.trackingNumber,
+    // Shipped on purpose without a tracking number: the order page says so instead of waiting for a scan.
+    ...(value.untracked === true ? { untracked: true } : {}),
     trackingUrl: trackingUrlFor(value),
     trackingLatest: value.trackingLatest?.description
       ? {

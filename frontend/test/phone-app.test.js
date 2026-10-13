@@ -45,7 +45,8 @@ test('the Security page shows the phone panel, which talks only to the device ad
   assert.match(api, /createPairingCode: \(\) => api\.post\('\/admin\/devices\/pairing'\)/);
   assert.match(api, /revokeDevice: \(id\) => api\.delete\(`\/admin\/devices\/\$\{id\}`\)/);
   assert.match(api, /sendTestAlert: \(\) => api\.post\('\/admin\/devices\/test-event'\)/);
-  assert.match(panel, /window\.confirm\(`Remove "\$\{device\.label\}"\?/);
+  assert.match(panel, /<ConfirmButton[\s\S]*?message=\{`Remove "\$\{device\.label\}"\?/);
+  assert.doesNotMatch(panel, /window\.confirm/, 'a browser dialog does not show in the phone app web view');
   assert.doesNotMatch(panel, /token/i, 'the panel never handles a device token');
 });
 

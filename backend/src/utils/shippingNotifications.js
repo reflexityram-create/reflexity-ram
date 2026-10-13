@@ -9,7 +9,8 @@ async function notifyShipment(order, overrides = {}) {
   const deps = { Order, sendEmail: sendShippingNotificationEmail, now: () => new Date(), ...overrides };
   const now = deps.now();
   const claimed = await deps.Order.findOneAndUpdate({
-    _id: order._id, status: 'shipped', paymentStatus: 'paid', trackingNumber: order.trackingNumber,
+    // An untracked shipment has no number: null matches a missing field, so it can be claimed like any other.
+    _id: order._id, status: 'shipped', paymentStatus: 'paid', trackingNumber: order.trackingNumber ?? null,
     $or: [
       { 'shippingNotification.status': { $in: ['pending', 'failed'] } },
       { 'shippingNotification.status': 'sending', 'shippingNotification.claimedAt': { $lt: new Date(now - CLAIM_MS) } },

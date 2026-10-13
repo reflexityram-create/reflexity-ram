@@ -50,8 +50,9 @@ test('public catalog reads avoid credentialed custom headers and product images 
 });
 
 test('product and order detail requests are cancelled and identity-guarded', async () => {
-  const [product, orders, api, status] = await Promise.all([
+  const [product, orders, api, status, actions, rules] = await Promise.all([
     read('../src/pages/Product.jsx'), read('../src/pages/admin/Orders.jsx'), read('../src/lib/api.js'), read('../src/lib/adminOrderStatus.js'),
+    read('../src/components/admin/OrderActions.jsx'), read('../src/lib/adminOrders.js'),
   ]);
   assert.match(product, /new AbortController\(\)/);
   assert.match(product, /if \(!active\) return/);
@@ -60,20 +61,20 @@ test('product and order detail requests are cancelled and identity-guarded', asy
   assert.match(orders, /getOrder\(orderId, \{ signal: controller\.signal \}\)/);
   assert.match(orders, /if \(!active\) return/);
   assert.match(api, /getOrder: \(id, config = \{\}\)/);
-  assert.match(orders, /statusOptions\(order\)/);
+  assert.match(rules, /statusOptions\(order\)\.some\(\(status\) => status === 'cancelled'/);
   assert.match(status, /pending: \['processing', 'shipped', 'cancelled'\]/);
   assert.match(status, /order\.paymentStatus === 'paid'/);
   assert.match(status, /status === 'cancelled'/);
   assert.match(status, /status !== 'refunded'/);
-  assert.match(orders, /shippingNotification\?\.status === 'failed'/);
-  assert.match(orders, /statusForm\.status === 'shipped' \? 'Tracking number \(required\)'/);
+  assert.match(actions, /notice\?\.status === 'failed' \|\| notice\?\.status === 'skipped'/);
+  assert.match(rules, /Enter the tracking number, or tick "No tracking number"/);
 });
 
 test('dialogs expose semantics, keyboard dismissal, focus containment, and labels', async () => {
-  const [auth, image, orders] = await Promise.all([
-    read('../src/components/AuthModal.jsx'), read('../src/components/ImageModal.jsx'), read('../src/pages/admin/Orders.jsx'),
+  const [auth, image, sheet] = await Promise.all([
+    read('../src/components/AuthModal.jsx'), read('../src/components/ImageModal.jsx'), read('../src/components/admin/AdminSheet.jsx'),
   ]);
-  for (const source of [auth, image, orders]) {
+  for (const source of [auth, image, sheet]) {
     assert.match(source, /role="dialog"/);
     assert.match(source, /aria-modal="true"/);
     assert.match(source, /(?:event|e)\.key === ["']Escape["']/);

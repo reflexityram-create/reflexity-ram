@@ -1,17 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Loader2, ChevronLeft, ChevronRight, X, Package, Truck, Star } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronRight, Package, Truck, Star, RefreshCw, Copy, Check, History } from 'lucide-react';
 import { toast } from 'sonner';
 import AppLayout from '@/components/AppLayout';
+import AdminSheet from '@/components/admin/AdminSheet';
+import ConfirmButton from '@/components/admin/ConfirmButton';
+import OrderActions from '@/components/admin/OrderActions';
 import { adminApi } from '@/lib/api';
 import { imageUrl } from '@/lib/imageUrl';
 import ShippingPreparationPanel from '@/components/admin/ShippingPreparationPanel';
 import PaymentPanel from '@/components/admin/PaymentPanel';
 import { TONE_CLASS, paymentState, showPaymentLabel } from '@/lib/orderPayment';
-import { NEXT_STATUS, statusOptions } from '@/lib/adminOrderStatus';
-// The status filter's options. Kept in the same order as NEXT_STATUS and
-// matching the values the admin orders API accepts.
-const STATUS_OPTIONS = Object.keys(NEXT_STATUS);
+import { ORDER_VIEWS, ageLabel, countFor, customerName, isViewKey, nextStep, orderMoney } from '@/lib/adminOrders';
+
 const STATUS_PILLS = {
   pending: 'pill-amber',
   processing: 'pill-blue',
@@ -44,7 +45,6 @@ function ReviewEmailPanel({ order, onUpdated }) {
   const canSend = reviewable && !request.claimedAt && Boolean(email);
 
   const send = async () => {
-    if (!window.confirm(`Email ${email} a review request for this order now?`)) return;
     setSending(true);
     try {
       const { data } = await adminApi.sendReviewRequest(order._id);
@@ -64,63 +64,85 @@ function ReviewEmailPanel({ order, onUpdated }) {
       </div>
       <div className="text-neutral-300">{summary}</div>
       {canSend && (
-        <button type="button" onClick={send} disabled={sending} className="btn-ghost mt-3 flex items-center gap-2">
-          {sending && <Loader2 size={13} className="animate-spin" />}
-          Send review email now
-        </button>
+        <div className="mt-3">
+          <ConfirmButton
+            variant="secondary"
+            label="Send review email now"
+            confirmLabel="Yes, send it"
+            message={`Email ${email} a review request for this order now?`}
+            busy={sending}
+            onConfirm={send}
+            className="w-full sm:w-auto"
+            testId="review-email-send"
+          />
+        </div>
       )}
     </div>
   );
 }
 
-function OrderDetailModal({ orderId, onClose }) {
+const Row = ({ label, value, strong = false }) => (
+  <div className={`flex justify-between gap-3 ${strong ? 'pt-2 mt-2 border-t border-white/5 text-[13px] font-bold' : 'text-[12.5px] text-neutral-400'}`}>
+    <span>{label}</span>
+    <span className="mono">{value}</span>
+  </div>
+);
+
+// Collapsible block for the details the owner rarely needs (label preparation, history).
+const Fold = ({ icon: Icon, title, children, testId }) => (
+  <details className="glass rounded-xl text-[13px]" data-testid={testId}>
+    <summary className="flex min-h-12 cursor-pointer items-center gap-1.5 px-4 py-3 text-neutral-500 text-[11px] uppercase tracking-widest">
+      {Icon && <Icon size={11} />} {title}
+    </summary>
+    <div className="px-4 pb-4">{children}</div>
+  </details>
+);
+
+function CopyAddress({ text }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error('Could not copy the address');
+    }
+  };
+  return (
+    <button type="button" onClick={copy} className="btn-secondary min-h-11 mt-3 text-[12px]" data-testid="order-copy-address">
+      {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? 'Copied' : 'Copy address'}
+    </button>
+  );
+}
+
+function OrderSheet({ orderId, onClose, onChanged }) {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [updating, setUpdating] = useState(false);
-  const [statusForm, setStatusForm] = useState({ status: '', trackingNumber: '', note: '' });
-  const dialogRef = useRef(null);
-  const triggerRef = useRef(null);
 
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
-    triggerRef.current = document.activeElement;
     setLoading(true);
     setOrder(null);
-    setStatusForm({ status: '', trackingNumber: '', note: '' });
     adminApi.getOrder(orderId, { signal: controller.signal })
       .then(({ data }) => {
         if (!active) return;
         setOrder(data.order);
-        setStatusForm(f => ({ ...f, status: data.order.status }));
       })
       .catch((error) => {
         if (active && error?.code !== 'ERR_CANCELED') toast.error('Failed to load order');
       })
       .finally(() => active && setLoading(false));
-    const focusTimer = window.setTimeout(() => dialogRef.current?.querySelector('button,select,input')?.focus(), 0);
-    const onKey = (event) => {
-      if (event.key === 'Escape') onClose();
-      if (event.key !== 'Tab' || !dialogRef.current) return;
-      const focusable = [...dialogRef.current.querySelectorAll('button,select,input,textarea')].filter((el) => !el.disabled);
-      if (!focusable.length) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-    };
-    window.addEventListener('keydown', onKey);
     return () => {
       active = false;
       controller.abort();
-      window.clearTimeout(focusTimer);
-      window.removeEventListener('keydown', onKey);
-      triggerRef.current?.focus?.();
     };
   }, [orderId]);
 
-  // Only GET /orders/:id carries `shippingPreparation`; the status and review-email responses are plain orders, so replacing the order with them made the
-  // shipping panel vanish after any action. Read the order again instead (and fall back to what the action returned if that read fails).
+  // Only GET /orders/:id carries `shippingPreparation`; the status and review-email responses are plain orders, so replacing the order with them
+  // made the shipping panel vanish after any action. Read the order again instead (and fall back to what the action returned if that read fails).
+  // The list behind the sheet is refreshed too, so its counts and pills follow what was just done.
   const reloadOrder = async (fallback) => {
     try {
       const { data } = await adminApi.getOrder(orderId);
@@ -128,177 +150,176 @@ function OrderDetailModal({ orderId, onClose }) {
     } catch {
       if (fallback) setOrder(fallback);
     }
+    onChanged?.();
   };
 
-  const saveTracking = async () => {
-    setUpdating(true);
-    try {
-      const { data } = await adminApi.updateOrderTracking(orderId, statusForm.trackingNumber);
-      await reloadOrder(data.order);
-      toast.success('Tracking saved. Status updates after Canada Post accepts the parcel.');
-    } catch (err) { toast.error(err.response?.data?.error || 'Tracking could not be saved'); }
-    finally { setUpdating(false); }
-  };
-
-  const handleStatusUpdate = async (e) => {
-    e.preventDefault();
-    setUpdating(true);
-    try {
-      const { data } = await adminApi.updateOrderStatus(orderId, statusForm);
-      await reloadOrder(data.order);
-      if (data.shippingNotification?.status === 'failed' || data.shippingNotification?.status === 'skipped') {
-        toast.warning(data.shippingNotification.message);
-      } else {
-        toast.success('Order status updated');
-      }
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Update failed');
-    } finally {
-      setUpdating(false);
-    }
-  };
+  const step = order ? nextStep(order) : null;
+  const paymentShownAbove = step?.key === 'collect' || step?.key === 'clearing';
+  const shipped = order && ['shipped', 'delivered'].includes(order.status);
+  const address = order?.shippingAddress || {};
+  const addressText = [
+    `${address.firstName || ''} ${address.lastName || ''}`.trim(),
+    address.line1,
+    address.line2,
+    [address.city, address.state, address.zip].filter(Boolean).join(', '),
+    address.country && address.country !== 'CA' ? address.country : '',
+  ].filter(Boolean).join('\n');
+  const email = order ? (order.user?.email || order.guestEmail) : '';
+  const phone = order ? (address.phone || order.user?.phone) : '';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-auto" role="dialog" aria-modal="true" aria-labelledby="order-detail-title" ref={dialogRef}>
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-2xl glass rounded-2xl p-6 my-8">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 id="order-detail-title" className="font-bold text-lg">Order details</h2>
-            {order && <div className="mono text-[12px] text-neutral-500 mt-0.5">{order.orderNumber}</div>}
-          </div>
-          <button aria-label="Close order details" onClick={onClose} className="p-1.5 rounded-lg text-neutral-500 hover:text-white hover:bg-white/5">
-            <X size={16} />
-          </button>
+    <AdminSheet
+      titleId="order-detail-title"
+      title="Manage order"
+      subtitle={order?.orderNumber}
+      closeLabel="Close order details"
+      onClose={onClose}
+      badges={order && (
+        <>
+          <span className={`pill ${STATUS_PILLS[order.status] || ''} text-[10px] py-0.5`}>{order.status}</span>
+          {showPaymentLabel(order) && <span className={`pill ${TONE_CLASS[paymentState(order).tone]} text-[10px] py-0.5`} data-testid="sheet-payment-label">{paymentState(order).label}</span>}
+        </>
+      )}
+    >
+      {loading ? (
+        <div className="flex items-center gap-2 text-neutral-400 py-8">
+          <Loader2 size={16} className="animate-spin" />
+          Loading…
         </div>
-
-        {loading ? (
-          <div className="flex items-center gap-2 text-neutral-400 py-8">
-            <Loader2 size={16} className="animate-spin" />
-            Loading…
-          </div>
-        ) : order && (
-          <div className="space-y-5">
-            {/* Customer */}
-            <div className="glass rounded-xl p-4 text-[13px]">
-              <div className="text-neutral-500 text-[11px] uppercase tracking-widest mb-2">Customer</div>
-              <div>{order.user ? `${order.user.firstName} ${order.user.lastName}` : 'Guest'}</div>
-              <div className="text-neutral-400">{order.user?.email || order.guestEmail}</div>
+      ) : order && (
+        <div className="space-y-4">
+          {/* Notes the system left on the order: which Canada Post service to buy, an oversold item, an email or payment that needs a look */}
+          {order.adminNotes && (
+            <div className="rounded-xl p-4 text-[13px] border border-amber-500/30 bg-amber-500/5" role="note" data-testid="order-admin-notes">
+              <div className="text-amber-700 dark:text-amber-300 text-[11px] uppercase tracking-widest mb-2">Notes on this order</div>
+              <ul className="space-y-1.5 leading-relaxed break-words">
+                {order.adminNotes.split('\n').filter(Boolean).map((line, i) => (
+                  <li key={i} className={/^(OVERSOLD|REVIEW)/.test(line) ? 'text-amber-800 dark:text-amber-200 font-medium' : 'text-neutral-200'}>{line}</li>
+                ))}
+              </ul>
             </div>
+          )}
 
-            {/* Notes the system left on the order: which Canada Post service to buy, an oversold item, an email or payment that needs a look */}
-            {order.adminNotes && (
-              <div className="rounded-xl p-4 text-[13px] border border-amber-500/30 bg-amber-500/5" role="note" data-testid="order-admin-notes">
-                <div className="text-amber-700 dark:text-amber-300 text-[11px] uppercase tracking-widest mb-2">Notes on this order</div>
-                <ul className="space-y-1.5 leading-relaxed break-words">
-                  {order.adminNotes.split('\n').filter(Boolean).map((line, i) => (
-                    <li key={i} className={/^(OVERSOLD|REVIEW)/.test(line) ? 'text-amber-800 dark:text-amber-200 font-medium' : 'text-neutral-200'}>{line}</li>
-                  ))}
-                </ul>
+          {/* What to do next: collect the money, ship it, mark it delivered or cancel an unpaid one */}
+          <OrderActions order={order} step={step} onChanged={(next) => reloadOrder(next)} />
+
+          {/* Customer */}
+          <div className="glass rounded-xl p-4 text-[13px]">
+            <div className="text-neutral-500 text-[11px] uppercase tracking-widest mb-2">Customer</div>
+            <div className="font-medium">{customerName(order)}</div>
+            {email && <a className="block text-neutral-400 underline underline-offset-4 break-all min-h-6" href={`mailto:${email}`}>{email}</a>}
+            {phone && <a className="block text-neutral-400 underline underline-offset-4 min-h-6" href={`tel:${phone}`}>{phone}</a>}
+          </div>
+
+          {/* Shipping */}
+          <div className="glass rounded-xl p-4 text-[13px]">
+            <div className="text-neutral-500 text-[11px] uppercase tracking-widest mb-2 flex items-center gap-1.5">
+              <Truck size={11} /> Ship to
+            </div>
+            <div className="text-neutral-200 leading-relaxed whitespace-pre-line">{addressText || 'No address on this order'}</div>
+            {addressText && <CopyAddress text={addressText} />}
+            {order.trackingNumber && (
+              <div className="mt-3 text-neutral-400">
+                Tracking: <span className="mono text-white break-all">{order.trackingNumber}</span>
               </div>
             )}
-
-            {/* Items */}
-            <div className="glass rounded-xl p-4">
-              <div className="text-neutral-500 text-[11px] uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                <Package size={11} /> Items
-              </div>
-              <div className="space-y-2">
-                {order.items?.map((item, idx) => (
-                  <div key={idx} className="flex gap-3 text-[12.5px]">
-                    <div className="w-10 h-10 rounded-lg overflow-hidden bg-white/5 shrink-0">
-                      {item.image && <img src={imageUrl(item.image)} alt="" className="w-full h-full object-cover" />}
-                    </div>
-                    <div className="flex-1">
-                      <div>{item.name}</div>
-                      <div className="mono text-[10px] text-neutral-500">Qty: {item.qty}</div>
-                    </div>
-                    <div className="mono">${(item.price * item.qty).toFixed(2)}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="border-t border-white/5 mt-3 pt-3 flex justify-between text-[13px] font-bold">
-                <span>Total</span>
-                <span className="mono">${order.total?.toFixed(2)}</span>
-              </div>
-            </div>
-
-            {/* Shipping */}
-            <div className="glass rounded-xl p-4 text-[13px]">
-              <div className="text-neutral-500 text-[11px] uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                <Truck size={11} /> Shipping
-              </div>
-              <div className="text-neutral-200 leading-relaxed">
-                {order.shippingAddress?.firstName} {order.shippingAddress?.lastName}<br />
-                {order.shippingAddress?.line1}<br />
-                {order.shippingAddress?.city}, {order.shippingAddress?.state} {order.shippingAddress?.zip}
-              </div>
-              {order.trackingNumber && (
-                <div className="mt-2 text-neutral-400">
-                  Tracking: <span className="mono text-white">{order.trackingNumber}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Before shipping: is it paid? (an e-Transfer order is only paid when the owner says so here) */}
-            <PaymentPanel order={order} onChanged={() => reloadOrder()} />
-
-            <ShippingPreparationPanel preparation={order.shippingPreparation} />
-
-            <ReviewEmailPanel order={order} onUpdated={(next) => reloadOrder(next)} />
-
-            {/* Update status */}
-            <form onSubmit={handleStatusUpdate} className="glass rounded-xl p-4 space-y-3">
-              <div className="text-neutral-500 text-[11px] uppercase tracking-widest">Update status</div>
-              <select
-                className="input"
-                value={statusForm.status}
-                onChange={e => setStatusForm(f => ({ ...f, status: e.target.value }))}
-              >
-                {statusOptions(order).map(s => (
-                  <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
-                ))}
-              </select>
-              <input
-                className="input"
-                placeholder={statusForm.status === 'shipped' ? 'Tracking number (required)' : 'Tracking number (optional)'}
-                value={statusForm.trackingNumber}
-                required={statusForm.status === 'shipped' && !order.trackingNumber}
-                onChange={e => setStatusForm(f => ({ ...f, trackingNumber: e.target.value }))}
-              />
-              {order.paymentStatus === 'paid' && ['pending', 'processing'].includes(order.status) && (
-                <div>
-                  <button type="button" onClick={saveTracking} disabled={updating || !statusForm.trackingNumber.trim()} className="btn-secondary">
-                    Save tracking for automatic updates
-                  </button>
-                  <p className="text-[12px] text-neutral-400 mt-2">Saving a label keeps the current status. After Canada Post scans the parcel, it moves to Shipped and the buyer receives an email.</p>
-                </div>
-              )}
-              <input
-                className="input"
-                placeholder="Note (optional)"
-                value={statusForm.note}
-                onChange={e => setStatusForm(f => ({ ...f, note: e.target.value }))}
-              />
-              <button type="submit" disabled={updating} className="btn-primary flex items-center gap-2">
-                {updating && <Loader2 size={13} className="animate-spin" />}
-                Update status
-              </button>
-            </form>
+            {order.untracked && <div className="mt-3 text-neutral-400">Shipped without tracking.</div>}
           </div>
-        )}
-      </div>
-    </div>
+
+          {/* Items */}
+          <div className="glass rounded-xl p-4">
+            <div className="text-neutral-500 text-[11px] uppercase tracking-widest mb-3 flex items-center gap-1.5">
+              <Package size={11} /> Items
+            </div>
+            <div className="space-y-2">
+              {order.items?.map((item, idx) => (
+                <div key={idx} className="flex gap-3 text-[12.5px]">
+                  <div className="w-10 h-10 rounded-lg overflow-hidden bg-white/5 shrink-0">
+                    {item.image && <img src={imageUrl(item.image)} alt="" className="w-full h-full object-cover" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="break-words">{item.name}</div>
+                    <div className="mono text-[10px] text-neutral-500">Qty: {item.qty}</div>
+                  </div>
+                  <div className="mono shrink-0">{orderMoney(item.price * item.qty)}</div>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-white/5 mt-3 pt-3">
+              {Number(order.subtotal) > 0 && <Row label="Items" value={orderMoney(order.subtotal)} />}
+              {Number(order.discount) > 0 && <Row label={order.paymentDiscountPct ? `Discount (${order.paymentDiscountPct}% for ${order.paymentMethod === 'etransfer' ? 'e-Transfer' : 'bank debit'})` : 'Discount'} value={`−${orderMoney(order.discount)}`} />}
+              {Number(order.shippingCost) > 0 && <Row label="Shipping" value={orderMoney(order.shippingCost)} />}
+              {Number(order.tax) > 0 && <Row label="Tax" value={orderMoney(order.tax)} />}
+              <Row label="Total" value={orderMoney(order.total)} strong />
+            </div>
+          </div>
+
+          {/* How it was paid (an e-Transfer or bank debit still being collected is shown above, as the next step) */}
+          {!paymentShownAbove && <PaymentPanel order={order} onChanged={() => reloadOrder()} />}
+
+          {/* What happened to the order, newest first */}
+          {order.statusHistory?.length > 0 && (
+            <Fold icon={History} title={`History (${order.statusHistory.length})`} testId="order-history">
+              <ol className="space-y-2.5 text-[12.5px]">
+                {[...order.statusHistory].reverse().map((entry, index) => (
+                  <li key={`${entry.timestamp}-${index}`} className="border-l-2 pl-3" style={{ borderColor: 'var(--border-strong)' }}>
+                    <div className="text-neutral-200 capitalize">{entry.status}</div>
+                    {entry.note && <div className="text-neutral-400 break-words">{entry.note}</div>}
+                    <div className="text-neutral-500 text-[11px]">{formatDateTime(entry.timestamp)}</div>
+                  </li>
+                ))}
+              </ol>
+            </Fold>
+          )}
+
+          {/* Label details only matter until the parcel has gone */}
+          {!shipped && order.shippingPreparation && (
+            <Fold icon={Truck} title="Shipping label details" testId="order-label-details">
+              <ShippingPreparationPanel preparation={order.shippingPreparation} />
+            </Fold>
+          )}
+
+          {shipped && <ReviewEmailPanel order={order} onUpdated={(next) => reloadOrder(next)} />}
+        </div>
+      )}
+    </AdminSheet>
+  );
+}
+
+// One order as a card: the whole card opens it. Built for a thumb, so nothing here needs sideways scrolling.
+function OrderCard({ order, onOpen }) {
+  const payment = paymentState(order);
+  const waitingOnYou = nextStep(order).key === 'collect' || nextStep(order).key === 'ship';
+  return (
+    <li>
+      <button type="button" onClick={() => onOpen(order._id)} className={`admin-card ${waitingOnYou ? 'needs-you' : ''}`} data-testid="order-card" aria-label={`Manage order ${order.orderNumber}`}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="font-semibold text-[15px] truncate">{customerName(order)}</div>
+            <div className="mono text-[11px] text-neutral-500 truncate">{order.orderNumber}</div>
+          </div>
+          <div className="text-right shrink-0">
+            <div className="mono font-semibold text-[15px]">{orderMoney(order.total)}</div>
+            <div className="text-[11px] text-neutral-500">{ageLabel(order.createdAt)}</div>
+          </div>
+        </div>
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+          <span className={`pill ${STATUS_PILLS[order.status] || ''} text-[10px] py-0.5`}>{order.status}</span>
+          {showPaymentLabel(order) && <span className={`pill ${TONE_CLASS[payment.tone]} text-[10px] py-0.5`} data-testid="order-card-payment-label">{payment.label}</span>}
+          {nextStep(order).key === 'ship' && <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">Ready to ship</span>}
+          <ChevronRight size={16} className="ml-auto text-neutral-500" aria-hidden="true" />
+        </div>
+      </button>
+    </li>
   );
 }
 
 export default function AdminOrders() {
   const [orders, setOrders] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, total: 0, pages: 1 });
+  const [counts, setCounts] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState('');
-  const [archivedView, setArchivedView] = useState(false);
-  const [awaitingOnly, setAwaitingOnly] = useState(false);
+  const [view, setView] = useState('all');
   const [page, setPage] = useState(1);
   // A phone notification opens /admin/orders?order=<id>: that order's panel opens straight away.
   const [searchParams, setSearchParams] = useSearchParams();
@@ -310,172 +331,158 @@ export default function AdminOrders() {
     if (searchParams.has('order')) setSearchParams({}, { replace: true });
   };
 
-  const load = (p = page, s = statusFilter, arch = archivedView, awaiting = awaitingOnly, quiet = false) => {
+  // The latest request wins: a slow answer for an old view must not overwrite the view that is open now.
+  const latest = useRef(0);
+  const load = (p = page, v = view, quiet = false) => {
+    const ticket = latest.current + 1;
+    latest.current = ticket;
     if (!quiet) setLoading(true);
-    adminApi.listOrders({
-      page: p,
-      limit: 20,
-      status: awaiting ? undefined : (s || undefined),
-      payment: awaiting ? 'awaiting' : undefined,
-      archived: arch ? 'true' : 'false',
-    })
+    adminApi.listOrders({ page: p, limit: 20, view: v === 'all' ? undefined : v })
       .then(({ data }) => {
+        if (latest.current !== ticket) return;
         setOrders(data.orders);
         setPagination(data.pagination);
+        setCounts(data.counts || null);
       })
-      .catch(() => toast.error('Failed to load orders'))
-      .finally(() => setLoading(false));
+      .catch(() => { if (latest.current === ticket) toast.error('Failed to load orders'); })
+      .finally(() => { if (latest.current === ticket) setLoading(false); });
   };
 
-  useEffect(() => { load(); }, [page, statusFilter, archivedView, awaitingOnly]);
+  useEffect(() => { load(); }, [page, view]);
 
   // A new order should show up without a manual refresh (the phone app keeps this page open): reload quietly every minute
   // and whenever the page comes back to the front, but never while an order's panel is open (it would not disturb it, yet
   // there is nothing to gain).
   useEffect(() => {
     const refresh = () => {
-      if (document.visibilityState === 'visible' && !selectedOrderId) load(page, statusFilter, archivedView, awaitingOnly, true);
+      if (document.visibilityState === 'visible' && !selectedOrderId) load(page, view, true);
     };
     const timer = window.setInterval(refresh, 60000);
     document.addEventListener('visibilitychange', refresh);
     return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', refresh); };
-  }, [page, statusFilter, archivedView, awaitingOnly, selectedOrderId]);
+  }, [page, view, selectedOrderId]);
 
-  const handleArchive = async (id, archived) => {
-    try {
-      await adminApi.archiveOrder(id, archived);
-      toast.success(archived ? 'Order archived' : 'Order restored');
-      load();
-    } catch {
-      toast.error('Failed to update order');
-    }
+  const pickView = (key) => {
+    if (!isViewKey(key) || key === view) return;
+    setOrders([]);
+    setView(key);
+    setPage(1);
   };
+
+  const total = countFor(counts, 'all');
 
   return (
     <AppLayout requireAdmin>
-      <div className="p-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold tracking-tight">Orders</h1>
-          <p className="text-neutral-500 text-[13px] mt-0.5">{pagination.total} total orders</p>
-        </div>
-
-        {/* Filters */}
-        <div className="flex flex-wrap gap-2 mb-6">
-          <select
-            className="input w-auto"
-            value={statusFilter}
-            onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
-          >
-            <option value="">All statuses</option>
-            {STATUS_OPTIONS.map(s => (
-              <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
-            ))}
-          </select>
-          <button
-            type="button"
-            onClick={() => { setAwaitingOnly(v => !v); setPage(1); }}
-            className={awaitingOnly ? 'btn-primary' : 'btn-secondary'}
-            data-testid="orders-awaiting-filter"
-          >
-            {awaitingOnly ? 'Showing: awaiting payment' : 'Awaiting payment'}
-          </button>
-          <button
-            type="button"
-            onClick={() => { setArchivedView(v => !v); setPage(1); }}
-            className={archivedView ? 'btn-primary' : 'btn-secondary'}
-          >
-            {archivedView ? 'Viewing archived' : 'Show archived'}
+      <div className="p-4 md:p-8">
+        <div className="mb-4 md:mb-6 flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Orders</h1>
+            <p className="text-neutral-500 text-[13px] mt-0.5">{total === null ? 'Loading…' : `${total} ${total === 1 ? 'order' : 'orders'} in total`}</p>
+          </div>
+          <button type="button" onClick={() => load(page, view)} className="btn-secondary min-h-11 !px-3.5" aria-label="Refresh orders" data-testid="orders-refresh">
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
 
-        <div className="glass rounded-2xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr className="text-neutral-500 text-[11px] uppercase tracking-widest border-b border-white/5">
-                  <th className="text-left p-4 font-normal">Order</th>
-                  <th className="text-left p-4 font-normal">Customer</th>
-                  <th className="text-left p-4 font-normal">Status</th>
-                  <th className="text-right p-4 font-normal">Total</th>
-                  <th className="text-right p-4 font-normal">Date</th>
-                  <th className="text-right p-4 font-normal">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {loading ? (
-                  <tr>
-                    <td colSpan={6} className="p-8 text-center text-neutral-500">
-                      <Loader2 size={16} className="animate-spin inline mr-2" />
-                      Loading…
-                    </td>
-                  </tr>
-                ) : orders.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="p-8 text-center text-neutral-500">No orders found</td>
-                  </tr>
-                ) : (
-                  orders.map((o) => (
-                    <tr key={o._id} className="hover:bg-white/2 transition-colors">
-                      <td className="p-4 mono text-[11px]">{o.orderNumber}</td>
-                      <td className="p-4 text-neutral-400">
-                        {o.user ? `${o.user.firstName} ${o.user.lastName}` : o.guestEmail || 'Guest'}
-                      </td>
-                      <td className="p-4">
-                        <span className={`pill ${STATUS_PILLS[o.status] || ''} text-[10px] py-0.5`}>
-                          {o.status}
-                        </span>
-                        {showPaymentLabel(o) && (
-                          <span className={`pill ${TONE_CLASS[paymentState(o).tone]} text-[10px] py-0.5 ml-1.5`} data-testid="order-payment-label">{paymentState(o).label}</span>
-                        )}
-                      </td>
-                      <td className="p-4 text-right mono">${o.total?.toFixed(2)}</td>
-                      <td className="p-4 text-right text-neutral-500">
-                        {new Date(o.createdAt).toLocaleDateString()}
-                      </td>
-                      <td className="p-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => setSelectedOrderId(o._id)}
-                            className="btn-ghost py-1 px-2.5 text-[11px]"
-                          >
+        {/* One row of buttons instead of a dropdown and toggles: what needs you is first and carries its count */}
+        <div className="chip-row -mx-4 mb-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:mb-6 md:flex-wrap md:overflow-visible md:px-0" role="group" aria-label="Show orders">
+          {ORDER_VIEWS.map((entry) => {
+            const count = countFor(counts, entry.key);
+            return (
+              <button
+                key={entry.key}
+                type="button"
+                className="chip"
+                aria-pressed={view === entry.key}
+                onClick={() => pickView(entry.key)}
+                data-testid={entry.key === 'awaiting' ? 'orders-awaiting-filter' : `orders-view-${entry.key}`}
+              >
+                {entry.label}
+                {count !== null && <span className={`chip-count ${entry.needsYou && count > 0 ? 'needs-you' : ''}`}>{count}</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        {loading && orders.length === 0 ? (
+          <div className="glass rounded-2xl p-8 text-center text-neutral-500">
+            <Loader2 size={16} className="animate-spin inline mr-2" />
+            Loading…
+          </div>
+        ) : orders.length === 0 ? (
+          <div className="glass rounded-2xl p-8 text-center text-neutral-500" data-testid="orders-empty">No orders here.</div>
+        ) : (
+          <>
+            {/* Phone: cards */}
+            <ul className="space-y-2.5 md:hidden" data-testid="orders-cards">
+              {orders.map((o) => <OrderCard key={o._id} order={o} onOpen={setSelectedOrderId} />)}
+            </ul>
+
+            {/* Tablet and desktop: the table, as before, with one Manage button per order */}
+            <div className="glass rounded-2xl overflow-hidden hidden md:block">
+              <div className="overflow-x-auto">
+                <table className="w-full text-[13px]">
+                  <thead>
+                    <tr className="text-neutral-500 text-[11px] uppercase tracking-widest border-b border-white/5">
+                      <th className="text-left p-4 font-normal">Order</th>
+                      <th className="text-left p-4 font-normal">Customer</th>
+                      <th className="text-left p-4 font-normal">Status</th>
+                      <th className="text-right p-4 font-normal">Total</th>
+                      <th className="text-right p-4 font-normal">Date</th>
+                      <th className="text-right p-4 font-normal">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {orders.map((o) => (
+                      <tr key={o._id} className="hover:bg-white/2 transition-colors">
+                        <td className="p-4 mono text-[11px]">{o.orderNumber}</td>
+                        <td className="p-4 text-neutral-400">{customerName(o)}</td>
+                        <td className="p-4">
+                          <span className={`pill ${STATUS_PILLS[o.status] || ''} text-[10px] py-0.5`}>
+                            {o.status}
+                          </span>
+                          {showPaymentLabel(o) && (
+                            <span className={`pill ${TONE_CLASS[paymentState(o).tone]} text-[10px] py-0.5 ml-1.5`} data-testid="order-payment-label">{paymentState(o).label}</span>
+                          )}
+                        </td>
+                        <td className="p-4 text-right mono">${o.total?.toFixed(2)}</td>
+                        <td className="p-4 text-right text-neutral-500">
+                          {new Date(o.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="p-4 text-right">
+                          <button onClick={() => setSelectedOrderId(o._id)} className="btn-secondary !py-1.5 !px-4 text-[12px]">
                             Manage
                           </button>
-                          <button
-                            onClick={() => handleArchive(o._id, !o.archived)}
-                            className="btn-ghost py-1 px-2.5 text-[11px] text-neutral-500 hover:text-white"
-                            title={o.archived ? 'Restore order' : 'Archive order'}
-                          >
-                            {o.archived ? 'Restore' : 'Archive'}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {pagination.pages > 1 && (
-            <div className="flex items-center justify-between p-4 border-t border-white/5 text-[13px]">
-              <span className="text-neutral-500">Page {pagination.page} of {pagination.pages}</span>
-              <div className="flex gap-2">
-                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="btn-ghost py-1.5 px-3 flex items-center gap-1">
-                  <ChevronLeft size={13} /> Prev
-                </button>
-                <button onClick={() => setPage(p => Math.min(pagination.pages, p + 1))} disabled={page >= pagination.pages} className="btn-ghost py-1.5 px-3 flex items-center gap-1">
-                  Next <ChevronRight size={13} />
-                </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
-          )}
-        </div>
+          </>
+        )}
+
+        {pagination.pages > 1 && (
+          <div className="mt-4 flex items-center justify-between gap-3 text-[13px]">
+            <span className="text-neutral-500">Page {pagination.page} of {pagination.pages}</span>
+            <div className="flex gap-2">
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="btn-secondary min-h-11 !px-4 flex items-center gap-1">
+                <ChevronLeft size={14} /> Prev
+              </button>
+              <button onClick={() => setPage(p => Math.min(pagination.pages, p + 1))} disabled={page >= pagination.pages} className="btn-secondary min-h-11 !px-4 flex items-center gap-1">
+                Next <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {selectedOrderId && (
-        <OrderDetailModal
+        <OrderSheet
           orderId={selectedOrderId}
           onClose={closeOrder}
+          onChanged={() => load(page, view, true)}
         />
       )}
     </AppLayout>

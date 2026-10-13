@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Day palette: the site light theme (page #fafaf7, text #17181a). The night palette is in values-night/. -->
 <resources>
-    <color name="bg">#0A0A0C</color>
+    <color name="bg">#FAFAF7</color>
     <color name="brand">#FFCF24</color>
     <color name="ink">#17181A</color>
-    <color name="text">#F5F5F7</color>
-    <color name="muted">#A0A0AA</color>
+    <color name="text">#17181A</color>
+    <color name="muted">#55585E</color>
+    <color name="hint">#8A8C92</color>
+    <color name="error">#B3261E</color>
 </resources>

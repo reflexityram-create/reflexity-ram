@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { ExternalLink, Landmark, Loader2 } from 'lucide-react';
+import { ExternalLink, Landmark } from 'lucide-react';
 import { toast } from 'sonner';
 import { adminApi } from '@/lib/api';
 import { METHOD_NAMES, TONE_CLASS, paymentState, stripePaymentUrl } from '@/lib/orderPayment';
 import { torontoDeadline } from '@/lib/paymentMethods';
+import ConfirmButton from '@/components/admin/ConfirmButton';
 
 const money = (value) => `$${Number(value || 0).toFixed(2)} CAD`;
 const when = (value) => (value ? new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '');
@@ -25,15 +26,16 @@ export default function PaymentPanel({ order, onChanged }) {
   const et = order.etransfer || {};
   const waiting = state.key === 'etransfer_waiting' || state.key === 'etransfer_expired';
 
-  const markReceived = async (event) => {
-    event.preventDefault();
-    const entered = Number(amount);
-    if (!Number.isFinite(entered) || entered <= 0) { toast.error('Enter the amount you received.'); return; }
-    const due = Number(et.amountDue ?? order.total);
-    const text = entered === due
-      ? `Mark ${money(entered)} as received? The order becomes paid and ready to ship, and the buyer gets a confirmation email.`
-      : `You are accepting ${money(entered)} for an order of ${money(due)}. Continue?`;
-    if (!window.confirm(text)) return;
+  const entered = Number(amount);
+  const amountOk = Number.isFinite(entered) && entered > 0;
+  const due = Number(et.amountDue ?? order.total);
+  // The page asks once, in the page itself (a browser dialog does not show inside the phone app's web view).
+  const confirmText = entered === due
+    ? `Mark ${money(entered)} as received? The order becomes paid and ready to ship, and the buyer gets a confirmation email.`
+    : `You are accepting ${money(entered)} for an order of ${money(due)}. Continue?`;
+
+  const markReceived = async () => {
+    if (!amountOk) { toast.error('Enter the amount you received.'); return; }
     setBusy(true);
     setMismatch('');
     try {
@@ -54,7 +56,6 @@ export default function PaymentPanel({ order, onChanged }) {
   };
 
   const refund = async () => {
-    if (!window.confirm('Record this e-Transfer order as refunded? Send the money back by e-Transfer first: this does not send anything.')) return;
     setBusy(true);
     try {
       await adminApi.refundEtransfer(order._id, refundNote.trim() ? { note: refundNote.trim() } : {});
@@ -92,7 +93,7 @@ export default function PaymentPanel({ order, onChanged }) {
             The transfer should come from <strong className="text-neutral-200">{[order.shippingAddress?.firstName, order.shippingAddress?.lastName].filter(Boolean).join(' ') || 'the buyer'}</strong>.
             {' '}If the sender is someone else, check with the buyer before you ship.
           </div>
-          <form onSubmit={markReceived} className="space-y-2">
+          <form onSubmit={(event) => event.preventDefault()} className="space-y-2">
             <label className="block"><span className="admin-label">Amount you received (CAD)</span>
               <input className="input" inputMode="decimal" value={amount} onChange={(e) => { setAmount(e.target.value); setMismatch(''); }} placeholder={Number(et.amountDue ?? order.total).toFixed(2)} data-testid="et-received-amount" />
             </label>
@@ -104,9 +105,16 @@ export default function PaymentPanel({ order, onChanged }) {
                 <input className="input" placeholder="Why the amount differs (required)" value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} />
               </div>
             )}
-            <button type="submit" disabled={busy || !amount.trim()} className="btn-primary flex items-center gap-2" data-testid="et-mark-received">
-              {busy && <Loader2 size={13} className="animate-spin" />} I received this e-Transfer
-            </button>
+            <ConfirmButton
+              label="I received this e-Transfer"
+              confirmLabel="Yes, mark it paid"
+              message={confirmText}
+              onConfirm={markReceived}
+              disabled={!amountOk}
+              busy={busy}
+              className="w-full sm:w-auto"
+              testId="et-mark-received"
+            />
             <p className="text-[12px] text-neutral-500">Check your bank first. This is what makes the order paid and shippable.</p>
           </form>
         </div>
@@ -117,7 +125,15 @@ export default function PaymentPanel({ order, onChanged }) {
           <div>Received {when(et.receivedAt)}: {money(et.receivedAmount ?? order.total)}{et.confirmation ? ` · bank ref ${et.confirmation}` : ''}</div>
           <div className="flex flex-wrap gap-2 items-center">
             <input className="input flex-1 min-w-[10rem]" placeholder="Refund note (optional)" value={refundNote} onChange={(e) => setRefundNote(e.target.value)} maxLength={300} />
-            <button type="button" onClick={refund} disabled={busy} className="btn-ghost" data-testid="et-refund">Record a refund</button>
+            <ConfirmButton
+              variant="danger"
+              label="Record a refund"
+              confirmLabel="Yes, record the refund"
+              message="Record this e-Transfer order as refunded? Send the money back by e-Transfer first: this does not send anything."
+              onConfirm={refund}
+              busy={busy}
+              testId="et-refund"
+            />
           </div>
         </div>
       )}
