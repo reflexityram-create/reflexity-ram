@@ -9,7 +9,7 @@ import useAuthStore from '@/lib/authStore';
 import { paymentsApi } from '@/lib/api';
 import { useSEO } from '@/lib/seo';
 import { formatStorePrice, SIGNATURE_PRICE, STORE_CURRENCY_CODE } from '@/lib/currency';
-import { ETRANSFER, PROVINCES, discountFor, normalizePostalCode, offeredMethods, validateEtransferForm } from '@/lib/paymentMethods';
+import { ETRANSFER, PROVINCES, discountFor, etransferSizeProblem, normalizePostalCode, offeredMethods, validateEtransferForm } from '@/lib/paymentMethods';
 import { ecommerceItem, readGaIdentifiers, trackEvent } from '@/lib/analytics';
 
 // Pay by Interac e-Transfer. Stripe cannot take one, so this is the shop's own order form: the buyer gives a Canadian
@@ -69,6 +69,8 @@ export default function CheckoutEtransfer() {
   const discount = offer ? discountFor(subtotal, offer.discountPct) : 0;
   const hours = offer?.holdHours || 48;
   const total = Number(subtotal || 0) - discount + shippingAmount;
+  // The server refuses an order over the shop's e-Transfer size limit; saying so here saves the buyer filling in the form.
+  const sizeProblem = offer ? etransferSizeProblem({ units: Number(itemCount) || 0, total, maxUnits: offer.maxUnits, maxTotal: offer.maxTotal }, formatStorePrice) : '';
 
   const set = (name) => (event) => {
     setForm((f) => ({ ...f, [name]: event.target.value }));
@@ -131,6 +133,14 @@ export default function CheckoutEtransfer() {
           <h1 className="text-3xl font-bold tracking-tight">Pay by Interac e-Transfer</h1>
           <p className="text-[15px] text-neutral-400 mt-2 mb-8">Place your order now, then send the e-Transfer from your own bank. We hold your items for {hours} hours and ship as soon as it arrives.</p>
 
+          {sizeProblem && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 mb-6 text-[14px]" role="alert" data-testid="et-too-big">
+              <p className="font-medium text-amber-700 dark:text-amber-300">This order is too big for e-Transfer.</p>
+              <p className="text-neutral-400 mt-1">{sizeProblem} Pay by card instead, or <a href="mailto:reflexityram@gmail.com?subject=Large%20e-Transfer%20order" className="underline underline-offset-4">email us</a> and we will arrange it.</p>
+              <Link to="/checkout" className="btn-primary mt-3 inline-flex">Back to checkout</Link>
+            </div>
+          )}
+
           <form onSubmit={submit} noValidate className="grid lg:grid-cols-5 gap-6 lg:gap-8 items-start">
             <section className="lg:col-span-3 glass rounded-2xl p-5 sm:p-6 space-y-4" aria-labelledby="etransfer-details-heading">
               <h2 id="etransfer-details-heading" className="text-lg font-semibold">Who is it for, and where does it go?</h2>
@@ -189,7 +199,7 @@ export default function CheckoutEtransfer() {
                   <span>I will send exactly this amount by Interac e-Transfer within {hours} hours. I understand the order is confirmed and shipped only once the shop has received it, and it is cancelled if not. I agree to the <Link to="/terms" target="_blank" className="underline underline-offset-4">Terms</Link>.</span>
                 </label>
 
-                <button type="submit" disabled={submitting || !offer} className="btn-primary w-full flex items-center justify-center gap-2 text-[15px]" data-testid="et-place-order">
+                <button type="submit" disabled={submitting || !offer || Boolean(sizeProblem)} className="btn-primary w-full flex items-center justify-center gap-2 text-[15px]" data-testid="et-place-order">
                   {submitting ? (<><Loader2 size={16} className="animate-spin" /> Placing your order…</>) : (<><Lock size={15} /> Place order <ArrowRight size={16} /></>)}
                 </button>
                 <p className="text-[12px] text-neutral-500 text-center mt-3">All prices are in Canadian dollars (CAD). Nothing is charged by us.</p>

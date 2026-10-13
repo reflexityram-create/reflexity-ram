@@ -12,11 +12,16 @@ const { ensureStripePrice, syncStripeProductDetails } = require('../utils/stripe
 const { cancelOrderAndRestoreStock } = require('../utils/stock');
 const { ORDER_STATUSES, canTransitionOrder } = require('../utils/orderTransitions');
 const { buildShippingPreparation } = require('../utils/shippingPreparation');
+const { ETRANSFER, BANK_DEBIT } = require('../utils/paymentMethods');
+
 const {
   EtransferError, markEtransferReceived, recordEtransferRefund, sweepEtransferOrdersThrottled,
 } = require('../utils/etransfer');
 
 const router = express.Router();
+
+// Orders that exist before their money does: they are not "to process" until paid.
+const UNPAID_METHODS = [ETRANSFER, BANK_DEBIT];
 
 // Only one product is featured on the home page at a time.
 const unfeatureOthers = (keepId) => Product.updateMany(
@@ -52,6 +57,7 @@ router.get('/stats', async (req, res) => {
     const [
       totalOrders,
       pendingOrders,
+      awaitingPayment,
       totalRevenue,
       totalProducts,
       lowStockProducts,
@@ -59,7 +65,9 @@ router.get('/stats', async (req, res) => {
       recentOrders,
     ] = await Promise.all([
       Order.countDocuments(),
-      Order.countDocuments({ status: { $in: ['pending', 'processing'] } }),
+      // To process: not counting an e-Transfer or bank-debit order that has not been paid yet (those are the next figure).
+      Order.countDocuments({ status: { $in: ['pending', 'processing'] }, $nor: [{ paymentMethod: { $in: UNPAID_METHODS }, paymentStatus: 'pending' }] }),
+      Order.countDocuments({ paymentMethod: { $in: UNPAID_METHODS }, paymentStatus: 'pending', status: 'pending' }),
       Order.aggregate([
         { $match: { paymentStatus: 'paid' } },
         { $group: { _id: null, total: { $sum: '$total' } } },
@@ -74,6 +82,7 @@ router.get('/stats', async (req, res) => {
       stats: {
         totalOrders,
         pendingOrders,
+        awaitingPayment,
         totalRevenue: totalRevenue[0]?.total || 0,
         totalProducts,
         lowStockProducts,

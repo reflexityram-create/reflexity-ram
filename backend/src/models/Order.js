@@ -67,6 +67,9 @@ const orderSchema = new mongoose.Schema({
   paymentMethod: { type: String, default: 'stripe' },
   // The percent discount the payment method gave on the goods (bank debit / e-Transfer); `discount` holds the dollars.
   paymentDiscountPct: { type: Number },
+  // When the money actually arrived, for a method that clears after the order was placed (bank debit, e-Transfer). A card
+  // order is paid when it is created, so it has none and everything that needs "when was it paid" falls back to createdAt.
+  paidAt: { type: Date },
   // Interac e-Transfer orders only (utils/etransfer.js). The order is saved unpaid with its stock held; the owner marks
   // the transfer received, or the hold lapses at expiresAt and the stock goes back.
   etransfer: {

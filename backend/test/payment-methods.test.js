@@ -76,6 +76,20 @@ test('e-Transfer needs BOTH its flag and a valid recipient address: the shop nev
   assert.equal(paymentMethodSettings({ ...on, ETRANSFER_HOLD_HOURS: '9999' }).etransfer.holdHours, 48);
 });
 
+test('one e-Transfer order is capped in items and in dollars, with sane defaults and bounds (review F2/F11)', () => {
+  const on = { ETRANSFER_ENABLED: 'true', ETRANSFER_RECIPIENT_EMAIL: 'pay@example.com' };
+  const settings = (extra = {}) => paymentMethodSettings({ ...on, ...extra }).etransfer;
+  assert.equal(settings().maxUnits, 16);
+  assert.equal(settings().maxTotal, 3000);
+  assert.equal(settings({ ETRANSFER_MAX_UNITS: '8' }).maxUnits, 8);
+  assert.equal(settings({ ETRANSFER_MAX_TOTAL_CAD: '1500.50' }).maxTotal, 1500.5);
+  for (const silly of ['0', '-3', '201', 'many', '']) assert.equal(settings({ ETRANSFER_MAX_UNITS: silly }).maxUnits, 16, `units ${JSON.stringify(silly)}`);
+  for (const silly of ['0', '49', '20001', 'lots', '-5']) assert.equal(settings({ ETRANSFER_MAX_TOTAL_CAD: silly }).maxTotal, 3000, `total ${JSON.stringify(silly)}`);
+  const listed = publicPaymentMethods(on).find((m) => m.id === 'etransfer');
+  assert.equal(listed.maxUnits, 16, 'the checkout page can tell a buyer an order is too big before they fill in the form');
+  assert.equal(listed.maxTotal, 3000);
+});
+
 test('the public list names the methods and discounts but never the e-Transfer address', () => {
   const env = { BANK_DEBIT_ENABLED: 'true', ETRANSFER_ENABLED: 'true', ETRANSFER_RECIPIENT_EMAIL: 'pay@example.com' };
   const list = publicPaymentMethods(env);
@@ -235,7 +249,7 @@ test('a failing e-Transfer sweep never stops the tracking sync and never changes
   const originalError = console.error;
   const logged = [];
   console.error = (...args) => logged.push(args.join(' '));
-  const saved = { key: process.env.CANADA_POST_API_KEY, secret: process.env.CANADA_POST_API_SECRET };
+  const saved = { key: process.env.CANADA_POST_API_KEY, secret: process.env.CANADA_POST_API_SECRET, token: process.env.TRACKING_SYNC_TOKEN };
   process.env.CANADA_POST_API_KEY = 'test-key';
   process.env.CANADA_POST_API_SECRET = 'test-secret';
   process.env.TRACKING_SYNC_TOKEN = 'sync-secret';
@@ -253,11 +267,23 @@ test('a failing e-Transfer sweep never stops the tracking sync and never changes
   } finally {
     console.error = originalError;
     Order.find = originalFind;
-    for (const [name, value] of [['CANADA_POST_API_KEY', saved.key], ['CANADA_POST_API_SECRET', saved.secret]]) {
+    for (const [name, value] of [['CANADA_POST_API_KEY', saved.key], ['CANADA_POST_API_SECRET', saved.secret], ['TRACKING_SYNC_TOKEN', saved.token]]) {
       if (value === undefined) delete process.env[name]; else process.env[name] = value;
     }
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+// The limiter that stops one connection from reserving stock again and again lives only in server.js, where the router tests
+// cannot see it: deleting or reordering its line would pass every other test (review F12).
+test('the e-Transfer order limiter is mounted, and before the router it protects', () => {
+  const source = require('node:fs').readFileSync(require.resolve('../src/server.js'), 'utf8');
+  const limiter = source.indexOf("app.use('/api/payments/etransfer', etransferLimiter);");
+  const router = source.indexOf("app.use('/api/payments', createPaymentsRouter());");
+  assert.ok(limiter > 0, 'the limiter is mounted on the e-Transfer order route');
+  assert.ok(router > 0);
+  assert.ok(limiter < router, 'and it runs before the router does');
+  assert.match(source, /const etransferLimiter = rateLimit\(\{[\s\S]*?max: 8,/, 'eight orders an hour per connection');
 });
 
 test('the sweep runs before the carrier check, so an unconfigured Canada Post never stops it', () => {

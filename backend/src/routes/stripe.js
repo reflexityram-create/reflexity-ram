@@ -367,6 +367,16 @@ const isDelayedBankDebit = (session) => (
   && session?.payment_status === 'unpaid'
   && (session.payment_method_types || []).includes('acss_debit')
 );
+// "Complete and unpaid" is also how Stripe leaves a session after the bank REFUSED the debit (its PaymentIntent is back at
+// requires_payment_method), and a buyer who typed their account numbers by hand has a PaymentIntent that is waiting for the
+// BUYER to verify micro-deposits (requires_action), not for the bank. Only a PaymentIntent that is `processing` has a debit
+// in flight, so only then is there an order to hold stock for. Without this, a failure Stripe reported before our `completed`
+// handler had run (it was being retried) was followed by an order that nothing would ever cancel. If the money does clear,
+// async_payment_succeeded creates the order, already paid.
+const bankDebitInFlight = (session) => {
+  const pi = session?.payment_intent;
+  return Boolean(pi) && typeof pi === 'object' && pi.status === 'processing';
+};
 const AWAITING_BANK_DEBIT_NOTE = 'AWAITING bank debit: do not ship until this order shows as paid (the bank takes up to 5 business days).';
 
 const fulfillCheckoutSession = async (checkoutSessionId) => {
@@ -380,9 +390,10 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
     expand: ['line_items.data.price.product', 'payment_intent', 'shipping_cost.shipping_rate'],
   });
 
-  // Paid sessions become paid orders. A bank debit that is still clearing becomes a PENDING order now (stock held, buyer
-  // told, owner alerted) and turns paid in settleBankDebitPaid. Anything else unpaid is not an order yet.
-  const delayed = isDelayedBankDebit(session);
+  // Paid sessions become paid orders. A bank debit that is really clearing (its PaymentIntent is `processing`) becomes a
+  // PENDING order now (stock held, buyer told, owner alerted) and turns paid in settleBankDebitPaid. Anything else unpaid is
+  // not an order yet.
+  const delayed = isDelayedBankDebit(session) && bankDebitInFlight(session);
   if (session.payment_status !== 'paid' && !delayed) return null;
   const isBankDebit = delayed || session.metadata?.paymentMethod === BANK_DEBIT;
   const discountPct = isBankDebit ? Number(session.metadata?.paymentDiscountPct) : NaN;
@@ -599,7 +610,13 @@ const settleBankDebitPaid = async (checkoutSessionId) => {
       $set: {
         paymentStatus: 'paid',
         status: 'processing',
-        estimatedDelivery: estimateDeliveryDate({ placedAt: now, country: order.shippingAddress?.country || 'CA' }),
+        paidAt: now,
+        // Counted from the day it cleared, with the same transit time the card and e-Transfer paths use for Faster shipping.
+        estimatedDelivery: estimateDeliveryDate({
+          placedAt: now,
+          country: session.metadata?.shippingCountry || order.shippingAddress?.country || 'CA',
+          transitDays: session.metadata?.canadaPostTransitDays,
+        }),
         ...(chargeId ? { stripeChargeId: chargeId } : {}),
         ...(notes ? { adminNotes: notes } : {}),
       },
@@ -613,7 +630,11 @@ const settleBankDebitPaid = async (checkoutSessionId) => {
     const current = await Order.findById(order._id);
     if (current && current.status === 'cancelled' && current.paymentStatus !== 'paid') {
       const note = 'REVIEW: the bank debit CLEARED after this order was cancelled. Refund it in Stripe (or reinstate the order by hand).';
-      await Order.updateOne({ _id: current._id }, { $set: { adminNotes: [current.adminNotes, note].filter(Boolean).join('\n') } });
+      // Stripe may deliver the same event again (at-least-once, or a manual resend): the line goes on once.
+      await Order.updateOne(
+        { _id: current._id, adminNotes: { $not: /REVIEW: the bank debit CLEARED/ } },
+        { $set: { adminNotes: [current.adminNotes, note].filter(Boolean).join('\n') } },
+      );
       await recordAdminEvent({ type: 'order.payment_after_cancel', title: 'Bank debit cleared on a cancelled order', body: `${describeOrder(current)} · refund it`, priority: 'high', order: current, dedupeKey: `order.payment_after_cancel:${current._id}` });
     }
     return current;
@@ -688,7 +709,8 @@ router.get('/session-status', async (req, res) => {
     }
 
     // A bank debit that is still clearing: the order exists (and is held for them) but is not paid yet, so no purchase is reported.
-    if (order.paymentStatus !== 'paid') {
+    // Only bank-debit orders: a card order's success link answers exactly as it always did (a refunded one included).
+    if (order.paymentMethod === BANK_DEBIT && order.paymentStatus !== 'paid') {
       return res.json({
         status: 'processing',
         orderNumber: order.orderNumber,
@@ -848,7 +870,7 @@ if (process.env.NODE_ENV === 'test') {
     stockDecrementer = decrementStock;
   };
   // The settlement steps are not routes of their own, so tests reach them here.
-  router.internalsForTest = { fulfillCheckoutSession, settleBankDebitPaid, settleBankDebitFailed, isDelayedBankDebit };
+  router.internalsForTest = { fulfillCheckoutSession, settleBankDebitPaid, settleBankDebitFailed, isDelayedBankDebit, bankDebitInFlight };
 }
 
 module.exports = router;

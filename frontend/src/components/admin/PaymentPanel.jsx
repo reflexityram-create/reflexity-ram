@@ -88,6 +88,10 @@ export default function PaymentPanel({ order, onChanged }) {
             {state.key === 'etransfer_waiting' && et.expiresAt && <> Held until {torontoDeadline(et.expiresAt)}.</>}
             {state.key === 'etransfer_expired' && <> The hold ended {when(et.expiredAt)} and the stock went back on sale. If the money did arrive, enter it below: the order comes back if the stock is still there.</>}
           </div>
+          <div className="text-neutral-400" data-testid="et-sender-hint">
+            The transfer should come from <strong className="text-neutral-200">{[order.shippingAddress?.firstName, order.shippingAddress?.lastName].filter(Boolean).join(' ') || 'the buyer'}</strong>.
+            {' '}If the sender is someone else, check with the buyer before you ship.
+          </div>
           <form onSubmit={markReceived} className="space-y-2">
             <label className="block"><span className="admin-label">Amount you received (CAD)</span>
               <input className="input" inputMode="decimal" value={amount} onChange={(e) => { setAmount(e.target.value); setMismatch(''); }} placeholder={Number(et.amountDue ?? order.total).toFixed(2)} data-testid="et-received-amount" />

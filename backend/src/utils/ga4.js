@@ -46,10 +46,17 @@ function fallbackClientId(orderNumber) {
   return `${digest.readUInt32BE(0)}.${digest.readUInt32BE(4)}`;
 }
 
+// When the purchase happened: the moment it was paid (bank debit and e-Transfer clear after the order is placed), else
+// when the order was created (a card order is paid at once).
+function purchaseTimeMs(order, fallbackMs = Date.now()) {
+  const source = order?.paidAt || order?.createdAt;
+  const ms = source ? new Date(source).getTime() : fallbackMs;
+  return Number.isFinite(ms) ? ms : fallbackMs;
+}
+
 function buildPurchasePayload(order, { clientId, sessionId } = {}, { currency, now = Date.now() } = {}) {
   const analytics = analyticsOrder(order, currency);
-  const createdAtMs = order.createdAt ? new Date(order.createdAt).getTime() : now;
-  const eventTimeMs = Number.isFinite(createdAtMs) ? Math.min(createdAtMs, now) : now;
+  const eventTimeMs = Math.min(purchaseTimeMs(order, now), now);
   return {
     client_id: clientId || fallbackClientId(order.orderNumber),
     timestamp_micros: eventTimeMs * 1000,
@@ -112,6 +119,7 @@ async function sendPurchaseEvent(order, ids, {
 
 module.exports = {
   MAX_EVENT_AGE_MS,
+  purchaseTimeMs,
   buildPurchasePayload,
   fallbackClientId,
   ga4Config,

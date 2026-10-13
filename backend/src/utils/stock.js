@@ -190,10 +190,11 @@ const takeStockStrict = async (items, session) => {
 
 /**
  * Create an order and take its stock in one transaction: all of it, or neither (throws InsufficientStockError).
+ * `beforeCommit(session, order)` runs inside that transaction; if it throws, nothing is saved.
  * The order is saved with stockDecremented: true, so cancelling or expiring it gives the stock back exactly
  * (cancelOrderAndRestoreStock).
  */
-const createOrderWithReservation = async (data) => {
+const createOrderWithReservation = async (data, { beforeCommit } = {}) => {
   let created = null;
   await withStockTransaction(async (session) => {
     created = null;
@@ -203,6 +204,9 @@ const createOrderWithReservation = async (data) => {
       items: data.items.map((item) => ({ ...item, decrementedQty: item.qty })),
     }], { session });
     await takeStockStrict(order.items, session);
+    // Work that must commit with the order or not at all. The e-Transfer lane empties the buyer's cart here, so one cart
+    // can only ever become one order, however many requests (two tabs, a retry, a script) arrive at the same moment.
+    if (beforeCommit) await beforeCommit(session, order);
     created = order;
     return true;
   });

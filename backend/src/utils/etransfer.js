@@ -23,7 +23,7 @@ const {
   claimOrderWithReservation,
   cancelOrderAndRestoreStock,
 } = require('./stock');
-const { ETRANSFER, paymentMethodSettings, discountCents } = require('./paymentMethods');
+const { ETRANSFER, BANK_DEBIT, paymentMethodSettings, discountCents } = require('./paymentMethods');
 const { sendPaymentNoticeEmail, sendOrderConfirmationEmail } = require('./email');
 const { recordAdminEvent, describeOrder } = require('./adminEvents');
 const { estimateDeliveryDate } = require('./deliveryEstimate');
@@ -34,6 +34,9 @@ const { CURRENCY, FASTER_SHIPPING_LABEL, FASTER_SHIPPING_TRANSIT_DAYS } = requir
 
 const HOUR_MS = 60 * 60 * 1000;
 const MAX_OPEN_ORDERS_PER_BUYER = 3;
+// Stripe says a bank debit takes up to 5 business days. A debit still "clearing" after this many calendar days means an event
+// was lost or the payment is stuck, and the owner should look (the sweep tells him once; it never cancels by itself).
+const STALE_BANK_DEBIT_DAYS = 8;
 const AWAITING_NOTE = 'AWAITING e-Transfer: do not ship until you mark the payment received (Payment panel on this order).';
 
 class EtransferError extends Error {
@@ -100,11 +103,36 @@ async function placeEtransferOrder({ user, sessionId, buyer, address, shipping, 
   const discount = discountCents(goodsCents, settings.discountPct);
   const shippingCents = cents(delivery.amount);
   const totalCents = goodsCents - discount + shippingCents;
+
+  // An unpaid order holds real stock for the whole hold, for anyone who types an email address, and one Interac transfer
+  // has a limit at most banks: so one order may only be so big. Bigger orders pay by card (no hold, no cap) or by arrangement.
+  const units = lines.reduce((sum, { item }) => sum + item.qty, 0);
+  if (units > settings.maxUnits || totalCents > Math.round(settings.maxTotal * 100)) {
+    throw new EtransferError(
+      400,
+      `Interac e-Transfer orders are limited to ${settings.maxUnits} items and $${settings.maxTotal.toLocaleString('en-CA')} CAD. Please pay this one by card, or email us and we will arrange it.`,
+      'ETRANSFER_TOO_LARGE',
+    );
+  }
   const expiresAt = new Date(now.getTime() + settings.holdHours * HOUR_MS);
   const gaIds = sanitizeAnalyticsIds(analytics);
   const fullAddress = {
     firstName: buyer.firstName, lastName: buyer.lastName, line1: address.line1, line2: address.line2 || undefined,
     city: address.city, state: address.state, zip: address.zip, country: 'CA', phone: buyer.phone || undefined,
+  };
+
+  // The cart is emptied INSIDE the transaction that creates the order, and only if it still holds what was priced above.
+  // A second request for the same cart (a double click in two tabs, a retry, a script) finds it already empty and is turned
+  // away instead of becoming a second order that holds a second lot of stock and sends a second set of instructions.
+  const consumeCart = async (session) => {
+    const used = await d.Cart.updateOne(
+      { _id: cart._id, 'items.0': { $exists: true }, ...(cart.updatedAt ? { updatedAt: cart.updatedAt } : {}) },
+      { $set: { items: [], discount: 0 }, $unset: { couponCode: '' } },
+      { session },
+    );
+    if (!used?.modifiedCount) {
+      throw new EtransferError(409, 'Your cart changed, or was already turned into an order. Check your email for the e-Transfer instructions, or review your cart and try again.', 'CART_CHANGED');
+    }
   };
 
   let order;
@@ -122,6 +150,8 @@ async function placeEtransferOrder({ user, sessionId, buyer, address, shipping, 
       shippingCost: dollars(shippingCents),
       subtotal: dollars(goodsCents),
       discount: dollars(discount),
+      // The shop charges no sales tax today (no GST/HST registration), so this lane carries none. The day a registration is
+      // added in Stripe (card and bank debit then charge it through automatic_tax), this lane must charge it too: docs/payments.md.
       tax: 0,
       total: dollars(totalCents),
       paymentMethod: ETRANSFER,
@@ -133,14 +163,13 @@ async function placeEtransferOrder({ user, sessionId, buyer, address, shipping, 
       analyticsSessionId: gaIds.sessionId,
       adminNotes: [AWAITING_NOTE, shippingChoiceNote(deliveryMetadata(delivery), delivery.label)].filter(Boolean).join('\n'),
       statusHistory: [{ status: 'pending', note: 'Order placed; waiting for the Interac e-Transfer', timestamp: now }],
-    });
+    }, { beforeCommit: consumeCart });
   } catch (err) {
     if (err instanceof InsufficientStockError) throw new EtransferError(409, err.publicMessage, 'OUT_OF_STOCK');
     throw err;
   }
 
-  // The order exists and holds its stock: everything below is best effort and cannot undo that.
-  await d.Cart.findOneAndUpdate(cartFilter, { items: [], discount: 0, couponCode: undefined }).catch((err) => console.error('e-Transfer: cart not cleared:', err.message));
+  // The order exists, holds its stock and has used up the cart: everything below is best effort and cannot undo that.
   try {
     await d.sendNotice({ email, firstName: buyer.firstName, order, kind: 'etransferInstructions' });
   } catch (err) {
@@ -186,6 +215,7 @@ async function markEtransferReceived(orderId, { amount, confirmation, note, acce
   const set = {
     paymentStatus: 'paid',
     status: 'processing',
+    paidAt: now,
     'etransfer.receivedAt': now,
     'etransfer.receivedAmount': dollars(received),
     // The estimate runs from the day the money arrived, not the day the order was placed.
@@ -262,7 +292,7 @@ async function sweepEtransferOrders({ now = new Date(), limit = 50 } = {}, deps 
     Order, cancelAndRestore: cancelOrderAndRestoreStock, sendNotice: sendPaymentNoticeEmail,
     record: recordAdminEvent, settings: paymentMethodSettings(), ...deps,
   };
-  const summary = { expired: 0, reminded: 0, errors: 0 };
+  const summary = { expired: 0, reminded: 0, staleBankDebit: 0, errors: 0 };
   const unpaid = { paymentMethod: ETRANSFER, paymentStatus: 'pending', status: 'pending' };
 
   const lapsed = await d.Order.find({ ...unpaid, 'etransfer.expiresAt': { $lte: now } }).sort({ 'etransfer.expiresAt': 1 }).limit(limit).populate('user', 'firstName email');
@@ -306,6 +336,28 @@ async function sweepEtransferOrders({ now = new Date(), limit = 50 } = {}, deps 
     } catch (err) {
       summary.errors += 1;
       console.error(`e-Transfer reminder failed for ${order.orderNumber}:`, err.message);
+    }
+  }
+
+  // A bank debit still "clearing" far longer than Stripe allows. The alert is keyed by the order, so every later sweep stays quiet.
+  const staleBefore = new Date(now.getTime() - STALE_BANK_DEBIT_DAYS * 24 * HOUR_MS);
+  const stale = await d.Order.find({
+    paymentMethod: BANK_DEBIT, paymentStatus: 'pending', status: 'pending', createdAt: { $lte: staleBefore },
+  }).sort({ createdAt: 1 }).limit(limit);
+  for (const order of stale) {
+    try {
+      const saved = await d.record({
+        type: 'order.bank_debit_stale',
+        title: 'Bank debit still not cleared: check Stripe',
+        body: `${describeOrder(order)} · placed over ${STALE_BANK_DEBIT_DAYS} days ago, still not cleared`,
+        priority: 'high',
+        order,
+        dedupeKey: `order.bank_debit_stale:${order._id}`,
+      });
+      if (saved) summary.staleBankDebit += 1;
+    } catch (err) {
+      summary.errors += 1;
+      console.error(`Stale bank-debit alert failed for ${order.orderNumber}:`, err.message);
     }
   }
   return summary;

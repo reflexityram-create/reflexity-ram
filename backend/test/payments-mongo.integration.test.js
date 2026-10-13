@@ -250,7 +250,7 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
     assert.equal(await stockOf(product), 7);
     sent.length = 0;
 
-    assert.deepEqual(await sweepEtransferOrders({ now: new Date() }), { expired: 0, reminded: 0, errors: 0 }, 'nothing is due yet');
+    assert.deepEqual(await sweepEtransferOrders({ now: new Date() }), { expired: 0, reminded: 0, staleBankDebit: 0, errors: 0 }, 'nothing is due yet');
     await Order.updateOne({ _id: placed._id }, { $set: { 'etransfer.expiresAt': new Date(Date.now() - 1000) } });
     const summary = await sweepEtransferOrders({ now: new Date() });
     assert.equal(summary.expired, 1);
@@ -263,7 +263,7 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
     assert.equal(await stockOf(product), 10, 'every unit is back on sale');
     assert.match(sent[0].subject, /was cancelled: no e-Transfer received/);
     assert.ok(await AdminEvent.findOne({ type: 'order.etransfer_expired' }));
-    assert.deepEqual(await sweepEtransferOrders({ now: new Date() }), { expired: 0, reminded: 0, errors: 0 }, 'only once');
+    assert.deepEqual(await sweepEtransferOrders({ now: new Date() }), { expired: 0, reminded: 0, staleBankDebit: 0, errors: 0 }, 'only once');
     assert.equal(await stockOf(product), 10, 'and the stock is not returned twice');
   });
 
@@ -790,4 +790,283 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
       assert.ok(await AdminEvent.findOne({ type: 'order.paid' }));
     });
   });
+
+  // ── what the independent review of this change found (each test fails against the code it reviewed) ────────────
+  const { estimateDeliveryDate } = require('../src/utils/deliveryEstimate');
+
+  await root.test('review F1: a failure Stripe reports BEFORE "completed" is handled leaves no order behind, now or when "completed" is retried', async () => {
+    const product = await bankSetup();
+    // What Stripe returns once the bank has refused the debit: the session stays complete + unpaid, the PaymentIntent is back at requires_payment_method.
+    const afterFailure = session({ payment_intent: { id: 'pi_bankdebit_1', status: 'requires_payment_method', latest_charge: null } });
+    await withStripe(() => afterFailure, async ({ fulfillCheckoutSession, settleBankDebitFailed, bankDebitInFlight }) => {
+      assert.equal(bankDebitInFlight(afterFailure), false);
+      assert.equal(bankDebitInFlight(session()), true, 'a processing PaymentIntent is a debit in flight');
+      assert.equal(bankDebitInFlight(session({ payment_intent: 'pi_not_expanded' })), false, 'an unexpanded PaymentIntent proves nothing');
+      assert.equal(await settleBankDebitFailed('cs_test_bankdebit_1'), null, 'no order yet, so nothing to cancel');
+      assert.equal(await fulfillCheckoutSession('cs_test_bankdebit_1'), null, 'the retried "completed" must not create an order for a debit that already failed');
+      assert.equal(await Order.countDocuments(), 0);
+      assert.equal(await stockOf(product), 10, 'no stock is held for it');
+      assert.equal(sent.length, 0, 'the buyer is not told "processing"');
+      assert.equal(await AdminEvent.countDocuments({ type: 'order.bank_debit_pending' }), 0, 'the owner is not told to wait for it');
+    });
+  });
+
+  await root.test('review F1: a debit that is waiting for the BUYER (micro-deposits) holds nothing, and becomes a paid order only when the money clears', async () => {
+    const product = await bankSetup();
+    let current = session({ payment_intent: { id: 'pi_bankdebit_1', status: 'requires_action', latest_charge: null } });
+    await withStripe(() => current, async ({ fulfillCheckoutSession, settleBankDebitPaid }) => {
+      assert.equal(await fulfillCheckoutSession('cs_test_bankdebit_1'), null);
+      assert.equal(await stockOf(product), 10, 'nothing held while the buyer has not verified the account');
+      current = paidSession();
+      const order = await settleBankDebitPaid('cs_test_bankdebit_1');
+      assert.equal(order.paymentStatus, 'paid');
+      assert.equal(order.status, 'processing');
+      assert.equal(await Order.countDocuments(), 1);
+      assert.equal(await stockOf(product), 8, 'taken when it was paid');
+    });
+  });
+
+  await root.test('review F1: a bank debit still clearing after 8 days is flagged to the owner once, never cancelled by the sweep, and a fresh one is left alone', async () => {
+    const product = await bankSetup();
+    await withStripe(() => session(), async ({ fulfillCheckoutSession }) => { await fulfillCheckoutSession('cs_test_bankdebit_1'); });
+    assert.equal((await sweepEtransferOrders({ now: new Date() })).staleBankDebit, 0, 'placed just now');
+    await Order.collection.updateOne({}, { $set: { createdAt: new Date(Date.now() - 9 * 24 * HOUR) } });
+    assert.equal((await sweepEtransferOrders({ now: new Date() })).staleBankDebit, 1);
+    assert.equal((await sweepEtransferOrders({ now: new Date() })).staleBankDebit, 0, 'once');
+    const alert = await AdminEvent.findOne({ type: 'order.bank_debit_stale' });
+    assert.ok(alert);
+    assert.equal(alert.priority, 'high');
+    assert.equal(await AdminEvent.countDocuments({ type: 'order.bank_debit_stale' }), 1);
+    const still = await Order.findOne();
+    assert.equal(still.status, 'pending', 'the owner decides, not the sweep');
+    assert.equal(await stockOf(product), 8);
+
+    // an old debit the owner has already cancelled by hand is not worth an alert
+    await AdminEvent.deleteMany({});
+    await Order.collection.updateOne({ _id: still._id }, { $set: { status: 'cancelled' } });
+    assert.equal((await sweepEtransferOrders({ now: new Date() })).staleBankDebit, 0);
+    assert.equal(await AdminEvent.countDocuments({ type: 'order.bank_debit_stale' }), 0);
+  });
+
+  await root.test('review F2/F11: one e-Transfer order may not hold more than the settings allow, and a refused one takes nothing', async () => {
+    await reset();
+    const product = await seedProduct({ stockQuantity: 60 });
+    await seedCart(product, 17);
+    await assert.rejects(place(), (e) => e instanceof EtransferError && e.status === 400 && e.code === 'ETRANSFER_TOO_LARGE' && /limited to 16 items and \$3,000 CAD/.test(e.publicMessage));
+    await Cart.updateOne({ sessionId: SESSION }, { $set: { 'items.0.qty': 16 } });
+    const atTheLimit = await place();                                   // exactly 16 items is allowed
+    assert.equal(atTheLimit.items[0].qty, 16);
+    assert.equal(await stockOf(product), 44);
+    await reset();
+    const again = await seedProduct({ stockQuantity: 60 });
+    await seedCart(again, 17);
+    await assert.rejects(place(), (e) => e.code === 'ETRANSFER_TOO_LARGE');
+    assert.equal(await stockOf(again), 60, 'nothing taken');
+    assert.equal(await Order.countDocuments(), 0);
+    assert.equal((await Cart.findOne({ sessionId: SESSION })).items.length, 1, 'the cart is left alone so the buyer can still pay by card');
+
+    await reset();
+    const pricey = await seedProduct({ price: 400, stockQuantity: 60 });
+    await seedCart(pricey, 8);                                       // 8 x 400 = 3200, over the 3000 cap
+    await assert.rejects(place(), (e) => e.code === 'ETRANSFER_TOO_LARGE');
+    await Cart.updateOne({ sessionId: SESSION }, { $set: { 'items.0.qty': 7 } });   // 7 x 400 = 2800 - 2% + 25 shipping (3 or more sticks) = 2769: fine
+    assert.equal((await place()).total, 2769);
+
+    // the cap is on the order's total, to the cent, and follows the setting
+    await reset();
+    const normal = await seedProduct();
+    await seedCart(normal, 2);                                        // total 278.60
+    process.env.ETRANSFER_MAX_TOTAL_CAD = '278.59';
+    try {
+      await assert.rejects(place(), (e) => e.code === 'ETRANSFER_TOO_LARGE');
+      process.env.ETRANSFER_MAX_TOTAL_CAD = '278.6';
+      assert.equal((await place()).total, 278.6, 'exactly at the cap is allowed');
+    } finally { delete process.env.ETRANSFER_MAX_TOTAL_CAD; }
+  });
+
+  await root.test('review F3: five simultaneous submits of one cart make exactly one order, one set of instructions and one alert', async () => {
+    await reset();
+    const product = await seedProduct();
+    await seedCart(product, 2);
+    const results = await Promise.allSettled([1, 2, 3, 4, 5].map(() => place({ buyer: { ...BUYER, email: 'burst@example.com' } })));
+    const made = results.filter((r) => r.status === 'fulfilled');
+    const refused = results.filter((r) => r.status === 'rejected');
+    assert.equal(made.length, 1, JSON.stringify(results.map((r) => r.status === 'rejected' ? r.reason.message : 'ok')));
+    assert.ok(refused.every((r) => r.reason instanceof EtransferError && r.reason.status === 409 && r.reason.code === 'CART_CHANGED'), 'the others are turned away cleanly');
+    assert.equal(await Order.countDocuments(), 1);
+    assert.equal(await stockOf(product), 8, 'one order\'s stock, not five');
+    assert.equal(sent.filter((m) => /Send your e-Transfer/.test(m.subject)).length, 1, 'one set of instructions');
+    assert.equal(await AdminEvent.countDocuments({ type: 'order.etransfer_pending' }), 1, 'one alert');
+    assert.equal((await Cart.findOne({ sessionId: SESSION })).items.length, 0);
+  });
+
+  await root.test('review F3: a cart that changed after it was priced is not ordered from', async () => {
+    await reset();
+    const product = await seedProduct();
+    await seedCart(product, 2);
+    // the buyer edits the cart in another tab in the instant between reading and ordering
+    const realFindOne = Cart.findOne;
+    Cart.findOne = function (...args) {
+      const query = realFindOne.apply(this, args);
+      return query.then(async (found) => {
+        await Cart.updateOne({ _id: found._id }, { $set: { 'items.0.qty': 5 } });   // bumps updatedAt too
+        return found;
+      });
+    };
+    try {
+      await assert.rejects(place(), (e) => e.code === 'CART_CHANGED');
+    } finally { Cart.findOne = realFindOne; }
+    assert.equal(await Order.countDocuments(), 0);
+    assert.equal(await stockOf(product), 10);
+    assert.equal((await Cart.findOne({ sessionId: SESSION })).items[0].qty, 5, 'the buyer\'s newer cart is untouched');
+  });
+
+  await root.test('review F4: marking an e-Transfer received and a bank debit clearing both record when the money arrived', async () => {
+    await reset();
+    const product = await seedProduct();
+    await seedCart(product, 1);
+    const placed = await place();
+    assert.equal(placed.paidAt, undefined, 'unpaid orders have no paid date');
+    const t0 = Date.now();
+    const paid = await markEtransferReceived(placed._id, { amount: 146.3, admin: admin() });
+    assert.ok(paid.paidAt && Math.abs(paid.paidAt - t0) < 5000, 'the e-Transfer was paid just now');
+
+    const debitProduct = await bankSetup();
+    let current = session();
+    await withStripe(() => current, async ({ fulfillCheckoutSession, settleBankDebitPaid }) => {
+      const order = await fulfillCheckoutSession('cs_test_bankdebit_1');
+      assert.equal(order.paidAt, undefined);
+      await Order.collection.updateOne({ _id: order._id }, { $set: { createdAt: new Date(Date.now() - 4 * 24 * HOUR) } });   // authorized four days ago
+      current = paidSession();
+      const cleared = await settleBankDebitPaid('cs_test_bankdebit_1');
+      assert.ok(cleared.paidAt && Math.abs(cleared.paidAt - Date.now()) < 5000, 'cleared just now, not four days ago');
+      // the GA4 report works from that date: four days after the order was placed it is still reported, dated when it was paid
+      const { reportPaidOrderToGa4 } = require('../src/utils/purchaseAnalytics');
+      const calls = [];
+      const ok = await reportPaidOrderToGa4(await Order.findById(cleared._id).lean(), {
+        currency: 'CAD', isEnabled: () => true, send: async (o) => { calls.push(o); return { sent: true }; },
+      });
+      assert.equal(ok, true);
+      assert.equal(calls.length, 1);
+    });
+    assert.ok(debitProduct);
+  });
+
+  await root.test('review F5: a replayed "it cleared" event flags a hand-cancelled order once', async () => {
+    await bankSetup();
+    let current = session();
+    await withStripe(() => current, async ({ fulfillCheckoutSession, settleBankDebitPaid }) => {
+      const order = await fulfillCheckoutSession('cs_test_bankdebit_1');
+      await cancelOrderAndRestoreStock(order._id, { status: 'cancelled', cancelledAt: new Date() }, { status: 'pending', paymentStatus: 'pending' });
+      current = paidSession();
+      await settleBankDebitPaid('cs_test_bankdebit_1');
+      await settleBankDebitPaid('cs_test_bankdebit_1');
+      await Promise.all([settleBankDebitPaid('cs_test_bankdebit_1'), settleBankDebitPaid('cs_test_bankdebit_1')]);
+      const flagged = await Order.findById(order._id);
+      assert.equal((flagged.adminNotes.match(/REVIEW: the bank debit CLEARED/g) || []).length, 1, flagged.adminNotes);
+      assert.equal(await AdminEvent.countDocuments({ type: 'order.payment_after_cancel' }), 1);
+    });
+  });
+
+  await root.test('review F6: a Faster-shipping bank debit gets the Faster delivery estimate when it clears, like the card and e-Transfer paths', async () => {
+    await bankSetup();
+    const fasterMeta = { ...session().metadata, shippingCountry: 'CA', canadaPostTransitDays: '3' };
+    let current = session({ metadata: fasterMeta });
+    await withStripe(() => current, async ({ fulfillCheckoutSession, settleBankDebitPaid }) => {
+      await fulfillCheckoutSession('cs_test_bankdebit_1');
+      current = paidSession(); current.metadata = fasterMeta;
+      const paid = await settleBankDebitPaid('cs_test_bankdebit_1');
+      const faster = estimateDeliveryDate({ placedAt: paid.paidAt, country: 'CA', transitDays: 3 });
+      const standard = estimateDeliveryDate({ placedAt: paid.paidAt, country: 'CA' });
+      assert.notEqual(+faster, +standard, 'the two estimates really differ');
+      assert.equal(+paid.estimatedDelivery, +faster);
+    });
+  });
+
+  await root.test('review F7: a refunded card order\'s success link answers "complete" as before; an unpaid or failed bank debit answers "processing", never a sale', async () => {
+    const product = await bankSetup();
+    const card = session({
+      payment_status: 'paid', payment_method_types: ['card'], metadata: { userId: 'guest', cartSessionId: SESSION },
+      total_details: { amount_discount: 0, amount_shipping: 1400, amount_tax: 0 }, amount_total: 28400,
+      payment_intent: { id: 'pi_card_1', latest_charge: 'ch_card_1' },
+    });
+    const poll = async (current) => {
+      stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => current });
+      const app = express();
+      app.use('/api/stripe', stripeRouter);
+      const server = http.createServer(app);
+      await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+      try {
+        const r = await fetch(`http://127.0.0.1:${server.address().port}/api/stripe/session-status?session_id=${current.id}`);
+        return await r.json();
+      } finally { server.closeAllConnections?.(); await new Promise((resolve) => server.close(resolve)); stripeRouter.setCheckoutDependenciesForTest(); }
+    };
+    const first = await poll(card);
+    assert.equal(first.status, 'complete');
+    await Order.updateOne({ stripeCheckoutSessionId: card.id }, { $set: { paymentStatus: 'refunded', status: 'refunded' } });
+    const again = await poll(card);
+    assert.equal(again.status, 'complete', 'exactly what a refunded card order has always answered');
+    assert.equal(again.orderNumber, first.orderNumber);
+
+    // a bank debit that failed and was cancelled is shown as an order that is not paid, with nothing for analytics
+    await reset();
+    await seedProduct();
+    await seedCart(await Product.findOne(), 2);
+    let failing = session({ id: 'cs_failed_debit' });
+    await withStripe(() => failing, async ({ fulfillCheckoutSession, settleBankDebitFailed }) => {
+      await fulfillCheckoutSession('cs_failed_debit');
+      await settleBankDebitFailed('cs_failed_debit');
+    });
+    const body = await poll(session({ id: 'cs_failed_debit', payment_intent: { id: 'pi_x', status: 'requires_payment_method' } }));
+    assert.equal(body.status, 'processing');
+    assert.equal(body.value, undefined);
+    assert.ok(product);
+  });
+
+  await root.test('review F8: the dashboard\'s "pending" counts orders to process, and orders waiting for money are counted on their own', async () => {
+    await reset();
+    const product = await seedProduct({ stockQuantity: 30 });
+    await seedCart(product, 1);
+    await place();                                                        // an e-Transfer order, unpaid
+    await seedCart(product, 1, 'session_card_buyer_0123456789');
+    const card = session({
+      id: 'cs_card_for_stats', payment_status: 'paid', payment_method_types: ['card'], metadata: { userId: 'guest', cartSessionId: 'session_card_buyer_0123456789' },
+      total_details: { amount_discount: 0, amount_shipping: 1400, amount_tax: 0 }, amount_total: 28400, payment_intent: { id: 'pi_card_stats', latest_charge: 'ch_card_stats' },
+    });
+    await withStripe(() => card, async ({ fulfillCheckoutSession }) => { await fulfillCheckoutSession('cs_card_for_stats'); });
+    const owner = await User.create({ email: 'owner2@reflexity.example', firstName: 'Yusuf', lastName: 'Owner', role: 'admin', isEmailVerified: true });
+    const adminHeaders = { authorization: `Bearer ${generateAccessToken(owner._id, owner.authVersion)}` };
+    await serve(async (call) => {
+      const stats = await call('GET', '/api/admin/stats', { headers: adminHeaders });
+      assert.equal(stats.status, 200);
+      assert.equal(stats.body.stats.totalOrders, 2);
+      assert.equal(stats.body.stats.pendingOrders, 1, 'only the paid card order is waiting to be processed');
+      assert.equal(stats.body.stats.awaitingPayment, 1, 'the e-Transfer order is waiting for money');
+    });
+  });
+
+  await root.test('review F10: the e-Transfer instructions tell a stranger whose address was typed in by mistake to ignore them', async () => {
+    await reset();
+    const product = await seedProduct();
+    await seedCart(product, 1);
+    await place();
+    assert.match(lastEmail().html, /Did not place this order\? Ignore this email and do not send anything/);
+  });
+
+  await root.test('review F12: "received" ignores a mismatched amount when acceptDifferentAmount is the TEXT "false" (the route coerces it, nothing else does)', async () => {
+    await reset();
+    const product = await seedProduct();
+    await seedCart(product, 2);
+    const owner = await User.create({ email: 'owner3@reflexity.example', firstName: 'Yusuf', lastName: 'Owner', role: 'admin', isEmailVerified: true });
+    const adminHeaders = { authorization: `Bearer ${generateAccessToken(owner._id, owner.authVersion)}` };
+    const placed = await place();
+    await serve(async (call) => {
+      for (const value of ['false', 'no', 0, 'true ', 'TRUE ']) {
+        const r = await call('POST', `/api/admin/orders/${placed._id}/etransfer/received`, { headers: adminHeaders, body: { amount: 100, acceptDifferentAmount: value, note: 'trying' } });
+        assert.ok([400, 409].includes(r.status), `${JSON.stringify(value)} -> ${r.status} ${JSON.stringify(r.body)}`);
+      }
+      assert.equal((await Order.findById(placed._id)).paymentStatus, 'pending', 'never paid by a mismatched amount');
+    });
+  });
+
 });

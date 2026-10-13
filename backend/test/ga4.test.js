@@ -5,6 +5,7 @@ const {
   fallbackClientId,
   ga4Config,
   isServerPurchaseTrackingEnabled,
+  purchaseTimeMs,
   sanitizeAnalyticsIds,
   sendPurchaseEvent,
 } = require('../src/utils/ga4');
@@ -78,6 +79,17 @@ test('a blocked browser still yields a stable client id and no session id', () =
   assert.equal(first.client_id, fallbackClientId(order.orderNumber));
   assert.notEqual(first.client_id, fallbackClientId('RFX-OTHER-ORDER'));
   assert.equal('session_id' in first.events[0].params, false);
+});
+
+test('a purchase is timestamped when it was paid, not when the order was placed (review F4)', () => {
+  const placed = '2026-09-14T09:00:00.000Z';
+  const paidAt = '2026-09-18T13:21:13.171Z';
+  const now = Date.parse('2026-09-18T13:21:20.000Z');
+  assert.equal(purchaseTimeMs({ createdAt: placed, paidAt }), Date.parse(paidAt));
+  assert.equal(purchaseTimeMs({ createdAt: placed }), Date.parse(placed), 'a card order has no paid date and keeps using its creation');
+  assert.equal(purchaseTimeMs({}, 123), 123);
+  assert.equal(buildPurchasePayload({ ...order, createdAt: placed, paidAt }, {}, { currency: 'cad', now }).timestamp_micros, Date.parse(paidAt) * 1000);
+  assert.equal(buildPurchasePayload({ ...order, createdAt: placed }, {}, { currency: 'cad', now }).timestamp_micros, Date.parse(placed) * 1000);
 });
 
 test('an event is never timestamped in the future', () => {

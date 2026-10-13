@@ -11,7 +11,7 @@ import { useSEO } from '@/lib/seo';
 import { imageUrl } from '@/lib/imageUrl';
 import { formatStorePrice, FASTER_SHIPPING_MAX_STICKS, SIGNATURE_PRICE, STORE_CURRENCY_CODE, STORE_CURRENCY_NAME } from '@/lib/currency';
 import { ACCEPTED_PAYMENTS_SENTENCE } from '@/lib/payments';
-import { BANK_DEBIT, CARD, ETRANSFER, discountFor, offeredMethods, savingsLabel } from '@/lib/paymentMethods';
+import { BANK_DEBIT, CARD, ETRANSFER, discountFor, etransferSizeProblem, offeredMethods, savingsLabel } from '@/lib/paymentMethods';
 import { ecommerceItem, readGaIdentifiers, trackEvent } from '@/lib/analytics';
 
 // Checkout is handled by Stripe's hosted Checkout page:
@@ -40,18 +40,24 @@ function SpeedRow({ selected, onSelect, title, detail, price, testId }) {
 }
 
 // One way to pay: a radio row with what it saves and what happens next.
-function PaymentRow({ selected, onSelect, method, goods }) {
+function PaymentRow({ selected, onSelect, method, goods, disabledReason = '' }) {
   const saves = savingsLabel(goods, method.discountPct, formatStorePrice);
+  const disabled = Boolean(disabledReason);
   return (
-    <label className="flex items-start justify-between gap-3 rounded-xl border px-3 py-2.5 cursor-pointer transition-colors" data-testid={`checkout-pay-${method.id}`}
+    <label className={`flex items-start justify-between gap-3 rounded-xl border px-3 py-2.5 transition-colors ${disabled ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`} data-testid={`checkout-pay-${method.id}`}
       style={{ borderColor: selected ? 'var(--brand-yellow)' : 'var(--border-strong)', background: selected ? 'var(--input-bg-focus)' : 'transparent' }}>
       <span className="flex items-start gap-2.5">
-        <input type="radio" name="payment-method" className="mt-1" checked={selected} onChange={onSelect} />
+        <input type="radio" name="payment-method" className="mt-1" checked={selected && !disabled} disabled={disabled} onChange={onSelect} />
         <span className="text-[14px]">{method.title}
           <span className="block text-[12px] text-neutral-500">{method.how}</span>
+          {disabled && (
+            <span className="block text-[12px] text-amber-600 dark:text-amber-400 mt-1" data-testid={`checkout-pay-${method.id}-unavailable`}>
+              Not available for this order: {disabledReason} Pay by card, or email us for a larger order.
+            </span>
+          )}
         </span>
       </span>
-      {saves && <span className="text-[12px] font-semibold text-emerald-500 whitespace-nowrap">{saves}</span>}
+      {saves && !disabled && <span className="text-[12px] font-semibold text-emerald-500 whitespace-nowrap">{saves}</span>}
     </label>
   );
 }
@@ -86,8 +92,18 @@ export default function Checkout() {
     : (useFaster ? shippingFaster : Number(shipping || 0)) + (signature ? SIGNATURE_PRICE : 0);
   const dutiesAmount = international && country === 'US' ? Number(quote.duties?.amount || 0) : 0;
   const totalBeforeTax = Number(subtotal || 0) + Number(shippingAmount || 0) + dutiesAmount;
+  // A method that cannot take this cart (an e-Transfer order over the shop's size limit) is shown with the reason, and is never the chosen one.
+  const sizeProblemFor = (m) => (m.id === ETRANSFER
+    ? etransferSizeProblem({
+      units: Number(itemCount) || 0,
+      total: Number(subtotal || 0) + Number(shippingAmount || 0) - discountFor(subtotal, m.discountPct),
+      maxUnits: m.maxUnits,
+      maxTotal: m.maxTotal,
+    }, formatStorePrice)
+    : '');
   // Outside Canada only the card checkout exists (bank debit and e-Transfer are for Canadian bank accounts).
-  const method = international ? methods[0] : (methods.find((m) => m.id === methodId) || methods[0]);
+  const picked = methods.find((m) => m.id === methodId);
+  const method = international ? methods[0] : (picked && !sizeProblemFor(picked) ? picked : methods[0]);
   const paymentDiscount = discountFor(subtotal, method.discountPct);
   const total = totalBeforeTax - paymentDiscount;
   const beginCheckoutTracked = useRef(false);
@@ -359,7 +375,7 @@ export default function Checkout() {
                     <fieldset className="mb-5 space-y-2" data-testid="checkout-payment-methods">
                       <legend className="text-[13px] text-neutral-400 mb-1">Pay with</legend>
                       {methods.map((m) => (
-                        <PaymentRow key={m.id} method={m} goods={subtotal} selected={method.id === m.id} onSelect={() => setMethodId(m.id)} />
+                        <PaymentRow key={m.id} method={m} goods={subtotal} selected={method.id === m.id} onSelect={() => setMethodId(m.id)} disabledReason={sizeProblemFor(m)} />
                       ))}
                       {method.discountPct > 0 && (
                         <p className="text-[12px] text-neutral-500" data-testid="checkout-payment-note">

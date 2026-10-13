@@ -332,6 +332,7 @@ const PAYMENT_NOTICES = {
       `Do it before <strong style="color:#f5f5f7;">${escapeHtml(order.etransfer?.expiresAt ? torontoTime(order.etransfer.expiresAt) : 'the deadline')}</strong> (Toronto time), or the items go back on sale and the order is cancelled.`,
       'Deposit is automatic: you do not need a security question or password. We check payments by hand during the day, so allow a little time for the confirmation email.',
       `Only pay the address above. We never ask you to send money anywhere else. If an email tells you to, do not pay it and write to ${escapeHtml(SUPPORT_EMAIL)}.`,
+      `Did not place this order? Ignore this email and do not send anything: someone may have typed your address by mistake, and the order is cancelled by itself if no transfer arrives.`,
     ],
   },
   etransferReminder: {

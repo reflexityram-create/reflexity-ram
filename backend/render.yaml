@@ -80,6 +80,10 @@ services:
         sync: false
       - key: ETRANSFER_REMINDER_HOURS
         sync: false
+      - key: ETRANSFER_MAX_UNITS
+        sync: false
+      - key: ETRANSFER_MAX_TOTAL_CAD
+        sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET

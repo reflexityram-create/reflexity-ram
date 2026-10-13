@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
-  BANK_DEBIT, CARD, ETRANSFER, POSTAL_CODE, discountFor, normalizePostalCode, offeredMethods, savingsLabel, torontoDeadline, validateEtransferForm,
+  BANK_DEBIT, CARD, ETRANSFER, POSTAL_CODE, discountFor, etransferSizeProblem, normalizePostalCode, offeredMethods, savingsLabel, torontoDeadline, validateEtransferForm,
 } from '../src/lib/paymentMethods.js';
 import { METHOD_NAMES, paymentState, showPaymentLabel, stripePaymentUrl } from '../src/lib/orderPayment.js';
 
@@ -35,6 +35,20 @@ test('only the methods the server offers appear, card first and always, in a fix
   assert.match(et(undefined).how, /for 48 hours/, 'an older server without the field reads as 48');
 });
 
+test('an e-Transfer order over the size limit is refused up front, to the cent, with the same rule as the server (review F2/F11)', () => {
+  const limits = { maxUnits: 16, maxTotal: 3000 };
+  const listed = offeredMethods([{ id: ETRANSFER, discountPct: 2, holdHours: 48, ...limits }]).find((m) => m.id === ETRANSFER);
+  assert.equal(listed.maxUnits, 16);
+  assert.equal(listed.maxTotal, 3000);
+  assert.equal(offeredMethods([{ id: ETRANSFER, discountPct: 2 }]).find((m) => m.id === ETRANSFER).maxUnits, undefined, 'an older server has no limit to show');
+  assert.equal(etransferSizeProblem({ units: 16, total: 3000, ...limits }), '', 'exactly at both limits is fine');
+  assert.match(etransferSizeProblem({ units: 17, total: 100, ...limits }), /limited to 16 items/);
+  assert.match(etransferSizeProblem({ units: 2, total: 3000.01, ...limits }), /limited to \$3,000 CAD/);
+  assert.equal(etransferSizeProblem({ units: 500, total: 99999 }), '', 'no limits from the server means no check here (the server still decides)');
+  assert.equal(etransferSizeProblem({ units: 3, total: 100, ...limits }, (n) => `CA$${n}`), '');
+  assert.match(etransferSizeProblem({ units: 3, total: 4000, ...limits }, (n) => `CA$${n}`), /CA\$3000 CAD/, 'the caller formats the money');
+});
+
 test('the saving is shown in words and dollars, and not at all when there is none', () => {
   const money = (v) => `$${v.toFixed(2)}`;
   assert.equal(savingsLabel(618, 2, money), 'Save 2% ($12.36)');
@@ -57,6 +71,25 @@ test('the form names every field that is missing or wrong, and asks for an email
   assert.deepEqual(validateEtransferForm(good, { needsEmail: true }), {});
   assert.ok('phone' in validateEtransferForm({ ...good, phone: 'call me' }, { needsEmail: true }));
   assert.ok('email' in validateEtransferForm({ ...good, email: 'sam@' }, { needsEmail: true }));
+});
+
+test('a method that cannot take the cart is shown with its reason and is never the chosen one; the e-Transfer page says so and blocks the form (review F2/F11)', async () => {
+  const checkout = await read('../src/pages/Checkout.jsx');
+  assert.match(checkout, /etransferSizeProblem/);
+  assert.match(checkout, /disabledReason=\{sizeProblemFor\(m\)\}/);
+  assert.match(checkout, /picked && !sizeProblemFor\(picked\)/, 'a chosen method that has become too big falls back to card');
+  assert.match(checkout, /disabled=\{disabled\}/);
+  const page = await read('../src/pages/CheckoutEtransfer.jsx');
+  assert.match(page, /data-testid="et-too-big"/);
+  assert.match(page, /disabled=\{submitting \|\| !offer \|\| Boolean\(sizeProblem\)\}/);
+});
+
+test('the owner\'s dashboard counts orders waiting for money apart from orders to process, and labels them (review F8)', async () => {
+  const dashboard = await read('../src/pages/admin/Dashboard.jsx');
+  assert.match(dashboard, /\$\{data\?\.stats\.awaitingPayment > 0 \? ` · \$\{data\.stats\.awaitingPayment\} awaiting payment` : ''\}/);
+  assert.match(dashboard, /showPaymentLabel\(o\)/);
+  const panel = await read('../src/components/admin/PaymentPanel.jsx');
+  assert.match(panel, /data-testid="et-sender-hint"/, 'the owner is told whose name the transfer should come from (review F10)');
 });
 
 test('the deadline is spelled out in Toronto time', () => {
@@ -93,7 +126,8 @@ test('an order\'s payment reads as one clear state, and only an e-Transfer being
 test('checkout shows the payment choice only inside Canada, and every discount comes from the server\'s list', async () => {
   const checkout = await read('../src/pages/Checkout.jsx');
   assert.match(checkout, /paymentsApi\.methods\(\)/);
-  assert.match(checkout, /const method = international \? methods\[0\] : \(methods\.find\(\(m\) => m\.id === methodId\) \|\| methods\[0\]\);/);
+  assert.match(checkout, /const picked = methods\.find\(\(m\) => m\.id === methodId\);/);
+  assert.match(checkout, /const method = international \? methods\[0\] : \(picked && !sizeProblemFor\(picked\) \? picked : methods\[0\]\);/);
   assert.match(checkout, /\{!international && methods\.length > 1 && \(/);
   assert.match(checkout, /const total = totalBeforeTax - paymentDiscount;/);
   assert.match(checkout, /method\.id === BANK_DEBIT \? BANK_DEBIT : undefined,/);

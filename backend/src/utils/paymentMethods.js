@@ -10,6 +10,10 @@
 //                                      it e-Transfer is NOT offered, because the shop never guesses where money goes.
 //   ETRANSFER_HOLD_HOURS=48            how long an unpaid e-Transfer order keeps its stock (default 48, 6 to 168)
 //   ETRANSFER_REMINDER_HOURS=24        when the "we have not received it yet" email goes out (default 24)
+//   ETRANSFER_MAX_UNITS=16             most items one e-Transfer order may hold (default 16, 1 to 200)
+//   ETRANSFER_MAX_TOTAL_CAD=3000       most one e-Transfer order may come to (default 3000, 50 to 20000). An unpaid order
+//                                      holds real stock for the whole hold, and most banks cap a single transfer: bigger
+//                                      orders pay by card (not held, no cap) or by arrangement.
 
 const BANK_DEBIT = 'bank_debit';
 const ETRANSFER = 'etransfer';
@@ -46,6 +50,8 @@ function paymentMethodSettings(env = process.env) {
       recipientEmail: EMAIL.test(recipient) ? recipient : null,
       holdHours: Math.round(number(env.ETRANSFER_HOLD_HOURS, 48, { min: 6, max: 168 })),
       reminderHours: Math.round(number(env.ETRANSFER_REMINDER_HOURS, 24, { min: 1, max: 72 })),
+      maxUnits: Math.round(number(env.ETRANSFER_MAX_UNITS, 16, { min: 1, max: 200 })),
+      maxTotal: number(env.ETRANSFER_MAX_TOTAL_CAD, 3000, { min: 50, max: 20000 }),
     },
   };
 }
@@ -60,7 +66,7 @@ function publicPaymentMethods(env = process.env) {
   return [
     { id: 'card', label: 'Card, Apple Pay or Google Pay', discountPct: 0 },
     ...(settings[BANK_DEBIT].enabled ? [{ id: BANK_DEBIT, label: 'Bank debit', discountPct: settings[BANK_DEBIT].discountPct }] : []),
-    ...(settings[ETRANSFER].enabled ? [{ id: ETRANSFER, label: 'Interac e-Transfer', discountPct: settings[ETRANSFER].discountPct, holdHours: settings[ETRANSFER].holdHours }] : []),
+    ...(settings[ETRANSFER].enabled ? [{ id: ETRANSFER, label: 'Interac e-Transfer', discountPct: settings[ETRANSFER].discountPct, holdHours: settings[ETRANSFER].holdHours, maxUnits: settings[ETRANSFER].maxUnits, maxTotal: settings[ETRANSFER].maxTotal }] : []),
   ];
 }
 

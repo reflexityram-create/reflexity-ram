@@ -41,14 +41,27 @@ export function offeredMethods(fromServer) {
     .filter((id) => id === CARD || byId.has(id))
     .map((id) => {
       const holdHours = id === ETRANSFER ? (Number(byId.get(id)?.holdHours) || DEFAULT_HOLD_HOURS) : undefined;
+      const maxUnits = id === ETRANSFER ? Number(byId.get(id)?.maxUnits) : NaN;
+      const maxTotal = id === ETRANSFER ? Number(byId.get(id)?.maxTotal) : NaN;
       const copy = METHOD_COPY[id];
       return {
         id, ...copy,
         how: typeof copy.how === 'function' ? copy.how(holdHours) : copy.how,
         discountPct: id === CARD ? 0 : Number(byId.get(id)?.discountPct) || 0,
         ...(holdHours ? { holdHours } : {}),
+        ...(Number.isFinite(maxUnits) && maxUnits > 0 ? { maxUnits } : {}),
+        ...(Number.isFinite(maxTotal) && maxTotal > 0 ? { maxTotal } : {}),
       };
     });
+}
+
+// Why an e-Transfer order of this size is refused, or '' when it is fine. An unpaid order holds real stock for the whole
+// hold and one transfer has a limit at most banks, so the server (utils/etransfer.js) refuses a bigger one: this is the same
+// rule, so the buyer is told before they fill in a form. `total` is what they would send.
+export function etransferSizeProblem({ units, total, maxUnits, maxTotal }, format = (n) => `$${Number(n).toLocaleString('en-CA')}`) {
+  if (Number.isFinite(maxUnits) && Number(units) > maxUnits) return `e-Transfer orders are limited to ${maxUnits} items.`;
+  if (Number.isFinite(maxTotal) && Math.round(Number(total) * 100) > Math.round(maxTotal * 100)) return `e-Transfer orders are limited to ${format(maxTotal)} CAD.`;
+  return '';
 }
 
 // "Save 2% ($12.36)" for a method, or '' when it saves nothing.
