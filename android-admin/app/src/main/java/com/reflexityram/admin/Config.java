@@ -6,7 +6,6 @@ final class Config {
 
     /** The storefront and admin panel (Cloudflare Pages). The web view only ever stays on this host. */
     static final String SITE = "https://reflexityram.com";
-    static final String SITE_HOST = "reflexityram.com";
 
     /** The shop's API (Render). */
     static final String API = "https://reflexity-ram.onrender.com/api";

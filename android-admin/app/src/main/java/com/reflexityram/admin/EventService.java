@@ -27,6 +27,7 @@ public final class EventService extends Service {
     private Thread worker;
     private volatile boolean running;
     private volatile boolean online = true;
+    private boolean revokedNoticeShown = false;
     private final Object wake = new Object();
     private ConnectivityManager connectivity;
     private ConnectivityManager.NetworkCallback networkCallback;
@@ -78,7 +79,12 @@ public final class EventService extends Service {
         long backoffMs = 2_000;
         while (running) {
             String token = store.deviceToken();
-            if (token == null) break;
+            if (token == null) {
+                if (!store.hasSavedToken()) break;                        // forgotten (removed, or its key is gone): stop
+                setOnline(false);                                         // saved but unreadable for the moment (just after a restart): wait
+                backoffMs = pause(backoffMs);
+                continue;
+            }
             try {
                 String cursor = store.cursor();
                 JSONObject answer = Api.events(token, cursor, Config.LONG_POLL_SECONDS);
@@ -99,6 +105,7 @@ public final class EventService extends Service {
                     Log.i(TAG, "this phone is no longer paired");
                     store.forgetDevice();
                     Notifier.notice(this, 2, "This phone was removed", "It no longer gets shop alerts. Pair it again from the Security page in the admin.");
+                    revokedNoticeShown = true;
                     break;
                 }
                 Log.w(TAG, "server said " + e.status + "; retrying");
@@ -114,7 +121,12 @@ public final class EventService extends Service {
                 backoffMs = pause(backoffMs);
             }
         }
-        if (running) stopSelf();
+        if (running) {
+            if (!store.hasSavedToken() && !revokedNoticeShown) {
+                Notifier.notice(this, 3, "Alerts stopped", "This phone is no longer paired with the shop. Open the app to pair it again.");
+            }
+            stopSelf();
+        }
     }
 
     /** Waits `ms` (cut short when a network comes back), and returns the next, longer wait. */

@@ -33,6 +33,11 @@ final class Store {
     }
 
     // ── device token ──────────────────────────────────────────────────────────
+    /**
+     * The decrypted device token, or null when it cannot be had RIGHT NOW. Null does not always mean "not paired": just after a
+     * restart the Keystore can be slow to answer, and a pairing must never be thrown away because of that. It is only forgotten
+     * when the key it was sealed with no longer exists (a reset or a restore), which can never come back.
+     */
     synchronized String deviceToken() {
         String stored = prefs.getString(K_TOKEN, null);
         if (stored == null) return null;
@@ -41,18 +46,24 @@ final class Store {
             byte[] iv = new byte[12];
             System.arraycopy(all, 0, iv, 0, 12);
             Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-            cipher.init(Cipher.DECRYPT_MODE, key(), new GCMParameterSpec(128, iv));
+            cipher.init(Cipher.DECRYPT_MODE, key(false), new GCMParameterSpec(128, iv));
             return new String(cipher.doFinal(all, 12, all.length - 12), StandardCharsets.UTF_8);
-        } catch (Exception e) {
-            // The key is gone (a reset, a restore): the token cannot be read, so the phone has to be paired again.
+        } catch (KeyGoneException e) {
             prefs.edit().remove(K_TOKEN).apply();
             return null;
+        } catch (Exception e) {
+            return null;                                              // unreadable for now: keep it, the caller retries
         }
+    }
+
+    /** A token is saved (whether or not the Keystore is answering at this moment). */
+    boolean hasSavedToken() {
+        return prefs.contains(K_TOKEN);
     }
 
     synchronized void saveDeviceToken(String token) throws Exception {
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-        cipher.init(Cipher.ENCRYPT_MODE, key());
+        cipher.init(Cipher.ENCRYPT_MODE, key(true));
         byte[] iv = cipher.getIV();
         byte[] sealed = cipher.doFinal(token.getBytes(StandardCharsets.UTF_8));
         byte[] all = new byte[iv.length + sealed.length];
@@ -65,14 +76,21 @@ final class Store {
         prefs.edit().remove(K_TOKEN).remove(K_CURSOR).remove(K_SESSION).remove(K_SESSION_UNTIL).apply();
     }
 
+    /** Paired = a token is saved. (Reading it is a separate step that can fail for a moment.) */
     boolean isPaired() {
-        return deviceToken() != null;
+        return hasSavedToken();
     }
 
-    private static SecretKey key() throws Exception {
+    private static final class KeyGoneException extends Exception {
+        private static final long serialVersionUID = 1L;
+    }
+
+    /** The Keystore key. Only pairing (`create`) may make a new one; reading with a missing key means the token is lost for good. */
+    private static SecretKey key(boolean create) throws Exception {
         KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
         keyStore.load(null);
         if (keyStore.containsAlias(KEY_ALIAS)) return (SecretKey) keyStore.getKey(KEY_ALIAS, null);
+        if (!create) throw new KeyGoneException();
         KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
         generator.init(new KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)

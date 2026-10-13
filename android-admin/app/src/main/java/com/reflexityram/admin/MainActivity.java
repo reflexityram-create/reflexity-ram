@@ -126,7 +126,7 @@ public final class MainActivity extends Activity {
         }
         Uri data = intent == null ? null : intent.getData();
         String path = Config.HOME_PATH;
-        if (data != null && Config.SITE_HOST.equals(data.getHost()) && data.getEncodedPath() != null && data.getEncodedPath().startsWith("/admin")) {
+        if (data != null && isSite(data) && data.getEncodedPath() != null && data.getEncodedPath().startsWith("/admin")) {
             path = data.getEncodedPath() + (data.getEncodedQuery() != null ? "?" + data.getEncodedQuery() : "");
         }
         showAdmin(path);
@@ -230,8 +230,7 @@ public final class MainActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
                 if ("rfx".equals(uri.getScheme())) { showAdmin(pendingPath); return true; }
-                String host = uri.getHost();
-                if ("https".equals(uri.getScheme()) && host != null && (host.equals(Config.SITE_HOST) || host.equals("www." + Config.SITE_HOST))) return false;
+                if (isSite(uri)) return false;
                 try { startActivity(new Intent(Intent.ACTION_VIEW, uri)); } catch (ActivityNotFoundException ignored) { /* nothing can open it */ }
                 return true;
             }
@@ -297,7 +296,7 @@ public final class MainActivity extends Activity {
         boolean fresh = store.sessionJwt() != null && store.sessionValidUntilMs() - now > Config.SESSION_RENEW_BEFORE_MS;
         if (fresh && !forceNew) return null;
         String token = store.deviceToken();
-        if (token == null) return "Pair this phone to continue.";
+        if (token == null) return store.hasSavedToken() ? "The saved pairing could not be read yet. Try again in a moment." : "Pair this phone to continue.";
         try {
             JSONObject answer = Api.session(token);
             store.saveSession(answer.getString("accessToken"), now + answer.optLong("expiresInSeconds", 86_400) * 1000);
@@ -363,6 +362,15 @@ public final class MainActivity extends Activity {
         if (requestCode != REQ_FILE || fileCallback == null) return;
         fileCallback.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode, data));
         fileCallback = null;
+    }
+
+    /** True for the shop's own pages (same scheme, host and port as Config.SITE, with or without "www."): the only ones the web view may show. */
+    private static boolean isSite(Uri uri) {
+        Uri site = Uri.parse(Config.SITE);
+        String host = uri.getHost();
+        if (host == null || site.getScheme() == null || !site.getScheme().equals(uri.getScheme())) return false;
+        if (site.getPort() != -1 && site.getPort() != uri.getPort()) return false;
+        return host.equals(site.getHost()) || host.equals("www." + site.getHost());
     }
 
     // ── small view helpers ────────────────────────────────────────────────────
