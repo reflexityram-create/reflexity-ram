@@ -29,6 +29,13 @@ export default function Terms() {
           ],
         },
         {
+          heading: "Shipping & delivery",
+          body: [
+            "We do our best to ship every order quickly and within the times shown in our Shipping policy, but those times are estimates, not guarantees. We reserve the right to extend shipping and delivery times when needed, for example because of stock checks, supplier or carrier delays, customs, weather, holidays, or high order volume.",
+            "If your order is delayed, we'll do our best to keep you informed by email. Nothing in this section limits any rights you have under applicable consumer protection laws.",
+          ],
+        },
+        {
           heading: "Intellectual property",
           body: [
             "All site content (logo, copy, photography, layout) is owned by Reflexity RAM. Don't republish without permission.",
