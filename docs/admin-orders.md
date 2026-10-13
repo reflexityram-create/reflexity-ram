@@ -31,15 +31,21 @@ What to do next, by state, and what the **buyer** is emailed:
 | Order is | Button | Buyer is emailed |
 | --- | --- | --- |
 | e-Transfer, money not seen yet | type the amount, "I received this e-Transfer" | yes: payment confirmation (the order becomes paid) |
-| paid, not shipped | tracking number (or "No tracking number"), "Mark as shipped" | **yes, right away**: with the tracking link, or saying it went without tracking |
+| paid, not shipped | tracking number (or "No tracking number"), "Mark as shipped" | **yes, right away**: with the tracking link, or saying it went without tracking; or save the number and the site marks it shipped (and emails) at Canada Post's first scan |
 | shipped | "Mark as delivered" | no |
 | unpaid (any method) | "Cancel this order" (stock goes back) | no |
 
 Every button asks once, in the page, and says what the buyer gets. (A browser confirm box does not appear inside the phone app's web view
 unless the app shows it; the screens do not depend on one.)
 
-"More options" on the ship card: add a note on the order, or only save the tracking number and let Canada Post's first scan move the order
-to Shipped (the buyer is emailed then).
+Under the buttons, **"Save the number, let Canada Post mark it shipped"** keeps the order where it is. The site follows the parcel: at
+Canada Post's first scan the order becomes Shipped and the buyer is emailed (once), then "out for delivery" and "waiting at the post
+office" emails go out once each, and the scan "delivered" marks the order Delivered and emails the buyer. You get an alert at the
+shipped and delivered steps. "More options" only holds a private note on the order.
+
+How often it looks: the job says every 15 minutes, but GitHub's schedule really fires about four times a day (33 runs in 8 days, gaps
+of 3 to 10 hours), so the server runs the same check itself every 15 minutes while it is awake (`backend/src/server.js`, throttled in
+`trackingSync.js`; the same timer expires and reminds unpaid e-Transfer orders). The GitHub schedule stays: it wakes a sleeping server.
 
 ## Shipping without tracking
 

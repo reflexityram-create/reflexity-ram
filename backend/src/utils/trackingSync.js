@@ -6,7 +6,7 @@
 // "delivered".
 
 const Order = require('../models/Order');
-const { trackParcel } = require('./canadaPost');
+const { trackParcel, isConfigured } = require('./canadaPost');
 const { sendTrackingUpdateEmail } = require('./email');
 const { canTransitionOrder } = require('./orderTransitions');
 const { notifyShipment } = require('./shippingNotifications');
@@ -141,4 +141,27 @@ const syncShippedOrders = async (overrides = {}) => {
   return summary;
 };
 
-module.exports = { syncShippedOrders, syncOrder, RECHECK_MS };
+// GitHub's "every 15 minutes" schedule really fires about four times a day (it thins out scheduled runs: 33 runs in 8 days, gaps of 3 to 10
+// hours), which would make "shipped" and "delivered" emails hours late. So the server also runs the check itself, every 15 minutes while
+// it is awake (the phone keeps it awake). Both together are safe: every status change and every email is claimed once.
+const SYNC_EVERY_MS = 15 * 60 * 1000;
+let lastSyncAt = 0;
+let syncing = false;
+async function syncShippedOrdersThrottled({ now = Date.now(), run = syncShippedOrders, configured = isConfigured } = {}) {
+  if (syncing || now - lastSyncAt < SYNC_EVERY_MS || !configured()) return null;
+  syncing = true;
+  lastSyncAt = now;          // a failed run waits for the next slot instead of hammering the carrier
+  try {
+    const summary = await run();
+    if (summary && (summary.emails || summary.delivered || summary.errors)) console.log(`Tracking sync (server timer): ${JSON.stringify(summary)}`);
+    return summary;
+  } catch (err) {
+    console.error('Tracking sync (server timer) failed:', err.message);
+    return null;
+  } finally {
+    syncing = false;
+  }
+}
+const resetSyncThrottleForTest = () => { lastSyncAt = 0; syncing = false; };
+
+module.exports = { syncShippedOrders, syncShippedOrdersThrottled, resetSyncThrottleForTest, syncOrder, RECHECK_MS, SYNC_EVERY_MS };

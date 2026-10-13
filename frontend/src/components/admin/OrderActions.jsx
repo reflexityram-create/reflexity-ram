@@ -112,6 +112,8 @@ function ShipCard({ order, busy, changeStatus, onChanged }) {
   const number = noTracking ? '' : trackingNumber;
   const request = shipRequest({ trackingNumber: number, noTracking, note });
   const emailLine = shipEmailLine({ trackingNumber: number, noTracking });
+  // A new number can be saved on its own; the site then follows the parcel (see "tracking sync" in the docs).
+  const canLetCanadaPostDoIt = number.trim() !== '' && number.trim() !== String(order.trackingNumber || '').trim();
 
   // Keeps the order where it is: Canada Post moves it to Shipped (and emails the buyer) when it scans the parcel.
   const saveTracking = async () => {
@@ -155,6 +157,15 @@ function ShipCard({ order, busy, changeStatus, onChanged }) {
         />
         <span>No tracking number (it goes untracked)</span>
       </label>
+      {order.trackingNumber && (
+        <div className="rounded-xl border p-3 text-neutral-300" style={{ borderColor: 'var(--border-strong)' }} data-testid="order-tracking-saved">
+          Tracking <span className="mono text-white break-all">{order.trackingNumber}</span> is saved. The site marks this order shipped when Canada Post first scans the
+          parcel, emails the buyer then, and marks it delivered by itself.
+          {order.trackingLatest?.checkedAt
+            ? ` Last checked ${new Date(order.trackingLatest.checkedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}${order.trackingLatest.description ? `: ${order.trackingLatest.description}` : ', no scan yet'}.`
+            : ' Not checked yet.'}
+        </div>
+      )}
       <p className="text-neutral-400" data-testid="order-ship-email-line">{emailLine}</p>
       <ConfirmButton
         label="Mark as shipped"
@@ -169,19 +180,24 @@ function ShipCard({ order, busy, changeStatus, onChanged }) {
         className="w-full"
         testId="order-ship"
       />
+      {canLetCanadaPostDoIt && (
+        <div className="space-y-2" data-testid="order-let-canada-post">
+          <button type="button" onClick={saveTracking} disabled={saving} className="btn-secondary min-h-11 w-full" data-testid="order-save-tracking">
+            Save the number, let Canada Post mark it shipped
+          </button>
+          <p className="text-[12px] text-neutral-400">
+            The order stays as it is until Canada Post scans the parcel (the site looks every 15 minutes). Then it becomes Shipped, the buyer is emailed,
+            and it is marked Delivered by itself.
+          </p>
+        </div>
+      )}
       <details className="text-neutral-400">
         <summary className="min-h-11 cursor-pointer py-2">More options</summary>
-        <div className="space-y-3 pb-1">
+        <div className="pb-1">
           <label className="block">
             <span className="admin-label">Note on the order (optional, only you see it)</span>
             <input className="input" value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} />
           </label>
-          <div>
-            <button type="button" onClick={saveTracking} disabled={saving || noTracking || !trackingNumber.trim()} className="btn-secondary min-h-11 w-full sm:w-auto">
-              Only save the tracking number
-            </button>
-            <p className="mt-2 text-[12px]">The order stays where it is. After Canada Post scans the parcel it moves to Shipped and the buyer is emailed.</p>
-          </div>
         </div>
       </details>
     </section>

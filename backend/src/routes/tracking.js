@@ -15,8 +15,8 @@ const tokenMatches = (given) => {
 };
 
 // ─── POST /api/tracking/sync ───────────────────────────────────────────────────
-// Called every 15 minutes by .github/workflows/tracking-sync.yml with
-// "Authorization: Bearer <TRACKING_SYNC_TOKEN>".
+// Called by .github/workflows/tracking-sync.yml with "Authorization: Bearer <TRACKING_SYNC_TOKEN>". GitHub fires that schedule about four
+// times a day, not every 15 minutes, so the server runs the same job itself too (server.js, utils/trackingSync.js).
 router.post('/sync', async (req, res) => {
   const given = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   if (!tokenMatches(given)) return res.status(401).json({ error: 'Unauthorized' });
