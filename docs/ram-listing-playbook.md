@@ -31,7 +31,9 @@ or reuse a browser handle after navigation.
 
 The URLs are intentionally limited to verified routes:
 
-- eBay active and drafts are Seller Hub pages; create uses eBay's seller form.
+- eBay active and drafts are Seller Hub pages. Create goes directly to
+  `/sl/prelist/suggest?sr=shstart` (Start your listing). The generic `/sl/sell`
+  redirects to a selling overview and costs an extra click; do not use it.
 - `ebay revise <12-digit-item-id>` uses the verified item-ID revision URL. It
   must resolve its current draft in eBay; do not retain or substitute draft IDs.
 - Reflexity retail product management is `/admin/products`. The Create button
