@@ -22,7 +22,10 @@ notification for every order, payment, refund and quote request. This file descr
    `localStorage.rfx_token`, so the admin site loads already signed in. The app asks for a new one whenever it is opened and every few hours.
 4. **Removing** a phone (Security page, or `DELETE /api/admin/devices/:id`) sets `revokedAt`: its device token stops working and
    `middleware/auth.js` rejects the sessions it minted on their next request. Changing the admin password, or demoting/deactivating the
-   admin, bumps `authVersion` and ends every paired phone too.
+   admin, bumps `authVersion` and ends every paired phone too. A phone that has not been seen for 60 days must be paired again.
+5. A session a phone minted for itself cannot create pairing codes, remove phones or change another account's role
+   (`denyDeviceSession`): a stolen phone must not be able to leave a second device behind. Pairing and removal go through the owner's
+   normal sign-in on the website, with an explicit Bearer header (never the ambient cookie). Every pairing alerts the owner's phones.
 
 ## Alerts
 
@@ -32,7 +35,11 @@ With `after` it returns newer events oldest-first; if there are none it holds th
 name, email, phone or address (it is shown on a lock screen).
 
 Events written today: `order.paid`, `order.refunded`, `order.partial_refund`, `order.shipped`, `order.delivered`, `order.oversold`,
-`lead.new`, `review.new`, `test`. Payment-method events are listed in `docs/payments.md`.
+`lead.new` (kind and quantity only: the rest of that form is a stranger's free text), `review.new`, `device.paired`, `test`.
+
+Alerts are **idempotent**: pass a `dedupeKey` (`order.paid:<orderId>`, `lead.new:<requestId>` ...) and a repeat is a silent no-op
+(unique sparse index), so the retry paths can announce again safely (a lost paid-order alert is re-sent while the order is under an
+hour old). Inserts take turns in the process so a phone's `_id` cursor can never pass an alert that is still being written. Payment-method events are listed in `docs/payments.md`.
 
 Add one anywhere with:
 
@@ -45,5 +52,7 @@ It never throws and skips the write when MongoDB is not connected.
 ## Operations
 
 - Render's free plan sleeps when idle. A phone that is on polls every ~30 s, which also keeps the API awake (no cold start for shoppers).
-- Limits: 600 requests / 15 min per IP on `/api/device`, 10 pairing attempts / 15 min per IP, at most 5 paired phones and 5 open codes per admin.
-- Tests: `backend/test/phone-app-api.test.js`, `frontend/test/phone-app.test.js`.
+- Limits (`middleware/phoneLimiters.js`): 600 requests / 15 min per IP on `/api/device`, 10 pairing attempts / 15 min per IP, at most 5
+  paired phones and 5 open codes per admin (re-counted after the insert, so simultaneous requests cannot pass them).
+- Tests: `backend/test/phone-app-api.test.js`, `backend/test/phone-app-hardening.test.js` (the properties an independent review proved
+  could be broken without a test noticing), `frontend/test/phone-app.test.js`.
