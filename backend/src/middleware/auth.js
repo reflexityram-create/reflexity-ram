@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const AdminDevice = require('../models/AdminDevice');
 
 function authorizationHeader(req) {
   const headers = req.headers || {};
@@ -30,7 +31,14 @@ function requireExplicitBearer(req, res, next) {
   return next();
 }
 
-function createAuthenticate({ jwtImpl = jwt, UserModel = User } = {}) {
+// Sessions the phone app minted for itself (routes/device.js) carry the id of the device in `dev`. Revoking the
+// device must end them too, not only stop new ones, so those tokens are checked against it on every request.
+async function deviceSessionRevoked(decoded, DeviceModel) {
+  if (!decoded?.dev) return false;
+  return !(await DeviceModel.exists({ _id: decoded.dev, revokedAt: null }));
+}
+
+function createAuthenticate({ jwtImpl = jwt, UserModel = User, DeviceModel = AdminDevice } = {}) {
   return async (req, res, next) => {
   try {
     const { token } = accessTokenFromRequest(req);
@@ -45,11 +53,12 @@ function createAuthenticate({ jwtImpl = jwt, UserModel = User } = {}) {
     if (!user || !user.isActive) {
       return res.status(401).json({ error: 'User not found or deactivated' });
     }
-    if (Number(decoded.av ?? 0) !== Number(user.authVersion || 0)) {
+    if (Number(decoded.av ?? 0) !== Number(user.authVersion || 0) || await deviceSessionRevoked(decoded, DeviceModel)) {
       return res.status(401).json({ error: 'Session revoked', code: 'SESSION_REVOKED' });
     }
 
     req.user = user;
+    req.authDeviceId = decoded.dev ? String(decoded.dev) : null;
     next();
   } catch (err) {
     if (err.name === 'TokenExpiredError') {
@@ -68,7 +77,7 @@ const authenticate = createAuthenticate();
 /**
  * Optional authentication — attaches user if token present, but doesn't block
  */
-function createOptionalAuth({ jwtImpl = jwt, UserModel = User } = {}) {
+function createOptionalAuth({ jwtImpl = jwt, UserModel = User, DeviceModel = AdminDevice } = {}) {
   return async (req, res, next) => {
     const header = authorizationHeader(req);
     const { token } = accessTokenFromRequest(req);
@@ -79,7 +88,8 @@ function createOptionalAuth({ jwtImpl = jwt, UserModel = User } = {}) {
       }
       const decoded = jwtImpl.verify(token, process.env.JWT_SECRET);
       const user = await UserModel.findById(decoded.id).select('-password');
-      if (!user || !user.isActive || Number(decoded.av ?? 0) !== Number(user.authVersion || 0)) {
+      if (!user || !user.isActive || Number(decoded.av ?? 0) !== Number(user.authVersion || 0)
+        || await deviceSessionRevoked(decoded, DeviceModel)) {
         if (header.present) return res.status(401).json({ error: 'Invalid token' });
         return next();
       }
@@ -105,6 +115,18 @@ const requireAdmin = (req, res, next) => {
     return res.status(403).json({ error: 'Admin access required' });
   }
   next();
+};
+
+/**
+ * Routes that mint or manage long-lived credentials (pairing phones, promoting accounts) refuse a session that the phone
+ * app minted for itself: a stolen phone must not be able to pair a second device or make another admin, because removing
+ * the stolen phone would then leave those behind. The owner does these from a normal sign-in on the website.
+ */
+const denyDeviceSession = (req, res, next) => {
+  if (req.authDeviceId) {
+    return res.status(403).json({ error: 'Sign in on the website to do this. The phone app cannot.', code: 'DEVICE_SESSION_NOT_ALLOWED' });
+  }
+  return next();
 };
 
 /**
@@ -148,6 +170,7 @@ module.exports = {
   optionalAuth,
   requireAdmin,
   requireExplicitBearer,
+  denyDeviceSession,
   generateAccessToken,
   setAuthCookie,
   clearAuthCookie,

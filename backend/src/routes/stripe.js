@@ -28,6 +28,7 @@ const { isDisposableEmail } = require('../utils/disposableEmail');
 const { isFullyRefundedCharge } = require('../utils/refunds');
 const { cancelReviewRequest } = require('../utils/reviewRequests');
 const { estimateDeliveryDate } = require('../utils/deliveryEstimate');
+const { recordAdminEvent, describeOrder } = require('../utils/adminEvents');
 
 const { validGuestSessionId } = require('../utils/guestSession');
 const { resolveCartLines } = require('../utils/cartLines');
@@ -307,6 +308,12 @@ const usOrderNote = (usDuties) => (usDuties
   ? `US ORDER: the buyer prepaid US import duties and fees of $${usDuties.duties.toFixed(2)} CAD inside the shipping charge${usDuties.quoteId ? ` (Zonos quote ${usDuties.quoteId})` : ''}. Make the label in Snap Ship with the Zonos duties-paid option: Zonos pays US Customs and bills your card. Declare each item's country of origin and HS code (the customs panel on this order lists them).`
   : null);
 
+// Tell the owner's phone about a new paid order. Safe to call again and again (dedupeKey), so the retry path below can
+// repeat it: an alert that was lost the first time (a database blip, a restart mid-request) still gets sent.
+const announcePaidOrder = (order) => recordAdminEvent({
+  type: 'order.paid', title: 'New order, paid', body: describeOrder(order), priority: 'high', order, dedupeKey: `order.paid:${order._id}`,
+});
+
 const ensureCriticalFulfillmentEffects = async (order) => {
   if (!order) return order;
 
@@ -320,6 +327,10 @@ const ensureCriticalFulfillmentEffects = async (order) => {
 
   // Retry the GA4 purchase if an earlier attempt failed (no-op once reported).
   await reportPaidOrderToGa4(order, { currency: CURRENCY });
+
+  // And the owner's alert, if the first attempt did not get through (no-op once recorded). Only for a fresh order: a buyer
+  // reopening an old success link must not tell the owner about a months-old sale again.
+  if (order.paymentStatus === 'paid' && Date.now() - new Date(order.createdAt).getTime() < 60 * 60 * 1000) await announcePaidOrder(order);
 
   return order;
 };
@@ -456,6 +467,8 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
     }
     throw createErr;
   }
+
+  await announcePaidOrder(order);
 
   // Exactly-once side effects (stock helper is itself idempotent via order flag)
   await stockDecrementer(order);
@@ -603,6 +616,7 @@ router.post('/webhook', async (req, res) => {
             });
             await order.save();
             console.log(`💸 Full refund processed for order ${order.orderNumber}`);
+            await recordAdminEvent({ type: 'order.refunded', title: 'Order refunded', body: describeOrder(order), priority: 'normal', order, dedupeKey: `order.refunded:${order._id}` });
             // Don't ask a refunded buyer how the order went.
             try {
               if (await cancelReviewRequest(order)) {
@@ -622,6 +636,7 @@ router.post('/webhook', async (req, res) => {
             });
             await order.save();
             console.log(`💸 Partial refund recorded for order ${order.orderNumber}`);
+            await recordAdminEvent({ type: 'order.partial_refund', title: 'Partial refund recorded', body: describeOrder(order), priority: 'normal', order, dedupeKey: `order.partial_refund:${event.id}` });
           }
         } else {
           // Fallback: try to find by PI if charge ID wasn't stored yet
