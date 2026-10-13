@@ -64,18 +64,21 @@ item/product page.
    compatibility help and dispatch/return terms that are actually offered.
    Use a short specifications block, then precise purchase/quantity wording.
    Avoid filler, repeated headers and unverified claims.
-5. Lead eBay copy with **Reflexity RAM — save CADX buying direct**. The owner
-   explicitly instructed on 13 Oct 2026 to preserve the existing direct-store
-   sales message: include the exact website ordering URL, current website
-   price, current eBay price and per-module saving together. Keep it concise;
-   do not remove that message or substitute brand-only copy based on general
-   marketplace-policy advice. The owner reports having discussed it with eBay.
-   Match the same MPN/condition/one-module unit on both channels and read both
-   live prices immediately before writing. Keep shipping/taxes separate and
-   never add seller-fee savings on top of the already-counted price difference.
-   End with compact condition, warranty and compatibility facts. The website
-   should use the same current comparison, without repeating specifications
-   already displayed elsewhere on the product page.
+5. For eBay, lead with **Reflexity RAM** as the plain business brand, then
+   concise product facts and a secure eBay profile/items link. Keep purchases
+   and compatibility questions on eBay. The owner requested on 13 Oct 2026
+   that the listings and bio use wording eBay permits. Do not use website
+   ordering links, off-eBay price/savings prompts or a spaced/obfuscated
+   domain to evade a warning. A successful save is evidence of publication,
+   not a guarantee of policy approval. Published rules: [Links policy](https://www.ebay.ca/help/default/default/links-policy?id=4248)
+   and [Profile policy](https://www.ebay.com/help/policies/listing-policies/search-and-browse-manipulation-policy?id=4234).
+   An account-specific exception needs exact documented scope before relying
+   on it; the owner's earlier report of a conversation is not a verified
+   exemption for every listing or the profile.
+   On Reflexity RAM's own website, retain the current website/eBay price
+   comparison and per-module saving. Match MPN, condition and unit; read both
+   live prices immediately before writing. Separate shipping/taxes and never
+   add seller-fee savings to the already-counted price difference.
 6. In eBay's description editor, enable **Show HTML**, focus its textarea,
    use supported browser `computer` click → Ctrl+A → type the HTML → Tab,
    then switch Show HTML off and verify the rendered rich-text iframe.
@@ -160,11 +163,10 @@ account binding has changed, and update `.ai/STATE.md` / `.ai/HANDOFF.md` with
 verified outcomes. Fix a stale helper path in the same pass. Recheck identity
 without switching accounts. Do not preserve obsolete draft IDs as shortcuts.
 
-As of 13 Oct 2026, product descriptions were stored but not visible in the
-storefront. The listing-copy release adds safe plain-text paragraphs beneath
-the price; check the visible product page, not only the catalog API. Current
+Verified 13 Oct 2026: the listing-copy release renders stored descriptions as
+safe plain-text paragraphs beneath the price; check the visible product page, not only the catalog API. Current
 compact templates and exact item-price comparison pairs are in
-`.ai/artifacts/direct-copy-2026-10-13/copy-plan.json`; they are dated examples,
+`.ai/artifacts/ebay-allowed-2026-10-13/copy-plan.json`; they are dated examples,
 not future fixed prices.
 
 A corrected bounded example is kept at
