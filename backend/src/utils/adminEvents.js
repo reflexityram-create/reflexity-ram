@@ -20,7 +20,7 @@ const clip = (value, max) => {
 };
 
 // The app opens `<site>/<path>` when the notification is tapped, so only admin pages are allowed.
-const SAFE_ADMIN_PATH = /^\/admin(?:\/[A-Za-z0-9._-]+)*(?:\?[A-Za-z0-9._=&-]*)?$/;
+const SAFE_ADMIN_PATH = /^\/admin(?:\/[A-Za-z0-9_-][A-Za-z0-9._-]*)*(?:\?[A-Za-z0-9._=&-]*)?$/;
 const adminPath = (path) => (typeof path === 'string' && SAFE_ADMIN_PATH.test(path) ? path : '/admin/orders');
 
 const money = (value) => `$${Number(value || 0).toFixed(2)}`;

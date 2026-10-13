@@ -329,6 +329,10 @@ test('alerts are clipped, bounded to admin pages, and never throw', async () => 
   assert.equal(saved[1].path, '/admin/orders?order=0123456789abcdef01234567');
   await recordAdminEvent({ type: 'x', title: 'y', path: '/admin/../../etc?x=<script>' }, { Model: model, emitter });
   assert.equal(saved[2].path, '/admin/orders');
+  for (const sneaky of ['/admin/..', '/admin/../evil', '/admin/./orders', '//evil.example/admin', '/admin//orders', '/administrator']) {
+    await recordAdminEvent({ type: 'x', title: 'y', path: sneaky }, { Model: model, emitter });
+    assert.equal(saved.at(-1).path, '/admin/orders', `${sneaky} is not a plain admin page`);
+  }
 
   const quiet = { error() {} };
   const failed = await recordAdminEvent({ type: 'x', title: 'y' }, { Model: { create: async () => { throw new Error('db down'); } }, emitter, logger: quiet });
