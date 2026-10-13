@@ -58,30 +58,28 @@ item/product page.
 3. Use one clean, corporate, white-background, shadowless product photo with a
    readable original label. Preserve the actual module and label facts; do not
    invent a different label, test result, accessory, warranty or stock claim.
+   Do not put website addresses or offsite purchase/savings prompts in eBay
+   images. On October13, four older images contained website watermarks and
+   were replaced with the existing clean originals during policy recovery.
    The October 13 instruction for Samsung32 removed the old second photo, so
    do not re-add it without a new user request.
 4. Keep the first paragraph buyer-oriented and compact: exact part, condition,
    compatibility help and dispatch/return terms that are actually offered.
    Use a short specifications block, then precise purchase/quantity wording.
    Avoid filler, repeated headers and unverified claims.
-5. Latest owner-selected copy (13 Oct 2026): lead **Reflexity RAM — save
-   CADX buying direct**, with exact website/eBay item prices and saving per
-   stick together. Write the website as plain text
-   **R E F L E X I T Y R A M . C O M**, with every letter spaced and no
-   clickable external link. Keep the promotion compact, then exact module,
-   condition, warranty and compatibility facts. Bio uses the same spaced name
-   and a current savings range supported by all matching active products.
-   Do not silently replace the owner's specified comparison with an eBay-only
-   browsing prompt. Refresh both prices immediately before publishing, match
-   MPN/condition/unit and separate shipping/taxes; never double-count seller
-   fees as buyer savings. The website retains the same verified comparison.
-   Record actual saved/public wording. Successful publication does not prove
-   eBay policy approval: its published [Links policy](https://www.ebay.ca/help/default/default/links-policy?id=4248)
+5. Latest correction (13 Oct 2026): Seller Hub explicitly hid all5
+   listings for **Offering to Buy or Sell Outside of eBay** after direct-order
+   savings text and the spaced website address were published. The spaced
+   domain is not a working solution. To resolve this violation, retain plain
+   **Reflexity RAM** branding, concise product facts and eBay-only shopping
+   links; remove external website addresses (including letter-spaced forms),
+   website-order prompts and offsite price/savings promotions from listings
+   and the bio. Keep the verified direct/eBay price comparison on the Reflexity
+   website, matching MPN/condition/unit and separating shipping/tax.
+   Published [Links policy](https://www.ebay.ca/help/default/default/links-policy?id=4248)
    and [Profile policy](https://www.ebay.com/help/policies/listing-policies/search-and-browse-manipulation-policy?id=4234)
-   restrict offsite sales promotion regardless of link formatting. Do not
-   claim spacing grants an exemption. If the editor rejects this wording,
-   record the exact rejection and report the specific blocked change; do not
-   invent approval or bypass a tool's enforced boundary.
+   explain the restriction. Inspect any photo text too if a violation persists.
+   Do not invent an exception or present formatting tricks as policy approval.
 6. In eBay's description editor, enable **Show HTML**, focus its textarea,
    use supported browser `computer` click → Ctrl+A → type the HTML → Tab,
    then switch Show HTML off and verify the rendered rich-text iframe.
@@ -92,7 +90,11 @@ item/product page.
    and shipping match. Then read the public item’s observed `desc_ifr` URL
    and verify its actual HTML/text; a confirmation is not proof of saved copy.
    Do not replay an uncertain revision without checking whether it saved.
-7. Verify the public eBay item and public Reflexity product separately. Record
+7. Verify Seller Hub after each revision: the affected row must no longer
+   show a policy violation/hidden status. Public item pages can still load
+   while a listing is hidden, so public HTML alone is insufficient. If a
+   violation persists, inspect the exact warning before another revision.
+   Verify the public eBay item and public Reflexity product separately. Record
    the item/product ID, condition, price, quantity and photo count. Re-open the
    active listing only if that public readback is incomplete or contradictory.
 
@@ -169,7 +171,7 @@ without switching accounts. Do not preserve obsolete draft IDs as shortcuts.
 Verified 13 Oct 2026: the listing-copy release renders stored descriptions as
 safe plain-text paragraphs beneath the price; check the visible product page, not only the catalog API. Current
 compact templates and exact item-price comparison pairs are in
-`.ai/artifacts/spaced-copy-2026-10-13/copy-plan.json`; they are dated examples,
+`.ai/artifacts/policy-fix-2026-10-13/copy-plan.json`; they are dated examples,
 not future fixed prices.
 
 A corrected bounded example is kept at
