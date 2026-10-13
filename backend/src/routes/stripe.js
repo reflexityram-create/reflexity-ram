@@ -28,6 +28,7 @@ const { isDisposableEmail } = require('../utils/disposableEmail');
 const { isFullyRefundedCharge } = require('../utils/refunds');
 const { cancelReviewRequest } = require('../utils/reviewRequests');
 const { estimateDeliveryDate } = require('../utils/deliveryEstimate');
+const { recordAdminEvent, describeOrder } = require('../utils/adminEvents');
 
 const { validGuestSessionId } = require('../utils/guestSession');
 const { resolveCartLines } = require('../utils/cartLines');
@@ -457,6 +458,9 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
     throw createErr;
   }
 
+  // Only the request that created the order gets here, so the owner's phone hears about it exactly once.
+  await recordAdminEvent({ type: 'order.paid', title: 'New order, paid', body: describeOrder(order), priority: 'high', order });
+
   // Exactly-once side effects (stock helper is itself idempotent via order flag)
   await stockDecrementer(order);
 
@@ -603,6 +607,7 @@ router.post('/webhook', async (req, res) => {
             });
             await order.save();
             console.log(`💸 Full refund processed for order ${order.orderNumber}`);
+            await recordAdminEvent({ type: 'order.refunded', title: 'Order refunded', body: describeOrder(order), priority: 'normal', order });
             // Don't ask a refunded buyer how the order went.
             try {
               if (await cancelReviewRequest(order)) {
@@ -622,6 +627,7 @@ router.post('/webhook', async (req, res) => {
             });
             await order.save();
             console.log(`💸 Partial refund recorded for order ${order.orderNumber}`);
+            await recordAdminEvent({ type: 'order.partial_refund', title: 'Partial refund recorded', body: describeOrder(order), priority: 'normal', order });
           }
         } else {
           // Fallback: try to find by PI if charge ID wasn't stored yet

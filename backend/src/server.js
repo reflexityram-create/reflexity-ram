@@ -22,6 +22,8 @@ const sitemapRoutes = require('./routes/sitemap');
 const feedRoutes = require('./routes/feed');
 const reviewRoutes = require('./routes/reviews');
 const { createLeadRouter } = require('./routes/leads');
+const { createDeviceRouter } = require('./routes/device');
+const { createAdminDevicesRouter } = require('./routes/adminDevices');
 const { fixMerchantProductData } = require('./migrations/fixMerchantProductData');
 const { ensureCartOwnershipIndexes } = require('./migrations/ensureCartOwnershipIndexes');
 const { syncActiveProductPrices } = require('./migrations/syncStoreCurrency');
@@ -35,6 +37,9 @@ const Review = require('./models/Review');
 const ReviewEmailOptOut = require('./models/ReviewEmailOptOut');
 const PageContent = require('./models/PageContent');
 const RateLimitEntry = require('./models/RateLimitEntry');
+const AdminEvent = require('./models/AdminEvent');
+const AdminDevice = require('./models/AdminDevice');
+const DevicePairing = require('./models/DevicePairing');
 const { MongoRateLimitStore } = require('./utils/mongoRateLimitStore');
 
 // Stripe routes are only loaded when a real key is configured.
@@ -138,6 +143,29 @@ const authLimiter = rateLimit({
   message: { error: 'Too many authentication attempts, please try again later.' },
 });
 
+// The phone app (routes/device.js) asks for news every ~25 s, all day. It gets its own limits, mounted BEFORE the
+// site-wide limiter below, so it can neither be locked out by nor use up the budget of everyone sharing its IP.
+const deviceLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new MongoRateLimitStore({ prefix: 'device' }),
+  passOnStoreError: false,
+  message: { error: 'Too many requests, please try again later.' },
+});
+
+// Pairing codes are short-lived and single-use, but a guess is still a guess: few attempts per IP.
+const devicePairLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new MongoRateLimitStore({ prefix: 'devpair' }),
+  passOnStoreError: false,
+  message: { error: 'Too many pairing attempts, please try again later.' },
+});
+
 const leadLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 8,
@@ -147,6 +175,9 @@ const leadLimiter = rateLimit({
   passOnStoreError: false,
   message: { error: 'Too many quote requests, please try again later.' },
 });
+
+app.use('/api/device/pair', devicePairLimiter);
+app.use('/api/device', deviceLimiter, createDeviceRouter());
 
 app.use(globalLimiter);
 
@@ -166,6 +197,7 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/admin/wholesale', adminWholesaleRoutes);
+app.use('/api/admin/devices', createAdminDevicesRouter());
 app.use('/api/admin', adminRoutes);
 app.use('/api/wholesale', wholesaleRoutes);
 app.use('/api/upload', uploadRoutes);
@@ -222,6 +254,9 @@ const startupModels = [
   RateLimitEntry,
   WholesaleLot,
   WholesaleMediaAsset,
+  AdminEvent,
+  AdminDevice,
+  DevicePairing,
 ];
 const paymentProviderOrderIndexFields = new Set([
   'stripePaymentIntentId',

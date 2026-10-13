@@ -3,6 +3,7 @@ const { body, matchedData, validationResult } = require('express-validator');
 const { sendLeadEmail } = require('../utils/leads');
 const WholesaleLot = require('../models/WholesaleLot');
 const { publicWholesaleLot } = require('../utils/wholesaleLots');
+const { recordAdminEvent } = require('../utils/adminEvents');
 
 const INTENTS = ['buy', 'sell', 'general'];
 const REQUEST_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -58,7 +59,14 @@ async function canonicalizeLeadSource(lead, WholesaleLotModel) {
   };
 }
 
-function createLeadRouter({ sendLead = sendLeadEmail, WholesaleLotModel = WholesaleLot } = {}) {
+// What the owner's phone shows for a quote request: what they want, never who sent it (the email has the details).
+const leadAlertBody = (lead) => [
+  { buy: 'Wants to buy', sell: 'Wants to sell', general: 'Question' }[lead.intent] || 'Request',
+  lead.itemTitle || lead.productType,
+  lead.quantity ? `qty ${lead.quantity}` : null,
+].filter(Boolean).join(' · ');
+
+function createLeadRouter({ sendLead = sendLeadEmail, WholesaleLotModel = WholesaleLot, record = recordAdminEvent } = {}) {
   const router = express.Router();
 
   router.post(
@@ -78,7 +86,10 @@ function createLeadRouter({ sendLead = sendLeadEmail, WholesaleLotModel = Wholes
         if (value === undefined) delete lead[field];
       }
       try {
-        await sendLead(await canonicalizeLeadSource(lead, WholesaleLotModel));
+        const canonical = await canonicalizeLeadSource(lead, WholesaleLotModel);
+        await sendLead(canonical);
+        // The email is the record; this only taps the owner's phone. It never fails the request.
+        await record({ type: 'lead.new', title: 'New quote request', body: `${leadAlertBody(canonical)} · details in your email`, priority: 'high', path: '/admin/orders' });
         return res.status(202).json({ success: true });
       } catch (error) {
         if (error instanceof LeadSourceError) {

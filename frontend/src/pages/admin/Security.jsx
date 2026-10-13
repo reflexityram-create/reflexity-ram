@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Shield, Lock, Key, AlertTriangle, Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppLayout from '@/components/AppLayout';
+import PhoneAppPanel from '@/components/admin/PhoneAppPanel';
 import useAuthStore from '@/lib/authStore';
 
 export default function Security() {
@@ -62,6 +63,8 @@ export default function Security() {
             </button>
           </form>
         </div>
+
+        <PhoneAppPanel />
 
         {/* Security checklist — things only the owner can verify */}
         <div className="glass rounded-2xl p-6">

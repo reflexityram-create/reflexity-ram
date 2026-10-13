@@ -1,5 +1,6 @@
 const Product = require('../models/Product');
 const Order = require('../models/Order');
+const { recordAdminEvent } = require('./adminEvents');
 
 const NON_FULFILLABLE_STATUSES = new Set(['cancelled', 'refunded']);
 const cancellationClaimFilter = (orderId, expected) => {
@@ -75,7 +76,11 @@ const withStockTransaction = async (work) => {
  * (restock, partial refund, or substitute).
  */
 const decrementStockForOrder = async (order) => {
-  return withStockTransaction(async (session) => {
+  // Set inside the transaction, read after it commits: the driver may re-run the callback, and the owner's phone
+  // must only hear about an oversell that was really saved.
+  let oversold = null;
+  const decremented = await withStockTransaction(async (session) => {
+    oversold = null;
     // Claim, product updates, and per-item decrement records commit together.
     const claimed = await Order.findOneAndUpdate(
       stockDecrementClaimFilter(order._id),
@@ -121,6 +126,7 @@ const decrementStockForOrder = async (order) => {
     );
 
     if (oversoldItems.length > 0) {
+      oversold = { order: claimed, items: oversoldItems };
       const note = `OVERSOLD — needs manual review: ${oversoldItems.join('; ')}`;
       console.error(`🚨 Order ${claimed.orderNumber}: ${note}`);
       // Add the flag to the notes the order already carries (which Canada Post service to buy, a disposable-email review); it used to replace them.
@@ -137,6 +143,16 @@ const decrementStockForOrder = async (order) => {
 
     return true;
   });
+  if (decremented && oversold) {
+    await recordAdminEvent({
+      type: 'order.oversold',
+      title: 'Oversold: needs you',
+      body: `${oversold.order.orderNumber} · ${oversold.items.join('; ')}`,
+      priority: 'high',
+      order: oversold.order,
+    });
+  }
+  return decremented;
 };
 
 const restoreStockInSession = async (orderId, session) => {
