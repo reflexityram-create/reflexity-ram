@@ -190,7 +190,21 @@ test('a bank-debit session offers only pre-authorized debit, with the mandate St
   assert.equal(payload.mode, 'payment');
   assert.deepEqual(payload.shipping_address_collection, { allowed_countries: ['CA'] });
   assert.equal(payload.shipping_options[0].shipping_rate_data.fixed_amount.currency, 'cad');
-  assert.equal(payload.automatic_tax.enabled, true);
+  assert.equal('automatic_tax' in payload, false, 'the shop charges no tax, so Stripe\'s page must not show a "Tax: enter address to calculate" line');
+});
+
+test('automatic tax is OFF on every card and bank-debit session unless the owner switches it on, and then it is on for both', async () => {
+  for (const body of [{}, { paymentMethod: 'bank_debit' }]) {
+    const off = await checkout(body, ON);
+    assert.equal(off.response.status, 200);
+    assert.equal('automatic_tax' in off.payload, false, `default: ${JSON.stringify(body)}`);
+    for (const silly of ['false', '', '1', 'yes', 'TRUE ']) {
+      const still = await checkout(body, { ...ON, STRIPE_AUTOMATIC_TAX: silly });
+      assert.equal('automatic_tax' in still.payload, silly.trim().toLowerCase() === 'true', `STRIPE_AUTOMATIC_TAX=${JSON.stringify(silly)}`);
+    }
+    const on = await checkout(body, { ...ON, STRIPE_AUTOMATIC_TAX: 'true' });
+    assert.deepEqual(on.payload.automatic_tax, { enabled: true }, `switched on: ${JSON.stringify(body)}`);
+  }
 });
 
 test('bank debit keeps the buyer\'s delivery choices, and the percent follows the setting', async () => {

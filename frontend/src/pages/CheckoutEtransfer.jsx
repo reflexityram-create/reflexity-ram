@@ -11,6 +11,7 @@ import { useSEO } from '@/lib/seo';
 import { formatStorePrice, SIGNATURE_PRICE, STORE_CURRENCY_CODE } from '@/lib/currency';
 import { ETRANSFER, PROVINCES, discountFor, etransferSizeProblem, normalizePostalCode, offeredMethods, validateEtransferForm } from '@/lib/paymentMethods';
 import { ecommerceItem, readGaIdentifiers, trackEvent } from '@/lib/analytics';
+import { SUPPORT_EMAIL } from '@/lib/contact';
 
 // Pay by Interac e-Transfer. Stripe cannot take one, so this is the shop's own order form: the buyer gives a Canadian
 // address, we save the order UNPAID with its items held, and we email the address and message to send the transfer to.
@@ -204,7 +205,7 @@ export default function CheckoutEtransfer() {
                 </button>
                 <p className="text-[12px] text-neutral-500 text-center mt-3">All prices are in Canadian dollars (CAD). Nothing is charged by us.</p>
                 <div className="mt-5 space-y-3 text-[13px] text-neutral-400">
-                  <div className="flex items-start gap-2.5"><Landmark size={16} className="shrink-0 mt-0.5" /><span>After you place the order we show, and email, the address and the message to use.</span></div>
+                  <div className="flex items-start gap-2.5"><Landmark size={16} className="shrink-0 mt-0.5" /><span data-testid="et-address-note">After you place the order we show, and email, the address to send it to.{offer?.contactDiffers ? ` It is not our contact email (${SUPPORT_EMAIL}): please send the e-Transfer only to the address we show.` : ''} A message with your order number is optional, but it helps us match your payment.</span></div>
                   <div className="flex items-start gap-2.5"><Clock size={16} className="shrink-0 mt-0.5" /><span>Your items are held for {hours} hours. We check payments by hand during the day.</span></div>
                 </div>
               </div>

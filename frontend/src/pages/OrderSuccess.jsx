@@ -10,6 +10,7 @@ import useAuthStore from '@/lib/authStore';
 import OrderTracking from '@/components/OrderTracking';
 import { startOrderUpdates } from '@/lib/orderUpdates';
 import { torontoDeadline } from '@/lib/paymentMethods';
+import { SUPPORT_EMAIL, differsFromContact } from '@/lib/contact';
 
 const STATUS_STEPS = [
   { id: 'pending', label: 'Order placed' },
@@ -159,8 +160,13 @@ export default function OrderSuccess() {
                 <h3 className="font-semibold tracking-tight text-[15px] mb-1">Send your Interac e-Transfer</h3>
                 <p className="text-[13px] text-neutral-400 mb-3">In your banking app choose Interac e-Transfer, then send:</p>
                 <CopyRow label="Send to" value={order.etransfer.recipientEmail} testId="et-recipient" />
+                {differsFromContact(order.etransfer.recipientEmail) && (
+                  <p className="text-[13px] text-amber-600 dark:text-amber-400 pb-2.5" role="note" data-testid="et-not-contact">
+                    This is not our contact email. Send the e-Transfer only to the address above, not to {SUPPORT_EMAIL}: that inbox is for questions.
+                  </p>
+                )}
                 <CopyRow label="Amount (exactly)" value={`$${Number(order.etransfer.amountDue).toFixed(2)} CAD`} copyValue={Number(order.etransfer.amountDue).toFixed(2)} testId="et-amount" />
-                <CopyRow label="Message (so we can match it)" value={order.etransfer.message} testId="et-message" />
+                <CopyRow label="Message (optional, helps us match it)" value={order.etransfer.message} testId="et-message" />
                 <p className="text-[13px] text-neutral-400 mt-3">
                   {order.etransfer.expiresAt ? <>Send it before <strong className="text-neutral-200">{torontoDeadline(order.etransfer.expiresAt)}</strong>, or the order is cancelled and the items go back on sale. </> : null}
                   The deposit is automatic: no security question or password. We check payments by hand during the day, then confirm by email. Only ever pay the address shown here.

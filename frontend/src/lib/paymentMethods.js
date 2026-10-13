@@ -43,6 +43,8 @@ export function offeredMethods(fromServer) {
       const holdHours = id === ETRANSFER ? (Number(byId.get(id)?.holdHours) || DEFAULT_HOLD_HOURS) : undefined;
       const maxUnits = id === ETRANSFER ? Number(byId.get(id)?.maxUnits) : NaN;
       const maxTotal = id === ETRANSFER ? Number(byId.get(id)?.maxTotal) : NaN;
+      // The server says whether e-Transfers go to an address other than the contact email (it never says which address).
+      const contactDiffers = id === ETRANSFER && byId.get(id)?.contactDiffers === true;
       const copy = METHOD_COPY[id];
       return {
         id, ...copy,
@@ -51,6 +53,7 @@ export function offeredMethods(fromServer) {
         ...(holdHours ? { holdHours } : {}),
         ...(Number.isFinite(maxUnits) && maxUnits > 0 ? { maxUnits } : {}),
         ...(Number.isFinite(maxTotal) && maxTotal > 0 ? { maxTotal } : {}),
+        ...(contactDiffers ? { contactDiffers } : {}),
       };
     });
 }

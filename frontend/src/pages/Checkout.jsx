@@ -110,6 +110,15 @@ export default function Checkout() {
 
   useEffect(() => { fetchCart(); }, []);
 
+  // Coming back from Stripe with the browser's Back button can bring this page back exactly as it was left (the back/forward
+  // cache keeps the page alive): still saying "Opening secure checkout…" with a dead button, so nothing else could be chosen
+  // until a refresh. A page that is shown again starts over.
+  useEffect(() => {
+    const onPageShow = (event) => { if (event.persisted) setRedirecting(false); };
+    window.addEventListener('pageshow', onPageShow);
+    return () => window.removeEventListener('pageshow', onPageShow);
+  }, []);
+
   useEffect(() => {
     paymentsApi.methods()
       .then(({ data }) => setMethods(offeredMethods(data?.methods)))
@@ -450,7 +459,7 @@ export default function Checkout() {
                         <Lock size={16} className="shrink-0 mt-0.5" />
                         <span>{method.id === BANK_DEBIT
                           ? 'Bank debit: your account is confirmed by Stripe. The debit clears in up to 5 business days and we ship the day it does.'
-                          : `e-Transfer: we email you the address and the message to use. Your items are held for ${method.holdHours || 48} hours; we ship once the transfer arrives.`}</span>
+                          : `e-Transfer: we show and email you the address to send it to${method.contactDiffers ? ' (it is not our contact email)' : ''}. A message with your order number is optional, but it helps us match your payment. Your items are held for ${method.holdHours || 48} hours; we ship once the transfer arrives.`}</span>
                       </div>
                     )}
                   </div>
