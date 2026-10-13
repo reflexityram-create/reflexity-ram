@@ -64,21 +64,24 @@ item/product page.
    compatibility help and dispatch/return terms that are actually offered.
    Use a short specifications block, then precise purchase/quantity wording.
    Avoid filler, repeated headers and unverified claims.
-5. For eBay, lead with **Reflexity RAM** as the plain business brand, then
-   concise product facts and a secure eBay profile/items link. Keep purchases
-   and compatibility questions on eBay. The owner requested on 13 Oct 2026
-   that the listings and bio use wording eBay permits. Do not use website
-   ordering links, off-eBay price/savings prompts or a spaced/obfuscated
-   domain to evade a warning. A successful save is evidence of publication,
-   not a guarantee of policy approval. Published rules: [Links policy](https://www.ebay.ca/help/default/default/links-policy?id=4248)
-   and [Profile policy](https://www.ebay.com/help/policies/listing-policies/search-and-browse-manipulation-policy?id=4234).
-   An account-specific exception needs exact documented scope before relying
-   on it; the owner's earlier report of a conversation is not a verified
-   exemption for every listing or the profile.
-   On Reflexity RAM's own website, retain the current website/eBay price
-   comparison and per-module saving. Match MPN, condition and unit; read both
-   live prices immediately before writing. Separate shipping/taxes and never
-   add seller-fee savings to the already-counted price difference.
+5. Latest owner-selected copy (13 Oct 2026): lead **Reflexity RAM — save
+   CADX buying direct**, with exact website/eBay item prices and saving per
+   stick together. Write the website as plain text
+   **R E F L E X I T Y R A M . C O M**, with every letter spaced and no
+   clickable external link. Keep the promotion compact, then exact module,
+   condition, warranty and compatibility facts. Bio uses the same spaced name
+   and a current savings range supported by all matching active products.
+   Do not silently replace the owner's specified comparison with an eBay-only
+   browsing prompt. Refresh both prices immediately before publishing, match
+   MPN/condition/unit and separate shipping/taxes; never double-count seller
+   fees as buyer savings. The website retains the same verified comparison.
+   Record actual saved/public wording. Successful publication does not prove
+   eBay policy approval: its published [Links policy](https://www.ebay.ca/help/default/default/links-policy?id=4248)
+   and [Profile policy](https://www.ebay.com/help/policies/listing-policies/search-and-browse-manipulation-policy?id=4234)
+   restrict offsite sales promotion regardless of link formatting. Do not
+   claim spacing grants an exemption. If the editor rejects this wording,
+   record the exact rejection and report the specific blocked change; do not
+   invent approval or bypass a tool's enforced boundary.
 6. In eBay's description editor, enable **Show HTML**, focus its textarea,
    use supported browser `computer` click → Ctrl+A → type the HTML → Tab,
    then switch Show HTML off and verify the rendered rich-text iframe.
@@ -166,7 +169,7 @@ without switching accounts. Do not preserve obsolete draft IDs as shortcuts.
 Verified 13 Oct 2026: the listing-copy release renders stored descriptions as
 safe plain-text paragraphs beneath the price; check the visible product page, not only the catalog API. Current
 compact templates and exact item-price comparison pairs are in
-`.ai/artifacts/ebay-allowed-2026-10-13/copy-plan.json`; they are dated examples,
+`.ai/artifacts/spaced-copy-2026-10-13/copy-plan.json`; they are dated examples,
 not future fixed prices.
 
 A corrected bounded example is kept at
