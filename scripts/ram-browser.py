@@ -28,8 +28,8 @@ URLS = {
     ("ebay", "drafts"): "https://www.ebay.ca/sh/lst/drafts",
     ("ebay", "create"): "https://www.ebay.ca/sl/sell",
     ("reflexity", "admin-products"): "https://reflexityram.com/admin/products",
-    # The source route uses the same Products page; Create opens its product modal.
-    ("reflexity", "create"): "https://reflexityram.com/admin/products",
+    # Source-verified query opens the Add modal directly.
+    ("reflexity", "create"): "https://reflexityram.com/admin/products?new=1",
 }
 ITEM_ID = re.compile(r"^\d{12}$")
 PRODUCT_ID = re.compile(r"^[0-9a-fA-F]{24}$")

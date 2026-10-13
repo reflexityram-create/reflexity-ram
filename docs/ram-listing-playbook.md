@@ -35,7 +35,7 @@ The URLs are intentionally limited to verified routes:
 - `ebay revise <12-digit-item-id>` uses the verified item-ID revision URL. It
   must resolve its current draft in eBay; do not retain or substitute draft IDs.
 - Reflexity retail product management is `/admin/products`. The Create button
-  opens its modal on that page. `reflexity product <24-hex-id>` uses the source-
+  opens its modal via `?new=1`. `reflexity product <24-hex-id>` uses the source-
   verified `?edit=` route. There is no invented per-product admin path.
 
 Before making a state-changing eBay action, read the visible seller identity and
