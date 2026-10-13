@@ -5,7 +5,7 @@ const Product = require('../models/Product');
 const Order = require('../models/Order');
 const User = require('../models/User');
 const { validate } = require('../middleware/validate');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireAdmin, denyDeviceSession } = require('../middleware/auth');
 const { notifyShipment } = require('../utils/shippingNotifications');
 const { scheduleReviewRequest } = require('../utils/reviewRequests');
 const { ensureStripePrice, syncStripeProductDetails } = require('../utils/stripeSync');
@@ -655,6 +655,7 @@ router.get(
 // PATCH /api/admin/users/:id
 router.patch(
   '/users/:id',
+  denyDeviceSession,
   [
     param('id').custom((v) => isValidObjectId(v)).withMessage('Invalid user ID'),
     body('role').optional().isIn(['customer', 'admin']).withMessage('Invalid role'),

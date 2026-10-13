@@ -181,6 +181,12 @@ export const adminApi = {
   archiveOrder: (id, archived) => api.patch(`/admin/orders/${id}/archive`, { archived }),
   sendReviewRequest: (id) => api.post(`/admin/orders/${id}/review-request`),
 
+  // Phone app (Security page)
+  listDevices: () => api.get('/admin/devices'),
+  createPairingCode: () => api.post('/admin/devices/pairing'),
+  revokeDevice: (id) => api.delete(`/admin/devices/${id}`),
+  sendTestAlert: () => api.post('/admin/devices/test-event'),
+
   // Users
   listUsers: (params) => api.get('/admin/users', { params }),
   updateUser: (id, data) => api.patch(`/admin/users/${id}`, data),

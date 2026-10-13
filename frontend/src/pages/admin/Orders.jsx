@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Loader2, ChevronLeft, ChevronRight, X, Package, Truck, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import AppLayout from '@/components/AppLayout';
@@ -293,7 +294,15 @@ export default function AdminOrders() {
   const [statusFilter, setStatusFilter] = useState('');
   const [archivedView, setArchivedView] = useState(false);
   const [page, setPage] = useState(1);
-  const [selectedOrderId, setSelectedOrderId] = useState(null);
+  // A phone notification opens /admin/orders?order=<id>: that order's panel opens straight away.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const linkedOrder = /^[a-f0-9]{24}$/i.test(searchParams.get('order') || '') ? searchParams.get('order') : null;
+  const [selectedOrderId, setSelectedOrderId] = useState(linkedOrder);
+  useEffect(() => { if (linkedOrder) setSelectedOrderId(linkedOrder); }, [linkedOrder]);
+  const closeOrder = () => {
+    setSelectedOrderId(null);
+    if (searchParams.has('order')) setSearchParams({}, { replace: true });
+  };
 
   const load = (p = page, s = statusFilter, arch = archivedView) => {
     setLoading(true);
@@ -436,7 +445,7 @@ export default function AdminOrders() {
       {selectedOrderId && (
         <OrderDetailModal
           orderId={selectedOrderId}
-          onClose={() => setSelectedOrderId(null)}
+          onClose={closeOrder}
         />
       )}
     </AppLayout>

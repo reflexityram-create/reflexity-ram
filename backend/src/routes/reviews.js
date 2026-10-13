@@ -7,6 +7,7 @@ const ReviewEmailOptOut = require('../models/ReviewEmailOptOut');
 const { validate } = require('../middleware/validate');
 const { authenticate } = require('../middleware/auth');
 const { verifyReviewToken } = require('../utils/reviewLinks');
+const { recordAdminEvent, describeOrder } = require('../utils/adminEvents');
 const {
   isReviewableOrder,
   orderEmail,
@@ -138,6 +139,7 @@ router.post(
         verifiedPurchase: true,
         status: 'approved',
       });
+      await recordAdminEvent({ type: 'review.new', title: `New ${review.rating}-star review`, body: describeOrder(order), priority: 'normal', order, dedupeKey: `review.new:${review._id}` });
       res.status(201).json({ review });
     } catch (err) {
       if (err.code === 11000) return res.status(409).json({ error: 'You already reviewed this purchase.' });
@@ -201,6 +203,7 @@ router.post(
         status: 'approved',
         source: 'email-link',
       });
+      await recordAdminEvent({ type: 'review.new', title: `New ${review.rating}-star review`, body: describeOrder(order), priority: 'normal', order, dedupeKey: `review.new:${review._id}` });
       res.status(201).json({
         review: {
           slug: item.slug,

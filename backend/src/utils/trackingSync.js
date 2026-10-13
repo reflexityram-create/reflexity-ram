@@ -11,6 +11,7 @@ const { sendTrackingUpdateEmail } = require('./email');
 const { canTransitionOrder } = require('./orderTransitions');
 const { notifyShipment } = require('./shippingNotifications');
 const { scheduleReviewRequest } = require('./reviewRequests');
+const { recordAdminEvent, describeOrder } = require('./adminEvents');
 
 const RECHECK_MS = 10 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -74,6 +75,7 @@ const syncOrder = async (order, deps) => {
     order.status = 'shipped';
     order.shippedAt = dayToDate(tracking.shippedOn) || now;
     order.trackingLatest = { ...(tracking.latest || {}), expectedDeliveryDate: tracking.expectedDeliveryDate || '', checkedAt: now };
+    await deps.recordEvent({ type: 'order.shipped', title: 'Canada Post has the parcel', body: describeOrder(order), priority: 'low', order, dedupeKey: `order.shipped:${order._id}` });
     if (!tracking.delivered) {
       try { await deps.scheduleReview(order); } catch { console.error(`Review scheduling failed for ${order.orderNumber}`); }
     }
@@ -87,6 +89,7 @@ const syncOrder = async (order, deps) => {
       });
       result.delivered = moved.modifiedCount === 1;
       if (!result.delivered) return result;
+      await deps.recordEvent({ type: 'order.delivered', title: 'Parcel delivered', body: describeOrder(order), priority: 'low', order, dedupeKey: `order.delivered:${order._id}` });
     }
     if (isRecent(tracking.deliveredOn, now, 3) && await sendOnce(order, 'deliveredEmailAt', 'delivered', deps)) {
       result.emails.push('delivered');
@@ -104,7 +107,7 @@ const syncOrder = async (order, deps) => {
 };
 
 const syncShippedOrders = async (overrides = {}) => {
-  const deps = { trackParcel, sendEmail: sendTrackingUpdateEmail, notifyShipment, scheduleReview: scheduleReviewRequest, now: () => new Date(), ...overrides };
+  const deps = { trackParcel, sendEmail: sendTrackingUpdateEmail, notifyShipment, scheduleReview: scheduleReviewRequest, recordEvent: recordAdminEvent, now: () => new Date(), ...overrides };
   const recheckBefore = new Date(deps.now().getTime() - RECHECK_MS);
   const orders = await Order.find({
     paymentStatus: 'paid',
