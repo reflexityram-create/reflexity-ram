@@ -12,13 +12,14 @@ import { imageUrl } from '@/lib/imageUrl';
 import { formatStorePrice, FASTER_SHIPPING_MAX_STICKS, SIGNATURE_PRICE, STORE_CURRENCY_CODE, STORE_CURRENCY_NAME } from '@/lib/currency';
 import { ACCEPTED_PAYMENTS_SENTENCE } from '@/lib/payments';
 import { BANK_DEBIT, CARD, ETRANSFER, discountFor, etransferSizeProblem, offeredMethods, savingsLabel } from '@/lib/paymentMethods';
+import { HANDOFF_PATIENCE_MS, onRestoredFromCache } from '@/lib/pageShow';
 import { ecommerceItem, readGaIdentifiers, trackEvent } from '@/lib/analytics';
 
 // Checkout is handled by Stripe's hosted Checkout page:
 // - Address collection restricted to Canada (Province/Postal code form
 //   rendered by Stripe)
 // - Phone number collection enabled
-// - Stripe Tax applies Canadian provincial tax (HST/GST/PST)
+// - No tax is charged (no GST/HST registration): the session carries no tax calculation unless STRIPE_AUTOMATIC_TAX is switched on
 // - The shipping shown here is the cart's flat rate from the cart API, the
 //   same amount the server puts on the Stripe session
 // This page is a final order review + hand-off.
@@ -108,22 +109,28 @@ export default function Checkout() {
   const total = totalBeforeTax - paymentDiscount;
   const beginCheckoutTracked = useRef(false);
 
-  useEffect(() => { fetchCart(); }, []);
-
-  // Coming back from Stripe with the browser's Back button can bring this page back exactly as it was left (the back/forward
-  // cache keeps the page alive): still saying "Opening secure checkout…" with a dead button, so nothing else could be chosen
-  // until a refresh. A page that is shown again starts over.
-  useEffect(() => {
-    const onPageShow = (event) => { if (event.persisted) setRedirecting(false); };
-    window.addEventListener('pageshow', onPageShow);
-    return () => window.removeEventListener('pageshow', onPageShow);
-  }, []);
-
-  useEffect(() => {
+  const handoffTimer = useRef(null);
+  const loadMethods = () => {
     paymentsApi.methods()
       .then(({ data }) => setMethods(offeredMethods(data?.methods)))
       .catch(() => { /* card only: the page works without the list */ });
-  }, []);
+  };
+
+  useEffect(() => { fetchCart(); }, []);
+  useEffect(() => () => window.clearTimeout(handoffTimer.current), []);
+
+  // Coming back from Stripe with the browser's Back button can bring this page back exactly as it was left (the back/forward
+  // cache keeps the page alive): still saying "Opening secure checkout…" with a dead button, so nothing else could be chosen
+  // until a refresh. A page that is shown again starts over, and asks again for what may have changed meanwhile (the cart, which
+  // methods are on): it may have sat in the cache while the cart was edited or paid in another tab.
+  useEffect(() => onRestoredFromCache(() => {
+    window.clearTimeout(handoffTimer.current);
+    setRedirecting(false);
+    fetchCart();
+    loadMethods();
+  }), []);
+
+  useEffect(loadMethods, []);
 
   useEffect(() => {
     if (isLoading || beginCheckoutTracked.current || items.length === 0) return;
@@ -205,6 +212,9 @@ export default function Checkout() {
         items: items.map((item) => ecommerceItem(item, item.qty)),
       });
       window.location.href = data.url; // hand off to Stripe's hosted checkout
+      // If that navigation never completes (see HANDOFF_PATIENCE_MS) give the button back instead of leaving it dead.
+      window.clearTimeout(handoffTimer.current);
+      handoffTimer.current = window.setTimeout(() => setRedirecting(false), HANDOFF_PATIENCE_MS);
     } catch (err) {
       const reason = err?.response?.status >= 500
         ? 'server_error'

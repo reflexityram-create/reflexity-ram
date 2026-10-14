@@ -402,6 +402,7 @@ test('the US session charges shipping plus duties as ONE shipping rate, to US ad
         assert.equal(rate.metadata.usDutiesCad, '99.50');
         assert.equal(rate.metadata.usShippingCad, '16.70');
         assert.equal(payload.allow_promotion_codes, false, 'a coupon must never discount duties');
+        assert.equal('automatic_tax' in payload, false, 'no tax calculation: Stripe\'s page must not show "Tax: enter address to calculate" to US buyers either');
         assert.equal(payload.line_items.length, 1, 'duties are not a line item: the order\'s subtotal stays the goods');
         assert.match(payload.custom_text.shipping_address.message, /prepaid/);
         assert.equal(payload.metadata.shippingCountry, 'US');

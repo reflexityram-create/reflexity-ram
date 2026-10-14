@@ -1,6 +1,7 @@
 // The shop's public contact address: the footer, the support page, and the Reply-To of the emails that invite a reply.
-// It is a mailbox for questions. It is NOT where Interac e-Transfers go (that is ETRANSFER_RECIPIENT_EMAIL, a different
-// address with Autodeposit on), so a buyer who is about to send money is told so plainly.
+// It is a mailbox for questions. E-Transfers go to ETRANSFER_RECIPIENT_EMAIL (Autodeposit on): until 2026-10-13 a DIFFERENT address, since
+// then this one too. While they differ a buyer about to send money is told plainly which is which; while they are the same that
+// sentence would be false, so it is left out (etransferAddressDiffersFromContact).
 const SUPPORT_EMAIL = 'reflexityram@gmail.com';
 
 const sameAddress = (a, b) => String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();

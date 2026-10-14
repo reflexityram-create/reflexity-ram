@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Check, Loader2 } from 'lucide-react';
 import { addressApi } from '@/lib/api';
-import { DEBOUNCE_MS, QUIET_AFTER_PROBLEM_MS, nextActive, resultsAnnouncement, worthSearching } from '@/lib/addressSuggest';
+import { DEBOUNCE_MS, QUIET_AFTER_PROBLEM_MS, dropsOnDismiss, nextActive, resultsAnnouncement, worthSearching } from '@/lib/addressSuggest';
 
 // The street-address field of the e-Transfer form, with a list of suggested Canadian addresses under it as the buyer types
 // (Canada Post's address data, asked through our own server). Picking one fills the street, city, province and postal code and
@@ -21,15 +21,24 @@ export default function AddressSuggest({ id, label, value, onChange, onPick, ena
   const controller = useRef(null);
   const quietUntil = useRef(0);
   const typed = useRef('');                  // what the buyer typed (a building's units are searched with it)
+  const inflight = useRef(null);             // 'find' while a search is on its way, 'pick' while a finished address is being fetched
 
   useEffect(() => () => { window.clearTimeout(timer.current); controller.current?.abort(); }, []);
 
   const close = () => { window.clearTimeout(timer.current); setOpen(false); setActive(-1); };
+  // Leaving the field (Tab, Escape, a tap elsewhere) also drops a SEARCH that is still on its way: a slow answer must not reopen the
+  // list over the next field. A PICK already on its way is not dropped (the buyer tapping the next field must not lose the address
+  // they just chose), and a pick closes the list with plain close() because it starts its own request.
+  const dismiss = () => {
+    if (dropsOnDismiss(inflight.current)) { latest.current += 1; controller.current?.abort(); inflight.current = null; setBusy(false); }
+    close();
+  };
 
   const search = async (text, lastId) => {
     const request = ++latest.current;
     controller.current?.abort();
     controller.current = new AbortController();
+    inflight.current = 'find';
     setBusy(true);
     try {
       const { data } = await addressApi.suggest(text, lastId, controller.current.signal);
@@ -45,7 +54,7 @@ export default function AddressSuggest({ id, label, value, onChange, onPick, ena
       setItems([]);
       close();
     } finally {
-      if (request === latest.current) setBusy(false);
+      if (request === latest.current) { setBusy(false); inflight.current = null; }
     }
   };
 
@@ -71,6 +80,7 @@ export default function AddressSuggest({ id, label, value, onChange, onPick, ena
     controller.current?.abort();
     controller.current = new AbortController();
     close();
+    inflight.current = 'pick';
     setBusy(true);
     try {
       const { data } = await addressApi.retrieve(suggestion.id, controller.current.signal);
@@ -81,16 +91,16 @@ export default function AddressSuggest({ id, label, value, onChange, onPick, ena
       if (request !== latest.current || err?.code === 'ERR_CANCELED') return;
       setNote('We could not check that address just now. Please fill it in below.');
     } finally {
-      if (request === latest.current) setBusy(false);
+      if (request === latest.current) { setBusy(false); inflight.current = null; }
     }
   };
 
   const onKeyDown = (event) => {
-    if (!open || items.length === 0) { if (event.key === 'Escape') close(); return; }
+    if (!open || items.length === 0) { if (event.key === 'Escape' || event.key === 'Tab') dismiss(); return; }
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setActive((current) => nextActive(current, event.key, items.length)); }
     else if (event.key === 'Enter' && active >= 0) { event.preventDefault(); pick(items[active]); }
-    else if (event.key === 'Escape') { event.preventDefault(); close(); }
-    else if (event.key === 'Tab') close();
+    else if (event.key === 'Escape') { event.preventDefault(); dismiss(); }
+    else if (event.key === 'Tab') dismiss();
   };
 
   const showList = enabled && open && items.length > 0;
@@ -106,7 +116,7 @@ export default function AddressSuggest({ id, label, value, onChange, onPick, ena
           value={value}
           onChange={typedInto}
           onKeyDown={onKeyDown}
-          onBlur={() => window.setTimeout(close, 150)}
+          onBlur={() => window.setTimeout(dismiss, 150)}
           aria-invalid={Boolean(error)}
           {...(enabled ? {
             role: 'combobox',

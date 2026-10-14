@@ -67,15 +67,16 @@ const automaticTaxEnabled = (env = process.env) => flag(env.STRIPE_AUTOMATIC_TAX
 const bankDebitEnabled = (env = process.env) => paymentMethodSettings(env)[BANK_DEBIT].enabled;
 const etransferEnabled = (env = process.env) => paymentMethodSettings(env)[ETRANSFER].enabled;
 
-// What the storefront may know: which methods exist and their discounts. The e-Transfer address is deliberately NOT
-// here; a buyer is shown it only inside their own order, after ordering.
+// What the storefront may know: which methods exist and their discounts. The e-Transfer address is never NAMED here (a buyer is
+// shown it inside their own order); `contactDiffers` only says whether it differs from the contact address, so while the owner
+// uses the contact address itself the answer does reveal that they are the same, which is public anyway.
 function publicPaymentMethods(env = process.env) {
   const settings = paymentMethodSettings(env);
   return [
     { id: 'card', label: 'Card, Apple Pay or Google Pay', discountPct: 0 },
     ...(settings[BANK_DEBIT].enabled ? [{ id: BANK_DEBIT, label: 'Bank debit', discountPct: settings[BANK_DEBIT].discountPct }] : []),
     ...(settings[ETRANSFER].enabled ? [{ id: ETRANSFER, label: 'Interac e-Transfer', discountPct: settings[ETRANSFER].discountPct, holdHours: settings[ETRANSFER].holdHours, maxUnits: settings[ETRANSFER].maxUnits, maxTotal: settings[ETRANSFER].maxTotal,
-      // Whether the page may say "not our contact email" (true) without naming the address itself, which stays private until ordering.
+      // Whether the page may say "not our contact email" (true): it never names the address.
       contactDiffers: etransferAddressDiffersFromContact(settings[ETRANSFER].recipientEmail),
       // Whether the e-Transfer form may offer address suggestions (a key is set, utils/addressConfig.js); the buyer can always type instead.
       addressSuggest: addressLookupEnabled(env) }] : []),

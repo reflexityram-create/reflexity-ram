@@ -61,15 +61,17 @@ test('if the owner ever receives e-Transfers at the contact address itself, the 
     const text = await send(kind, 'ReflexityRAM@gmail.com');
     assert.doesNotMatch(text, /please do not send the e-Transfer there/, kind);
     assert.doesNotMatch(text, /is for questions only/, kind);
+    assert.doesNotMatch(text, /contact (e-?mail|address)|different (from|address|mailbox)|not our/i, `${kind}: no wording that claims the payee differs from the contact address`);
+    assert.match(text, /reflexityram@gmail\.com/i, `${kind}: the payee is named`);
     assert.match(text, /optional, but it helps us match your payment/, `${kind}: the message wording stays`);
   }
 });
 
-test('the public methods answer says whether the page may call the address "not our contact email", without giving the address', () => {
+test('the public methods answer says whether the page may call the address "not our contact email", and never names the address', () => {
   const on = { ETRANSFER_ENABLED: 'true', ETRANSFER_RECIPIENT_EMAIL: 'pay@example.com' };
   const listed = publicPaymentMethods(on).find((m) => m.id === 'etransfer');
   assert.equal(listed.contactDiffers, true);
-  assert.ok(!JSON.stringify(publicPaymentMethods(on)).includes('pay@example.com'), 'the address itself stays private until the buyer has ordered');
+  assert.ok(!JSON.stringify(publicPaymentMethods(on)).includes('pay@example.com'), 'the answer does not name the address');
   const same = publicPaymentMethods({ ...on, ETRANSFER_RECIPIENT_EMAIL: 'reflexityram@gmail.com' }).find((m) => m.id === 'etransfer');
   assert.equal(same.contactDiffers, false);
 });

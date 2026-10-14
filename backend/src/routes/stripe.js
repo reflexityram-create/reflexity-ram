@@ -57,7 +57,8 @@ let orderCanceller = cancelOrderAndRestoreStock;
 // Cart → line_items (Stripe Price IDs from the DB) → hosted Stripe Checkout.
 // Stripe collects the shipping address (CA/US only — it renders the right
 // form per country: Province/Postal for Canada, State/ZIP for the US), phone,
-// and email, applies Stripe Tax, and the webhook fulfills the order.
+// and email, and the webhook fulfills the order. No tax is charged: the session carries no automatic_tax unless STRIPE_AUTOMATIC_TAX
+// is switched on (see the Stripe Tax note where the session is built).
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ─── POST /api/stripe/create-checkout-session ──────────────────────────────────

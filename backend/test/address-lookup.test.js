@@ -228,4 +228,11 @@ test('server: the address routes are mounted before the site-wide limiter, each 
   assert.match(source, /const addressPickLimiter = rateLimit\(\{[\s\S]*?windowMs: 60 \* 60 \* 1000,\s*max: 20,/, 'twenty finished addresses an hour per connection');
   assert.match(source, /const addressDayLimiter = rateLimit\(\{[\s\S]*?max: dailyLookupCap\(\),\s*keyGenerator: \(\) => 'everyone',/, 'one daily cap for the whole site');
   assert.match(source, /const addressSuggestLimiter = rateLimit\(\{[\s\S]*?windowMs: 5 \* 60 \* 1000,\s*max: 150,/);
+  // a limiter whose store is down must refuse, not wave everything through: the daily one is what protects the paid credit
+  for (const name of ['addressSuggestLimiter', 'addressPickLimiter', 'addressDayLimiter']) {
+    const block = source.slice(source.indexOf(`const ${name} = rateLimit({`)).split('\n});')[0];
+    assert.match(block, /passOnStoreError: false/, `${name} fails closed`);
+    assert.doesNotMatch(block, /passOnStoreError: true/, `${name} never fails open`);
+    assert.match(block, /new MongoRateLimitStore\(\{ prefix: 'addr[a-z]+' \}\)/, `${name} counts in the shared store (not per process)`);
+  }
 });

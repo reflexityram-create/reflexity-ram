@@ -59,3 +59,19 @@ test('every kind of e-Transfer, bank debit and tracking email in the module is c
   const withReply = (source.match(/replyTo: SUPPORT_EMAIL/g) || []).length;
   assert.equal(sends, withReply, `a new email was added without a Reply-To (${sends} sends, ${withReply} reply addresses)`);
 });
+
+test('no other file in backend/src sends email: a new sender elsewhere would bypass the Reply-To rule', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const found = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith('.js') && /emails\.send\(|new Resend\(|sendgrid|nodemailer/i.test(fs.readFileSync(full, 'utf8'))) found.push(path.relative(path.join(__dirname, '..', 'src'), full));
+    }
+  };
+  walk(path.join(__dirname, '..', 'src'));
+  // email.js: every customer email (guarded above). leads.js: the shop's OWN alert about a wholesale lead, whose Reply-To is the lead's address.
+  assert.deepEqual(found.sort(), ['utils/email.js', 'utils/leads.js'], 'a new file that sends email must either go through utils/email.js or be added here on purpose, with its Reply-To decided');
+});

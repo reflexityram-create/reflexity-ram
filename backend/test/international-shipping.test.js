@@ -148,6 +148,7 @@ test('checkout abroad charges the chosen Canada Post service and only accepts th
         assert.equal(rate.fixed_amount.amount, 9415);
         assert.match(rate.display_name, /^Xpresspost/);
         assert.match(payload.custom_text.shipping_address.message, /Import taxes and duties/);
+        assert.equal('automatic_tax' in payload, false, 'no tax calculation for buyers abroad either (their own country charges import tax on delivery)');
         assert.equal(payload.metadata.shippingCountry, 'GB');
 
         const madeUp = await post('/api/stripe/create-checkout-session', { shipping: { country: 'GB', serviceCode: 'INT.FAKE' } });
