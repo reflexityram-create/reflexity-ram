@@ -26,6 +26,7 @@ const {
 const { ETRANSFER, BANK_DEBIT, paymentMethodSettings, discountCents } = require('./paymentMethods');
 const { sendPaymentNoticeEmail, sendOrderConfirmationEmail } = require('./email');
 const { recordAdminEvent, describeOrder } = require('./adminEvents');
+const { ownerKey } = require('./stockHolds');
 const { estimateDeliveryDate } = require('./deliveryEstimate');
 const { reportPaidOrderToGa4 } = require('./purchaseAnalytics');
 const { cancelReviewRequest } = require('./reviewRequests');
@@ -163,7 +164,8 @@ async function placeEtransferOrder({ user, sessionId, buyer, address, shipping, 
       analyticsSessionId: gaIds.sessionId,
       adminNotes: [AWAITING_NOTE, shippingChoiceNote(deliveryMetadata(delivery), delivery.label)].filter(Boolean).join('\n'),
       statusHistory: [{ status: 'pending', note: 'Order placed; waiting for the Interac e-Transfer', timestamp: now }],
-    }, { beforeCommit: consumeCart });
+    // holdOwner: stock another buyer has set aside while paying by card is not ours to take; our own card hold, if any, is given back.
+    }, { beforeCommit: consumeCart, holdOwner: ownerKey({ userId: user?._id, sessionId }) ?? undefined });
   } catch (err) {
     if (err instanceof InsufficientStockError) throw new EtransferError(409, err.publicMessage, 'OUT_OF_STOCK');
     throw err;

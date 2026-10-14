@@ -19,6 +19,7 @@ const { quoteUnitedStates, UsCheckoutError } = require('../utils/usCheckout');
 const { isServerPurchaseTrackingEnabled, sanitizeAnalyticsIds } = require('../utils/ga4');
 const { reportPaidOrderToGa4 } = require('../utils/purchaseAnalytics');
 const { decrementStockForOrder, shouldDecrementStockForFulfillment, cancelOrderAndRestoreStock } = require('../utils/stock');
+const { holdStockForCheckout, releaseCheckoutHold, ownerKey, holdMinutes } = require('../utils/stockHolds');
 const { ensureStripePrice, ensureBankDebitCoupon } = require('../utils/stripeSync');
 const { BANK_DEBIT, bankDebitEnabled, paymentMethodSettings, automaticTaxEnabled } = require('../utils/paymentMethods');
 const { isDisposableEmail } = require('../utils/disposableEmail');
@@ -53,6 +54,8 @@ let checkoutSessionRetriever = (sessionId, options) => stripe.checkout.sessions.
 let checkoutLineItemsLister = (sessionId, params) => stripe.checkout.sessions.listLineItems(sessionId, params);
 let stockDecrementer = decrementStockForOrder;
 let orderCanceller = cancelOrderAndRestoreStock;
+let stockHolder = holdStockForCheckout;
+let stockHoldReleaser = releaseCheckoutHold;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CHECKOUT SESSIONS (primary checkout flow)
@@ -65,6 +68,8 @@ let orderCanceller = cancelOrderAndRestoreStock;
 
 // ─── POST /api/stripe/create-checkout-session ──────────────────────────────────
 router.post('/create-checkout-session', optionalAuth, async (req, res) => {
+  // Set when this request has put stock aside for the buyer (below); given back if the session cannot be made after all.
+  let heldBy = null;
   try {
     // Validated like cart.js and auth.js do: cookie-parser turns a `j:{...}` cookie into an OBJECT, which would reach the query below as operators.
     const sessionId = validGuestSessionId(req.headers['x-session-id'] || req.cookies?.cartSessionId);
@@ -219,6 +224,23 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
     const bankDebitPct = bankDebit ? paymentMethodSettings()[BANK_DEBIT].discountPct : 0;
     const bankDebitCoupon = bankDebit && bankDebitPct > 0 ? await bankDebitCouponEnsurer(bankDebitPct) : null;
 
+    // Set what the buyer is about to pay for aside (utils/stockHolds.js), so a second buyer cannot start paying for the same last unit.
+    // This never blocks a sale by failing: if the hold cannot be written, checkout goes ahead as it always did.
+    const holdOwner = ownerKey({ userId, sessionId });
+    if (holdOwner) {
+      try {
+        const hold = await stockHolder({
+          owner: holdOwner,
+          lines: eligibleItems.map(({ item, product }) => ({ product: product._id, name: product.name, qty: item.qty })),
+          minutes: holdMinutes({ bankDebit }),
+        });
+        if (!hold.ok) return res.status(hold.status || 409).json({ error: hold.message });
+        if (hold.held) heldBy = holdOwner;
+      } catch (holdErr) {
+        console.error('Stock hold failed; checkout continues without it:', holdErr.message);
+      }
+    }
+
     const session = await checkoutSessionCreator({
       mode: 'payment',
       line_items: lineItems,
@@ -298,12 +320,15 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
       success_url: `${frontendUrl}/order/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${frontendUrl}/cart`,
       // No expires_at: Stripe's default keeps the session open for 24 hours, its
-      // maximum. Stock is only taken at fulfillment, so an open session holds
-      // nothing; a 30-minute window cut off a real buyer mid bank verification.
+      // maximum (a 30-minute window cut off a real buyer mid bank verification).
+      // Stock is only TAKEN at fulfillment; while the buyer pays it is merely set
+      // aside for a short time (utils/stockHolds.js, above), not for 24 hours.
     });
 
     res.json({ url: session.url, sessionId: session.id });
   } catch (err) {
+    // No Stripe page to pay on, so nothing to keep set aside.
+    if (heldBy) await Promise.resolve(stockHoldReleaser(heldBy)).catch(() => {});
     console.error('Checkout session error:', err);
     res.status(500).json({ error: 'Failed to start checkout' });
   }
@@ -338,7 +363,7 @@ const announceNewOrder = (order, { created = false } = {}) => {
   // A bank debit that has cleared since already told the owner "cleared" (settleBankDebitPaid): only one that was born paid is news here.
   if (order.paymentMethod === BANK_DEBIT && !created) return null;
   return recordAdminEvent({
-    type: 'order.paid', title: 'New order, paid', body: describeOrder(order), priority: 'high', order, dedupeKey: `order.paid:${order._id}`,
+    type: 'order.paid', title: Number(order.total) === 0 ? 'New order: $0, a discount code covered it' : 'New order, paid', body: describeOrder(order), priority: 'high', order, dedupeKey: `order.paid:${order._id}`,
   });
 };
 
@@ -362,6 +387,15 @@ const ensureCriticalFulfillmentEffects = async (order) => {
 
   return order;
 };
+
+// A session that is paid, or that needed no payment at all: a 100% discount code on goods with free shipping leaves nothing to
+// charge, and Stripe then reports it `no_payment_required` (no PaymentIntent, no charge). It is still a real order the buyer
+// completed, so it must become one (it used to be ignored: no order, no stock taken, nothing for the buyer). Only a COMPLETED
+// session with a zero total counts, never one that is merely still open.
+const isPaidOrFree = (session) => (
+  session?.payment_status === 'paid'
+  || (session?.payment_status === 'no_payment_required' && session?.status === 'complete' && Number(session?.amount_total) === 0)
+);
 
 // A bank-debit session is "complete" the moment the buyer has authorized the debit, but the money takes days to clear:
 // Stripe keeps payment_status 'unpaid' until then and sends checkout.session.async_payment_succeeded (or _failed) later.
@@ -420,6 +454,18 @@ const allLineItems = async (session) => {
   return items;
 };
 
+// Give back what utils/stockHolds.js set aside for this buyer. Never throws: the order is already made, and a hold that is not
+// released simply runs out on its own.
+const releaseHoldsOf = async (userId, cartSessionId) => {
+  const owner = ownerKey({ userId, sessionId: cartSessionId });
+  if (!owner) return;
+  try {
+    await stockHoldReleaser(owner);
+  } catch (err) {
+    console.error('Releasing the stock hold failed:', err.message);
+  }
+};
+
 const fulfillCheckoutSession = async (checkoutSessionId) => {
   // Fast path: order already exists. Still verify critical side effects so a
   // retry can recover if the first process crashed after Order.create().
@@ -435,7 +481,7 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
   // PENDING order now (stock held, buyer told, owner alerted) and turns paid in settleBankDebitPaid. Anything else unpaid is
   // not an order yet.
   const delayed = isDelayedBankDebit(session) && bankDebitInFlight(session);
-  if (session.payment_status !== 'paid' && !delayed) return null;
+  if (!isPaidOrFree(session) && !delayed) return null;
   const isBankDebit = delayed || session.metadata?.paymentMethod === BANK_DEBIT;
   const discountPct = isBankDebit ? Number(session.metadata?.paymentDiscountPct) : NaN;
 
@@ -497,6 +543,7 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
   const shippingMethodLabel =
     session.shipping_cost?.shipping_rate?.display_name || 'Standard Shipping';
   const usDuties = usDutiesFrom(session.metadata, shippingCost);
+  const freeOrder = !delayed && session.payment_status === 'no_payment_required';
 
   const pi = session.payment_intent;
   // The charge comes expanded so a refund made BEFORE this order existed is seen. Stripe's charge.refunded found no order to
@@ -550,6 +597,7 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
         refundedFirst ? 'REFUNDED in Stripe before this order was recorded: do NOT ship.' : null,
         partlyRefundedFirst ? `REVIEW: part of this payment (${charge.amount_refunded} minor currency units) was refunded in Stripe before this order was recorded.` : null,
         delayed ? AWAITING_BANK_DEBIT_NOTE : null,
+        freeOrder ? 'NOTE: the total of this order is $0.00 (a discount code covered all of it), so nothing was charged in Stripe.' : null,
         isDisposableEmail(customer.email)
           ? 'REVIEW: disposable email detected after Stripe Checkout. Confirm before fulfillment.'
           : null,
@@ -563,7 +611,7 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
         ? { status: 'refunded', note: 'Paid, then fully refunded in Stripe before this order was recorded; no stock taken' }
         : delayed
           ? { status: 'pending', note: 'Order placed; bank debit submitted, waiting for the bank (up to 5 business days)' }
-          : { status: 'processing', note: 'Payment confirmed via Stripe Checkout' }],
+          : { status: 'processing', note: freeOrder ? 'Order placed; a discount code covered the whole total, so nothing was charged' : 'Payment confirmed via Stripe Checkout' }],
     });
   } catch (createErr) {
     if (createErr.code === 11000) {
@@ -620,6 +668,7 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
     // Nothing to take from stock, confirm to the buyer or report as a sale; the owner is told what happened.
     await recordAdminEvent({ type: 'order.refunded', title: 'Refunded before the order was recorded', body: `${describeOrder(order)} · do not ship${order.stockDecremented ? ' · its stock was taken: put it back' : ''}`, priority: 'high', order, dedupeKey: `order.refunded:${order._id}` });
     console.log(`💸 Checkout session ${session.id} was refunded before its order existed → order ${order.orderNumber} recorded as refunded`);
+    await releaseHoldsOf(userId, session.metadata?.cartSessionId);   // no stock was taken: nothing to keep set aside
     return order;
   }
 
@@ -627,6 +676,9 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
 
   // Exactly-once side effects (stock helper is itself idempotent via order flag)
   await stockDecrementer(order);
+  // What was set aside for this buyer while they paid is theirs now (the stock was just taken, so it must come AFTER that: before it,
+  // another buyer could be given the same unit in between).
+  await releaseHoldsOf(userId, session.metadata?.cartSessionId);
 
   // Clear the cart that produced this session
   const cartFilter = userId
@@ -863,7 +915,7 @@ router.post('/webhook', async (req, res) => {
       case 'checkout.session.completed': {
         const session = event.data.object;
         // completed also fires for a bank debit that is still clearing: that becomes a pending order (paid later)
-        if (session.payment_status === 'paid' || isDelayedBankDebit(session)) {
+        if (isPaidOrFree(session) || isDelayedBankDebit(session)) {
           await fulfillCheckoutSession(session.id);
         }
         break;
@@ -960,6 +1012,9 @@ if (process.env.NODE_ENV === 'test') {
     listLineItems,
     decrementStock = decrementStockForOrder,
     cancelAndRestore = cancelOrderAndRestoreStock,
+    // Off unless a test asks for the real thing: almost every checkout test runs without a database.
+    holdStock = async () => ({ ok: true, held: false }),
+    releaseHold = async () => 0,
   } = {}) => {
     checkoutPriceEnsurer = ensurePrice;
     bankDebitCouponEnsurer = ensureCoupon;
@@ -968,6 +1023,8 @@ if (process.env.NODE_ENV === 'test') {
     checkoutSessionRetriever = retrieveSession || ((sessionId, options) => stripe.checkout.sessions.retrieve(sessionId, options));
     checkoutLineItemsLister = listLineItems || ((sessionId, params) => stripe.checkout.sessions.listLineItems(sessionId, params));
     stockDecrementer = decrementStock;
+    stockHolder = holdStock;
+    stockHoldReleaser = releaseHold;
   };
   // The settlement steps are not routes of their own, so tests reach them here.
   router.internalsForTest = { fulfillCheckoutSession, settleBankDebitPaid, settleBankDebitFailed, isDelayedBankDebit, bankDebitInFlight };

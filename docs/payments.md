@@ -93,6 +93,34 @@ missing one at startup: only when no two orders share the value, never dropping 
 startup log says `Order payment-id unique indexes present`, or names what is missing and why. Production has the plain
 `stripePaymentIntentId_1` beside the new unique one; the plain one is harmless and was left in place on purpose.
 
+## Stock is set aside while a buyer pays by card (`utils/stockHolds.js`)
+
+A paid order takes its stock when the payment is confirmed, which used to leave a gap: two buyers could both pay for the last unit, and
+the second payment found nothing left. Now, when a buyer is sent to Stripe, the quantities in their cart are **held** for 30 minutes (60
+for a bank debit; `CHECKOUT_STOCK_HOLD_MINUTES` changes the first, 5 to 240). A second buyer who asks for the same unit meanwhile is told
+it is being checked out by someone else, how many minutes until it frees up if they do not finish, and nothing is sent to Stripe for them.
+
+- A hold changes no stock number. What a buyer can have is the stock minus the live holds of everyone *else*, so a buyer's own retry never
+  blocks them. Holds live in `Product.stockHolds` (never returned by any query that does not ask for it): checking "enough left?" and
+  writing the hold is one atomic update, which is what makes simultaneous buyers come out one winner and the rest refused.
+- The hold is given back when the order is made (after the stock is taken, never before), when the e-Transfer lane makes an order for the
+  same buyer, when Stripe cannot make the session, or by running out. The e-Transfer lane also respects other buyers' holds.
+- It is advisory and fails open: if a hold cannot be written the sale goes ahead as before. A payment that arrives after its hold lapsed
+  and finds the stock gone is still clamped at zero, flagged `OVERSOLD` on the order and alerted to the owner's phone.
+- The clamp itself used to crash on a real database (Mongoose refuses an array update without `updatePipeline`, and every test stubbed that
+  call), so an oversold payment became a 500 and a retry loop instead of a flagged order. Fixed in the same change; the real-database
+  test `stock-holds.integration.test.js` covers it.
+- A checkout that is abandoned keeps the unit set aside until the hold runs out (30 minutes), so a curious visitor can block the last
+  unit for that long, and a script could keep doing it (every request is rate limited). That is the price of holds; shorten
+  `CHECKOUT_STOCK_HOLD_MINUTES` if it ever matters.
+
+## A checkout that costs nothing
+
+A discount code that covers the whole order (and shipping that is free) leaves a Stripe session with nothing to pay: its `payment_status`
+is `no_payment_required`, with no PaymentIntent and no charge. A *completed* such session with a zero total now becomes an ordinary order
+(paid, stock taken, confirmation email, a note on the order and an owner alert titled "New order: $0, a discount code covered it").
+Before, it was ignored: no order, no stock taken, nothing for the buyer. No such code exists today.
+
 ## Known limits (decided, not forgotten)
 
 An independent review of this change fixed what could be fixed cheaply (everything above); these remain, on purpose:
