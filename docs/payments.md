@@ -103,13 +103,17 @@ it is being checked out by someone else and how many minutes until it frees up i
 - A hold changes no stock number. What a buyer can have is the stock minus the live holds of everyone *else*, so a buyer's own retry never
   blocks them. Holds live in `Product.stockHolds` (never returned by any query that does not ask for it): checking "enough left?" and
   writing the hold is one atomic update, which is what makes simultaneous buyers come out one winner and the rest refused.
+- A buyer has one hold per product, and it remembers the Stripe page it was made for (`sessionId`). Paying on a page gives back exactly
+  that page's hold, so a newer page of the same buyer keeps its own. A refused try puts back what it replaced (an earlier page stays
+  protected); a new hold gives up what the buyer held on products they have taken out of the cart.
 - Order of steps in `POST /create-checkout-session`: the Stripe page is made first, the hold second. A Stripe failure therefore never
-  touches a hold (an earlier page of the same buyer keeps its own), and a refusal costs only a page nobody was given the link to, which is
-  closed again as tidiness.
+  touches a hold, and a refusal costs only a page nobody was given the link to, which is closed again as tidiness.
 - The hold is given back when the order is made (after the stock is taken, never before), when the e-Transfer lane makes an order for the
   same buyer, when a guest signs in and their cart becomes the account's, or by running out. A retry of an order whose first attempt
   stopped before its last steps (Stripe redelivers the event, the buyer reopens the success page) finishes them: the order carries
-  `postOrderPending` until the hold is given back and the cart is emptied, and the cart is only emptied if nobody touched it since the order.
+  `postOrderPending` until the hold is given back and the cart is emptied, and keeps it if either step fails, so the next retry tries
+  again. The cart is emptied only if nobody touched it since the buyer *started that checkout* (Stripe's session time, a minute of slack):
+  items added in another tab afterwards were not paid for and stay.
 - The e-Transfer lane respects other buyers' holds. It still takes the stock for an e-Transfer whose money has already arrived (marking
   it received after the 48-hour hold lapsed), whatever is held.
 - It is advisory and fails open: if a hold cannot be written the sale goes ahead as before. A payment that arrives after its hold lapsed

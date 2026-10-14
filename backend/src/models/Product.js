@@ -110,6 +110,7 @@ const productSchema = new mongoose.Schema({
   stockHolds: {
     type: [new mongoose.Schema({
       owner: { type: String, required: true },
+      sessionId: { type: String },   // the Stripe Checkout page this hold was made for
       qty: { type: Number, required: true, min: 1 },
       expiresAt: { type: Date, required: true },
     }, { _id: false })],

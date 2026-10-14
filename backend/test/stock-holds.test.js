@@ -78,59 +78,81 @@ function recordingModel(results) {
   const calls = [];
   return {
     calls,
+    // `results` are the documents the update reads back as they were BEFORE it ({ stockHolds } or null when the product was refused)
     findOneAndUpdate: async (filter, update, options) => { calls.push({ op: 'hold', filter, update, options }); return results.shift(); },
+    updateOne: async (filter, update, options) => { calls.push({ op: 'restore', filter, update, options }); return { modifiedCount: 1 }; },
     updateMany: async (filter, update, options) => { calls.push({ op: 'release', filter, update, options }); return { modifiedCount: 1 }; },
     findById: () => ({ select: () => ({ lean: async () => ({ name: 'Hynix 64GB', stockQuantity: 1, stockHolds: [{ owner: 's:other', qty: 1, expiresAt: new Date(NOW.getTime() + 5 * MINUTE) }] }) }) }),
   };
 }
 
 test('the hold is ONE conditional pipeline update that does not touch updatedAt, and Mongoose is told it is a pipeline', async () => {
-  const ProductModel = recordingModel([{ _id: 'p1' }]);
-  const result = await holds.holdStockForCheckout({ owner: 's:me', lines: [{ product: 'p1', name: 'X', qty: 2 }], minutes: 30, now: NOW, ProductModel });
+  const ProductModel = recordingModel([{ stockHolds: [] }]);
+  const result = await holds.holdStockForCheckout({ owner: 's:me', sessionId: 'cs_page_1', lines: [{ product: 'p1', name: 'X', qty: 2 }], minutes: 30, now: NOW, ProductModel });
   assert.deepEqual(result, { ok: true, held: true, expiresAt: new Date(NOW.getTime() + 30 * MINUTE) });
-  const [call] = ProductModel.calls;
+  const [call, cleanup] = ProductModel.calls;
   assert.equal(call.filter._id, 'p1');
   assert.ok(call.filter.$expr, 'the "is enough left" test is part of the same update, not a separate read');
   assert.ok(Array.isArray(call.update), 'a pipeline update');
   assert.equal(call.options.updatePipeline, true, 'Mongoose refuses an array update without this');
   assert.equal(call.options.timestamps, false, 'a checkout attempt is not a product change (the sitemap lastmod reads updatedAt)');
-  assert.deepEqual(call.update[0].$set.stockHolds.$concatArrays[1], [{ owner: 's:me', qty: 2, expiresAt: new Date(NOW.getTime() + 30 * MINUTE) }]);
+  assert.equal(call.options.returnDocument, 'before', 'what this buyer held before is read back in the same step, to be put back on a refusal');
+  assert.deepEqual(call.update[0].$set.stockHolds.$concatArrays[1], [{ owner: 's:me', sessionId: 'cs_page_1', qty: 2, expiresAt: new Date(NOW.getTime() + 30 * MINUTE) }], 'the hold remembers its Stripe page');
+  assert.equal(cleanup.op, 'release', 'then what the buyer held on products no longer in this cart is given up');
+  assert.deepEqual(cleanup.filter, { 'stockHolds.owner': 's:me', _id: { $nin: ['p1'] } });
 });
 
 test('a product named twice in one cart is held once, with the quantities added', async () => {
-  const ProductModel = recordingModel([{ _id: 'p1' }]);
+  const ProductModel = recordingModel([{ stockHolds: [] }]);
   await holds.holdStockForCheckout({ owner: 's:me', lines: [{ product: 'p1', name: 'X', qty: 1 }, { product: 'p1', name: 'X', qty: 2 }], now: NOW, ProductModel });
-  assert.equal(ProductModel.calls.length, 1);
+  assert.equal(ProductModel.calls.filter((call) => call.op === 'hold').length, 1);
   assert.equal(ProductModel.calls[0].update[0].$set.stockHolds.$concatArrays[1][0].qty, 3);
 });
 
-test('when a line cannot be had, what was held is given back and the buyer gets the sentence', async () => {
-  const ProductModel = recordingModel([{ _id: 'p1' }, null]);
-  const result = await holds.holdStockForCheckout({ owner: 's:me', lines: [{ product: 'p1', name: 'A', qty: 1 }, { product: 'p2', name: 'B', qty: 1 }], now: NOW, ProductModel });
+test('when a line cannot be had, the lines taken in this call go back exactly as they were, and nothing else is touched', async () => {
+  const earlier = { owner: 's:me', sessionId: 'cs_earlier_page', qty: 2, expiresAt: new Date(NOW.getTime() + 20 * MINUTE) };
+  const ProductModel = recordingModel([{ stockHolds: [earlier] }, null]);
+  const result = await holds.holdStockForCheckout({ owner: 's:me', sessionId: 'cs_new_page', lines: [{ product: 'p1', name: 'A', qty: 3 }, { product: 'p2', name: 'B', qty: 1 }], now: NOW, ProductModel });
   assert.equal(result.ok, false);
   assert.equal(result.status, 409);
   assert.match(result.message, /^"Hynix 64GB" is being checked out by another buyer right now\./);
-  const release = ProductModel.calls.find((call) => call.op === 'release');
-  assert.ok(release, 'the first line was released again');
-  assert.deepEqual(release.filter, { 'stockHolds.owner': 's:me' });
-  assert.equal(release.options.updatePipeline, true);
-  assert.equal(release.options.timestamps, false);
+  const restore = ProductModel.calls.find((call) => call.op === 'restore');
+  assert.ok(restore, 'the first product was put back');
+  assert.deepEqual(restore.filter, { _id: 'p1' });
+  assert.deepEqual(restore.update[0].$set.stockHolds.$concatArrays[1], [earlier], 'the earlier page keeps its own hold, session and all');
+  assert.equal(restore.options.updatePipeline, true);
+  assert.equal(ProductModel.calls.some((call) => call.op === 'release'), false, 'no owner-wide release: the earlier page is still payable');
 });
 
-test('a write that throws part-way leaves nothing held: the lines already held are given back before the error is raised', async () => {
+test('a product the buyer had no hold on before goes back to none', async () => {
+  const ProductModel = recordingModel([{ stockHolds: [{ owner: 's:other', qty: 1, expiresAt: new Date(NOW.getTime() + 5 * MINUTE) }] }, null]);
+  await holds.holdStockForCheckout({ owner: 's:me', lines: [{ product: 'p1', name: 'A', qty: 1 }, { product: 'p2', name: 'B', qty: 1 }], now: NOW, ProductModel });
+  const restore = ProductModel.calls.find((call) => call.op === 'restore');
+  assert.deepEqual(restore.update[0].$set.stockHolds.$concatArrays[1], [], 'nothing of the buyer\'s is left on it, and the other buyer\'s hold is untouched');
+});
+
+test('a hold of the same buyer that had already lapsed is not "put back"', async () => {
+  const lapsed = { owner: 's:me', sessionId: 'cs_old', qty: 1, expiresAt: new Date(NOW.getTime() - MINUTE) };
+  const ProductModel = recordingModel([{ stockHolds: [lapsed] }, null]);
+  await holds.holdStockForCheckout({ owner: 's:me', lines: [{ product: 'p1', name: 'A', qty: 1 }, { product: 'p2', name: 'B', qty: 1 }], now: NOW, ProductModel });
+  assert.deepEqual(ProductModel.calls.find((call) => call.op === 'restore').update[0].$set.stockHolds.$concatArrays[1], []);
+});
+
+test('a write that throws part-way puts the lines already taken back before the error is raised', async () => {
   const calls = [];
   let n = 0;
   const ProductModel = {
-    findOneAndUpdate: async () => { n += 1; if (n === 2) throw new Error('connection lost'); return { _id: `p${n}` }; },
-    updateMany: async (filter, update, options) => { calls.push({ filter, update, options }); return { modifiedCount: 1 }; },
+    findOneAndUpdate: async () => { n += 1; if (n === 2) throw new Error('connection lost'); return { stockHolds: [] }; },
+    updateOne: async (filter, update, options) => { calls.push({ filter, update, options }); return { modifiedCount: 1 }; },
+    updateMany: async () => { throw new Error('must not release everything'); },
     findById: () => ({ select: () => ({ lean: async () => null }) }),
   };
   await assert.rejects(
     () => holds.holdStockForCheckout({ owner: 's:me', lines: [{ product: 'p1', name: 'A', qty: 1 }, { product: 'p2', name: 'B', qty: 1 }], now: NOW, ProductModel }),
     /connection lost/,
   );
-  assert.equal(calls.length, 1, 'the first line was released again');
-  assert.deepEqual(calls[0].filter, { 'stockHolds.owner': 's:me' });
+  assert.equal(calls.length, 1, 'the first line was put back');
+  assert.deepEqual(calls[0].filter, { _id: 'p1' });
 });
 
 test('no owner (no account and no cart session) means no hold, and nothing is touched', async () => {
@@ -187,7 +209,7 @@ function routeHarness(t, deps = {}, { qty = 2 } = {}) {
     ensureCoupon: async () => 'coupon_test',
     createSession: async () => { seen.sessions += 1; seen.order.push('session'); return { id: 'cs_hold', url: 'https://stripe.test/hold' }; },
     holdStock: async (request) => { seen.order.push('hold'); seen.holds.push(request); return { ok: true, held: true }; },
-    releaseHold: async (owner) => { seen.releases.push(owner); return 1; },
+    releaseHold: async (owner, options) => { seen.releases.push([owner, options]); return 1; },
     expireSession: async (id) => { seen.expired.push(id); return {}; },
     ...deps,
   });
@@ -204,7 +226,7 @@ test('checkout sets the cart aside once the Stripe page exists, for the standard
   assert.deepEqual(response.body, { url: 'https://stripe.test/hold', sessionId: 'cs_hold' });
   assert.equal(seen.sessions, 1);
   assert.deepEqual(seen.order, ['session', 'hold'], 'the page is made first, so a Stripe failure can never touch a hold');
-  assert.deepEqual(seen.holds, [{ owner: 's:session_0123456789', lines: [{ product: 'product-id', name: '16GB DDR4', qty: 2 }], minutes: 30 }]);
+  assert.deepEqual(seen.holds, [{ owner: 's:session_0123456789', sessionId: 'cs_hold', lines: [{ product: 'product-id', name: '16GB DDR4', qty: 2 }], minutes: 30 }], 'the hold remembers which Stripe page it is for');
   assert.deepEqual(seen.releases, []);
   assert.deepEqual(seen.expired, []);
 });
@@ -308,13 +330,13 @@ test('an e-Transfer blocked only by someone else\'s hold says so, not "sold out"
 test('after the order is made and the stock taken the hold is released, in that order; a refunded-first payment releases it too', () => {
   const source = fs.readFileSync(path.join(__dirname, '../src/routes/stripe.js'), 'utf8');
   const decrement = source.indexOf('await stockDecrementer(order);');
-  const release = source.indexOf("await releaseHoldsOf(userId, session.metadata?.cartSessionId);", decrement);
+  const release = source.indexOf('const holdReleased = await releaseHoldsOf(userId, session.metadata?.cartSessionId, session.id);', decrement);
   assert.ok(decrement > 0 && release > decrement, 'the release comes after the stock is taken');
-  assert.match(source, /await releaseHoldsOf\(userId, session\.metadata\?\.cartSessionId\);   \/\/ no stock was taken/);
+  assert.match(source, /if \(await releaseHoldsOf\(userId, session\.metadata\?\.cartSessionId, session\.id\)\) await Order\.updateOne\(\{ _id: order\._id \}, \{ \$unset: \{ postOrderPending: '' \} \}\)/);
 });
 
 // ── what follows the order: the hold given back and the cart emptied, even when the first attempt stopped before them ───────────────
-function recoveryHarness(t, { order = {}, session = { metadata: { userId: 'guest', cartSessionId: 'session_0123456789' } }, retrieveFails = false } = {}) {
+function recoveryHarness(t, { order = {}, session = { metadata: { userId: 'guest', cartSessionId: 'session_0123456789' } }, retrieveFails = false, releaseFails = false } = {}) {
   const calls = [];
   const original = { findOne: Order.findOne, orderUpdateOne: Order.updateOne, cartUpdateOne: Cart.updateOne };
   t.after(() => { Order.findOne = original.findOne; Order.updateOne = original.orderUpdateOne; Cart.updateOne = original.cartUpdateOne; stripeRouter.setCheckoutDependenciesForTest(); });
@@ -327,7 +349,7 @@ function recoveryHarness(t, { order = {}, session = { metadata: { userId: 'guest
   Cart.updateOne = async (filter, update) => { calls.push(['cart.updateOne', filter, update]); return { modifiedCount: 1 }; };
   stripeRouter.setCheckoutDependenciesForTest({
     retrieveSession: async (id) => { calls.push(['retrieve', id]); if (retrieveFails) throw new Error('Stripe is down'); return session; },
-    releaseHold: async (owner) => { calls.push(['release', owner]); return 1; },
+    releaseHold: async (owner, options) => { calls.push(['release', owner, options]); if (releaseFails) throw new Error('database blip'); return 1; },
   });
   return { calls, existing };
 }
@@ -338,7 +360,7 @@ test('a retry of an order that was saved but never finished gives the guest\'s h
   assert.equal(result, existing);
   assert.deepEqual(calls, [
     ['retrieve', 'cs_recover'],
-    ['release', 's:session_0123456789'],
+    ['release', 's:session_0123456789', { sessionId: 'cs_recover' }],
     ['cart.updateOne', { sessionId: 'session_0123456789', updatedAt: { $lte: existing.createdAt } }, { $set: { items: [], discount: 0 }, $unset: { couponCode: '' } }],
     ['order.updateOne', { _id: 'o1' }, { $unset: { postOrderPending: '' } }],
   ], 'only a cart nobody touched since the order is emptied (the buyer may already be shopping again)');
@@ -362,7 +384,7 @@ test('in a retry the stock is taken first and the hold given back after, as in t
 test('the same for a signed-in buyer: their account\'s hold and cart', async (t) => {
   const { calls } = recoveryHarness(t, { session: { metadata: { userId: '64b7f0c2a1b2c3d4e5f60719', cartSessionId: '' } } });
   await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_recover');
-  assert.deepEqual(calls.filter(([name]) => name === 'release'), [['release', 'u:64b7f0c2a1b2c3d4e5f60719']]);
+  assert.deepEqual(calls.filter(([name]) => name === 'release'), [['release', 'u:64b7f0c2a1b2c3d4e5f60719', { sessionId: 'cs_recover' }]], 'only the hold of the Stripe page that was paid');
   assert.deepEqual(calls.find(([name]) => name === 'cart.updateOne')[1].user, '64b7f0c2a1b2c3d4e5f60719');
 });
 
@@ -379,6 +401,21 @@ test('if the retry cannot reach Stripe it says so and returns the order unchange
   assert.equal(await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_recover'), existing);
   assert.deepEqual(calls.map(([name]) => name), ['retrieve'], 'nothing was released or emptied, and the mark stays');
   assert.match(lines.join('\n'), /Finishing the steps after order RFX-RECOVER failed \(a retry will try again\): Stripe is down/);
+});
+
+test('the cart is emptied only if it is unchanged since the buyer STARTED the checkout (Stripe\'s own clock, with a minute of slack), not since the order', async (t) => {
+  const created = Math.floor(Date.parse('2026-10-14T11:00:00Z') / 1000);
+  const { calls } = recoveryHarness(t, { session: { created, metadata: { userId: 'guest', cartSessionId: 'session_0123456789' } } });
+  await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_recover');
+  const cart = calls.find(([name]) => name === 'cart.updateOne');
+  assert.deepEqual(cart[1], { sessionId: 'session_0123456789', updatedAt: { $lte: new Date((created + 60) * 1000) } }, 'items added after the checkout started were never paid for: they stay');
+});
+
+test('if the hold cannot be given back in the retry, nothing is marked finished: the cart is left and the mark stays for the next retry', async (t) => {
+  const quiet = console.error; console.error = () => {}; t.after(() => { console.error = quiet; });
+  const { calls } = recoveryHarness(t, { releaseFails: true });
+  await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_recover');
+  assert.deepEqual(calls.map(([name]) => name), ['retrieve', 'release'], 'no cart touched, no mark cleared');
 });
 
 test('a new order is saved marked as unfinished, and the mark is cleared only after the stock is taken, the hold released and the cart emptied', async (t) => {
@@ -407,4 +444,50 @@ test('a new order is saved marked as unfinished, and the mark is cleared only af
   assert.deepEqual(names.slice(0, 5), ['create', 'decrement', 'release', 'cart', 'unmark']);
   assert.equal(calls[0][1], true, 'saved marked as unfinished');
   assert.deepEqual(calls.find(([name]) => name === 'unmark')[1], { $unset: { postOrderPending: '' } });
+});
+
+function creationHarness(t, { releaseFails = false, unmarkFails = false, sessionExtra = {} } = {}) {
+  const calls = [];
+  const original = { pFindOne: Product.findOne, oFindOne: Order.findOne, create: Order.create, cart: Cart.findOneAndUpdate, updateOne: Order.updateOne };
+  t.after(() => { Product.findOne = original.pFindOne; Order.findOne = original.oFindOne; Order.create = original.create; Cart.findOneAndUpdate = original.cart; Order.updateOne = original.updateOne; stripeRouter.setCheckoutDependenciesForTest(); });
+  const quiet = [console.log, console.error]; console.log = () => {}; console.error = () => {}; t.after(() => { [console.log, console.error] = quiet; });
+  Product.findOne = async () => ({ _id: 'product-id', slug: 'ddr4-64gb', sku: 'DDR4-64', name: '64GB DDR4', images: [] });
+  Order.findOne = async () => null;
+  Order.create = async (values) => ({ ...values, _id: 'o9', orderNumber: 'RFX-NEW' });
+  Cart.findOneAndUpdate = async (filter, update) => { calls.push(['cart', filter, update]); };
+  Order.updateOne = async (filter, update) => { calls.push(['unmark']); if (unmarkFails) throw new Error('database blip'); return { modifiedCount: 1 }; };
+  stripeRouter.setCheckoutDependenciesForTest({
+    retrieveSession: async () => ({
+      id: 'cs_new', created: 1_792_000_000, status: 'complete', payment_status: 'paid', metadata: { userId: 'guest', cartSessionId: 'session_0123456789' },
+      line_items: { data: [{ price: { id: 'price_x', unit_amount: 50000 }, quantity: 1 }] }, amount_subtotal: 50000, amount_total: 51400,
+      total_details: { amount_discount: 0, amount_shipping: 1400, amount_tax: 0 },
+      customer_details: { email: 'buyer@example.com', name: 'Buyer Test', address: { line1: '1 Main St', city: 'Toronto', state: 'ON', postal_code: 'M5V 1E3', country: 'CA' } },
+      payment_intent: 'pi_new', ...sessionExtra,
+    }),
+    decrementStock: async () => true,
+    releaseHold: async (owner, options) => { calls.push(['release', owner, options]); if (releaseFails) throw new Error('database blip'); return 1; },
+  });
+  return { calls };
+}
+
+test('a new order\'s hold is released for the page that was paid, and its cart is emptied only if unchanged since that checkout started', async (t) => {
+  const { calls } = creationHarness(t);
+  await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_new');
+  assert.deepEqual(calls.find(([name]) => name === 'release'), ['release', 's:session_0123456789', { sessionId: 'cs_new' }]);
+  assert.deepEqual(calls.find(([name]) => name === 'cart')[1], { sessionId: 'session_0123456789', updatedAt: { $lte: new Date((1_792_000_000 + 60) * 1000) } });
+});
+
+test('if the hold cannot be given back the order stands but stays marked unfinished (a retry gives it back)', async (t) => {
+  const { calls } = creationHarness(t, { releaseFails: true });
+  const order = await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_new');
+  assert.equal(order.orderNumber, 'RFX-NEW');
+  assert.equal(calls.some(([name]) => name === 'unmark'), false, 'the mark is not cleared');
+  assert.ok(calls.some(([name]) => name === 'cart'), 'the cart is still emptied');
+});
+
+test('if only clearing the unfinished mark fails the order is not failed for it (its steps are all repeatable)', async (t) => {
+  const { calls } = creationHarness(t, { unmarkFails: true });
+  const order = await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_new');
+  assert.equal(order.orderNumber, 'RFX-NEW');
+  assert.ok(calls.some(([name]) => name === 'unmark'));
 });

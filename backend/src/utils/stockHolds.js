@@ -6,7 +6,8 @@
 // the same unit meanwhile is told it is being checked out and can try again later.
 //
 // A hold changes no stock number. What one buyer can have is the stock minus the live holds of EVERYONE ELSE, so a buyer's own
-// hold (a second attempt, a retry after the back button) never blocks them. Holds live in the product document itself
+// hold (a second attempt, a retry after the back button) never blocks them. A buyer has one hold per product, remembering which Stripe
+// page it was made for (`sessionId`): paying on that page gives back exactly that hold, never a newer one the same buyer made since. Holds live in the product document itself
 // (`stockHolds`): checking "enough left?" and writing the hold is then ONE atomic update on that document, which is what makes
 // two simultaneous buyers of the last unit come out one-and-one (a separate collection would need a transaction and could not
 // be made safe against two writers that touch different rows).
@@ -61,12 +62,31 @@ function shortageMessage({ name, qty }, { stock, held, available, freeAt }, now)
   return `Only ${available} of "${name}" can be set aside right now: another buyer is checking out with the rest.${wait} Lower the quantity, or try again then.`;
 }
 
+// What `owner` held on a product before a write replaced it (read back from the same atomic update): put back on a refusal.
+const ownEntry = (stockHolds, owner, now) => (stockHolds || []).find((hold) => hold.owner === owner && new Date(hold.expiresAt) > now) || null;
+
+// Put each product's hold of `owner` back as it was before this call (or take it away if there was none). One update per product.
+async function restoreHolds(applied, owner, { ProductModel = Product } = {}) {
+  for (const { product, previous } of applied) {
+    await ProductModel.updateOne(
+      { _id: product },
+      [{ $set: { stockHolds: { $concatArrays: [
+        { $filter: { input: { $ifNull: ['$stockHolds', []] }, as: 'hold', cond: { $ne: ['$$hold.owner', owner] } } },
+        previous ? [{ owner: previous.owner, sessionId: previous.sessionId ?? null, qty: previous.qty, expiresAt: previous.expiresAt }] : [],
+      ] } } }],
+      { timestamps: false, updatePipeline: true },
+    );
+  }
+}
+
 /**
- * Set aside every line for `owner`, replacing any hold they already had. All or nothing: if one line cannot be had, the
- * owner's holds are dropped again and nothing stays held. Returns { ok: true } or { ok: false, status: 409, message }.
+ * Set aside every line for `owner` (for the Stripe page `sessionId`), replacing the hold they already had on those products. All or
+ * nothing: if one line cannot be had, the lines already taken in this call go back exactly as they were (an earlier page of this buyer's
+ * keeps its own protection) and nothing else is touched. When it works, holds the buyer had on products that are no longer in this cart
+ * are given up. Returns { ok: true } or { ok: false, status: 409, message }.
  * `lines` are { product: <id>, name, qty }; a product named twice counts once, with the quantities added.
  */
-async function holdStockForCheckout({ owner, lines, minutes = holdMinutes(), now = new Date(), ProductModel = Product }) {
+async function holdStockForCheckout({ owner, sessionId = null, lines, minutes = holdMinutes(), now = new Date(), ProductModel = Product }) {
   if (!owner) return { ok: true, held: false };
   const wanted = new Map();
   for (const line of lines || []) {
@@ -77,35 +97,51 @@ async function holdStockForCheckout({ owner, lines, minutes = holdMinutes(), now
     wanted.set(key, { product: line.product, name: line.name, qty: (current?.qty || 0) + qty });
   }
   const expiresAt = new Date(now.getTime() + minutes * 60000);
+  const applied = [];
   try {
     for (const line of wanted.values()) {
-      const updated = await ProductModel.findOneAndUpdate(
+      const before = await ProductModel.findOneAndUpdate(
         { _id: line.product, $expr: freeForExpr(now, owner, line.qty) },
         // The new array is: the live holds of everyone else (this also drops expired ones) plus this owner's, replacing their old one.
-        [{ $set: { stockHolds: { $concatArrays: [liveHoldsOfOthers(now, owner), [{ owner, qty: line.qty, expiresAt }]] } } }],
-        { returnDocument: 'after', timestamps: false, updatePipeline: true, projection: { _id: 1 } },
+        [{ $set: { stockHolds: { $concatArrays: [liveHoldsOfOthers(now, owner), [{ owner, sessionId, qty: line.qty, expiresAt }]] } } }],
+        { returnDocument: 'before', timestamps: false, updatePipeline: true, projection: { stockHolds: 1 } },
       );
-      if (updated) continue;
-      await releaseCheckoutHold(owner, { ProductModel });
+      if (before) {
+        applied.push({ product: line.product, previous: ownEntry(before.stockHolds, owner, now) });
+        continue;
+      }
+      await restoreHolds(applied, owner, { ProductModel });
       const current = await ProductModel.findById(line.product).select('+stockHolds stockQuantity name').lean();
       if (!current) return { ok: false, status: 409, message: `"${line.name}" is no longer available.` };
       return { ok: false, status: 409, message: shortageMessage({ name: current.name || line.name, qty: line.qty }, availabilityOf(current, owner, now), now) };
     }
+    // The cart this hold is for is the buyer's cart now: what they held on products they have since taken out is not needed.
+    await releaseCheckoutHold(owner, { ProductModel, exceptProducts: [...wanted.values()].map((line) => line.product) });
   } catch (err) {
-    // A write that threw part-way (the database dropped for a moment): do not leave the lines already held locked for a checkout
-    // that will go ahead without a hold (the caller fails open).
-    await releaseCheckoutHold(owner, { ProductModel }).catch(() => {});
+    // A write that threw part-way (the database dropped for a moment): put the lines already taken back as they were (the caller
+    // fails open and sends the buyer to pay without a hold, but an earlier page of theirs keeps its own).
+    await restoreHolds(applied, owner, { ProductModel }).catch(() => {});
     throw err;
   }
   return { ok: true, held: true, expiresAt };
 }
 
-/** Give back everything `owner` has set aside (they paid, chose another way to pay, or the session could not be made). */
-async function releaseCheckoutHold(owner, { ProductModel = Product, session = null } = {}) {
+/**
+ * Give back what `owner` has set aside: all of it (a guest who signed in, an e-Transfer order made instead), only what belongs to
+ * the Stripe page `sessionId` (that page was paid: a newer page's hold survives), and/or everything except `exceptProducts`.
+ */
+async function releaseCheckoutHold(owner, { ProductModel = Product, session = null, sessionId = null, exceptProducts = null } = {}) {
   if (!owner) return 0;
+  const mine = sessionId
+    ? { $and: [{ $eq: ['$$hold.owner', owner] }, { $eq: ['$$hold.sessionId', sessionId] }] }
+    : { $eq: ['$$hold.owner', owner] };
   const result = await ProductModel.updateMany(
-    { 'stockHolds.owner': owner },
-    [{ $set: { stockHolds: { $filter: { input: { $ifNull: ['$stockHolds', []] }, as: 'hold', cond: { $ne: ['$$hold.owner', owner] } } } } }],
+    {
+      'stockHolds.owner': owner,
+      ...(sessionId ? { 'stockHolds.sessionId': sessionId } : {}),
+      ...(exceptProducts ? { _id: { $nin: exceptProducts } } : {}),
+    },
+    [{ $set: { stockHolds: { $filter: { input: { $ifNull: ['$stockHolds', []] }, as: 'hold', cond: { $not: [mine] } } } } }],
     { timestamps: false, updatePipeline: true, ...(session ? { session } : {}) },
   );
   return result?.modifiedCount || 0;

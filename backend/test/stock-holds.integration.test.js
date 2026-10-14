@@ -147,6 +147,51 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
     assert.equal(await releaseCheckoutHold('s:nobody'), 0);
   });
 
+  await root.test('a refused second try changes nothing: the buyer\'s earlier page keeps exactly the hold it had', async () => {
+    await reset();
+    const product = await seedProduct({ stockQuantity: 3 });
+    assert.equal((await holdStockForCheckout({ owner: 's:me', sessionId: 'cs_page_1', lines: want(product, 2) })).ok, true);
+    assert.equal((await holdStockForCheckout({ owner: 's:other', sessionId: 'cs_other', lines: want(product, 1) })).ok, true);
+    const before = await holdsOf(product);
+    const refused = await holdStockForCheckout({ owner: 's:me', sessionId: 'cs_page_2', lines: want(product, 3) });
+    assert.equal(refused.ok, false, 'asking for more than is free to them is refused');
+    assert.deepEqual(await holdsOf(product), before, 'both holds are exactly as they were, the earlier page\'s session id included');
+  });
+
+  await root.test('a cart of two products where the second is refused puts the first back as it was, not as nothing', async () => {
+    await reset();
+    const first = await seedProduct({ stockQuantity: 5 });
+    const second = await seedProduct({ stockQuantity: 1 });
+    assert.equal((await holdStockForCheckout({ owner: 's:me', sessionId: 'cs_page_1', lines: want(first, 2) })).ok, true);
+    assert.equal((await holdStockForCheckout({ owner: 's:other', sessionId: 'cs_other', lines: want(second, 1) })).ok, true);
+    const refused = await holdStockForCheckout({ owner: 's:me', sessionId: 'cs_page_2', lines: [...want(first, 4), ...want(second, 1)] });
+    assert.equal(refused.ok, false);
+    const [kept] = await holdsOf(first);
+    assert.deepEqual([kept.owner, kept.sessionId, kept.qty], ['s:me', 'cs_page_1', 2], 'the earlier page still has its 2, not the 4 of the failed try');
+  });
+
+  await root.test('paying on a page gives back only that page\'s hold: a newer page of the same buyer keeps its own', async () => {
+    await reset();
+    const product = await seedProduct({ stockQuantity: 4 });
+    await holdStockForCheckout({ owner: 's:me', sessionId: 'cs_page_1', lines: want(product, 1) });
+    await holdStockForCheckout({ owner: 's:me', sessionId: 'cs_page_2', lines: want(product, 2) });   // replaces the first
+    assert.equal(await releaseCheckoutHold('s:me', { sessionId: 'cs_page_1' }), 0, 'the older page has no hold left to give back');
+    assert.deepEqual((await holdsOf(product)).map((h) => [h.sessionId, h.qty]), [['cs_page_2', 2]]);
+    assert.equal(await releaseCheckoutHold('s:me', { sessionId: 'cs_page_2' }), 1);
+    assert.deepEqual(await holdsOf(product), []);
+  });
+
+  await root.test('a new hold gives up what the buyer held on products they have taken out of the cart since', async () => {
+    await reset();
+    const kept = await seedProduct({ stockQuantity: 2 });
+    const dropped = await seedProduct({ stockQuantity: 2 });
+    await holdStockForCheckout({ owner: 's:me', sessionId: 'cs_page_1', lines: [...want(kept), ...want(dropped)] });
+    await holdStockForCheckout({ owner: 's:other', sessionId: 'cs_other', lines: want(dropped) });
+    await holdStockForCheckout({ owner: 's:me', sessionId: 'cs_page_2', lines: want(kept) });
+    assert.deepEqual((await holdsOf(dropped)).map((h) => h.owner), ['s:other'], 'only the other buyer\'s hold is left on the removed product');
+    assert.deepEqual((await holdsOf(kept)).map((h) => h.sessionId), ['cs_page_2']);
+  });
+
   await root.test('holds are never shown: not by a normal read, not by the public product projection, and a hold does not touch updatedAt', async () => {
     await reset();
     const product = await seedProduct({ stockQuantity: 2 });
@@ -318,12 +363,12 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
     await reset();
     const product = await seedProduct({ stockQuantity: 2 });
     await seedCart(product, 1, A);
-    await holdStockForCheckout({ owner: `s:${A}`, lines: want(product) });
+    await holdStockForCheckout({ owner: `s:${A}`, sessionId: 'cs_paid_1', lines: want(product) });
     const calls = [];
     stripeRouter.setCheckoutDependenciesForTest({
       retrieveSession: async () => paid({ line_items: lineFor(product) }),
       decrementStock: async (order) => { calls.push(['decrement', (await holdsOf(product)).length]); return require('../src/utils/stock').decrementStockForOrder(order); },
-      releaseHold: async (owner) => { calls.push(['release', await stockOf(product)]); return releaseCheckoutHold(owner); },
+      releaseHold: async (owner, options) => { calls.push(['release', await stockOf(product)]); return releaseCheckoutHold(owner, options); },
     });
     const order = await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_paid_1');
     assert.equal(order.paymentStatus, 'paid');
@@ -350,7 +395,7 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
     await reset();
     const product = await seedProduct({ stockQuantity: 1 });
     await seedCart(product, 1, A);
-    await holdStockForCheckout({ owner: `s:${A}`, lines: want(product) });
+    await holdStockForCheckout({ owner: `s:${A}`, sessionId: 'cs_paid_1', lines: want(product) });
     stripeRouter.setCheckoutDependenciesForTest({
       retrieveSession: async () => paid({ line_items: lineFor(product), payment_intent: { id: 'pi_refunded_1', status: 'succeeded', latest_charge: { id: 'ch_refunded_1', refunded: true, amount_refunded: 14900, amount: 14900 } } }),
       releaseHold: releaseCheckoutHold,
@@ -366,7 +411,7 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
     await reset();
     const product = await seedProduct({ stockQuantity: 3 });
     await seedCart(product, 2, A);
-    await holdStockForCheckout({ owner: `s:${A}`, lines: want(product, 2) });
+    await holdStockForCheckout({ owner: `s:${A}`, sessionId: 'cs_paid_1', lines: want(product, 2) });
     const realCartUpdate = Cart.findOneAndUpdate;
     stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => paid({ line_items: lineFor(product, 2) }), releaseHold: releaseCheckoutHold });
     // the server "stops" while emptying the cart: the order is saved, the stock taken, the hold released, the cart still full
@@ -420,6 +465,55 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
     assert.deepEqual(await holdsOf(product), [], 'the guest hold is gone');
     assert.equal((await holdStockForCheckout({ owner: `u:${account._id}`, lines: want(product) })).ok, true);
     assert.equal((await Cart.findOne({ user: account._id })).items.length, 1, 'and the cart is theirs');
+  });
+
+  await root.test('paying on an older page leaves the hold of the buyer\'s newer page alone (and a hold left by an old crash cannot wipe a fresh one)', async () => {
+    await reset();
+    const product = await seedProduct({ stockQuantity: 4 });
+    await seedCart(product, 1, A);
+    await holdStockForCheckout({ owner: `s:${A}`, sessionId: 'cs_paid_1', lines: want(product, 1) });
+    await holdStockForCheckout({ owner: `s:${A}`, sessionId: 'cs_newer', lines: want(product, 2) });
+    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => paid({ line_items: lineFor(product) }), releaseHold: releaseCheckoutHold });
+    await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_paid_1');
+    assert.deepEqual((await holdsOf(product)).map((h) => [h.sessionId, h.qty]), [['cs_newer', 2]]);
+  });
+
+  await root.test('the cart is emptied only if it is unchanged since the buyer started THIS checkout', async () => {
+    await reset();
+    const product = await seedProduct({ stockQuantity: 9 });
+    const created = Math.floor(Date.now() / 1000) - 600;           // the checkout was started ten minutes ago
+    // untouched since: emptied
+    await seedCart(product, 1, A);
+    await Cart.collection.updateOne({ sessionId: A }, { $set: { updatedAt: new Date((created - 120) * 1000) } });
+    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async (id) => paid({ id, created, line_items: lineFor(product) }), releaseHold: releaseCheckoutHold });
+    await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_paid_1');
+    assert.equal((await Cart.findOne({ sessionId: A })).items.length, 0);
+    // something was added after the checkout started (another tab): it was not paid for, so it stays
+    await seedCart(product, 1, B);
+    await Cart.collection.updateOne({ sessionId: B }, { $set: { updatedAt: new Date() } });
+    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async (id) => paid({ id, created, metadata: { userId: 'guest', cartSessionId: B }, line_items: lineFor(product), payment_intent: { id: 'pi_b', status: 'succeeded', latest_charge: 'ch_b' } }), releaseHold: releaseCheckoutHold });
+    await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_paid_2');
+    assert.equal((await Cart.findOne({ sessionId: B })).items.length, 1, 'edited after the checkout started: left alone');
+  });
+
+  await root.test('a hold that cannot be given back leaves the order marked unfinished, and the next retry gives it back', async () => {
+    await reset();
+    const product = await seedProduct({ stockQuantity: 3 });
+    await seedCart(product, 1, A);
+    await holdStockForCheckout({ owner: `s:${A}`, sessionId: 'cs_paid_1', lines: want(product, 1) });
+    const quiet = console.error; console.error = () => {};
+    try {
+      stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => paid({ line_items: lineFor(product) }), releaseHold: async () => { throw new Error('database blip'); } });
+      const order = await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_paid_1');
+      assert.ok(order, 'the order is made all the same');
+      assert.equal((await Order.findById(order._id).lean()).postOrderPending, true, 'and stays marked');
+      assert.equal((await holdsOf(product)).length, 1, 'the hold is still there');
+      stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => paid({ line_items: lineFor(product) }), releaseHold: releaseCheckoutHold });
+      await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_paid_1');
+    } finally { console.error = quiet; }
+    assert.deepEqual(await holdsOf(product), []);
+    assert.equal((await Order.findOne().lean()).postOrderPending, undefined);
+    assert.equal(await stockOf(product), 2, 'the stock was taken once');
   });
 
   // ── the safety net under the holds: a payment that still finds the stock gone ─────────────────────────────────

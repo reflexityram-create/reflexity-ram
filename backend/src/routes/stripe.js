@@ -316,6 +316,7 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
       try {
         const hold = await stockHolder({
           owner: holdOwner,
+          sessionId: session.id,
           lines: eligibleItems.map(({ item, product }) => ({ product: product._id, name: product.name, qty: item.qty })),
           minutes: holdMinutes({ bankDebit }),
         });
@@ -459,16 +460,28 @@ const allLineItems = async (session) => {
   return items;
 };
 
-// Give back what utils/stockHolds.js set aside for this buyer. Never throws: the order is already made, and a hold that is not
-// released simply runs out on its own.
-const releaseHoldsOf = async (userId, cartSessionId) => {
+// Give back what utils/stockHolds.js set aside for this buyer on THIS Stripe page (a newer page of theirs keeps its own hold). Never
+// throws: the order is already made, and a hold that is not released simply runs out on its own. Says whether it worked, because an
+// order whose hold could not be given back must stay marked unfinished so a retry tries again.
+const releaseHoldsOf = async (userId, cartSessionId, checkoutSessionId) => {
   const owner = ownerKey({ userId, sessionId: cartSessionId });
-  if (!owner) return;
+  if (!owner) return true;
   try {
-    await stockHoldReleaser(owner);
+    await stockHoldReleaser(owner, { sessionId: checkoutSessionId });
+    return true;
   } catch (err) {
     console.error('Releasing the stock hold failed:', err.message);
+    return false;
   }
+};
+
+// The cart a paid session came from is emptied only if nobody has touched it since the buyer started that checkout (plus a minute of
+// slack for clocks): items added to the cart afterwards were not paid for, and the buyer may already be shopping again.
+const CART_SLACK_MS = 60 * 1000;
+const cartUnchangedSince = (session, fallback) => {
+  const created = Number(session?.created);
+  if (Number.isFinite(created) && created > 0) return { updatedAt: { $lte: new Date(created * 1000 + CART_SLACK_MS) } };
+  return fallback ? { updatedAt: { $lte: fallback } } : {};
 };
 
 // A retry of an order whose first attempt stopped before its last steps: give the buyer's hold back and empty the cart that became this
@@ -479,10 +492,13 @@ const finishPostOrderSteps = async (order) => {
     const checkout = await checkoutSessionRetriever(order.stripeCheckoutSessionId);
     const userId = checkout?.metadata?.userId && checkout.metadata.userId !== 'guest' ? checkout.metadata.userId : undefined;
     const cartSessionId = checkout?.metadata?.cartSessionId || undefined;
-    await releaseHoldsOf(userId, cartSessionId);
-    if (userId || cartSessionId) {
+    const owner = ownerKey({ userId, sessionId: cartSessionId });
+    // Both steps must work for the order to be marked finished: a failure here (not swallowed, unlike the first attempt) leaves the
+    // mark, so the next retry tries again.
+    if (owner) await stockHoldReleaser(owner, { sessionId: order.stripeCheckoutSessionId });
+    if (owner) {
       await Cart.updateOne(
-        { ...(userId ? { user: userId } : { sessionId: cartSessionId }), updatedAt: { $lte: order.createdAt } },
+        { ...(userId ? { user: userId } : { sessionId: cartSessionId }), ...cartUnchangedSince(checkout, order.createdAt) },
         { $set: { items: [], discount: 0 }, $unset: { couponCode: '' } },
       );
     }
@@ -695,8 +711,8 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
     // Nothing to take from stock, confirm to the buyer or report as a sale; the owner is told what happened.
     await recordAdminEvent({ type: 'order.refunded', title: 'Refunded before the order was recorded', body: `${describeOrder(order)} · do not ship${order.stockDecremented ? ' · its stock was taken: put it back' : ''}`, priority: 'high', order, dedupeKey: `order.refunded:${order._id}` });
     console.log(`💸 Checkout session ${session.id} was refunded before its order existed → order ${order.orderNumber} recorded as refunded`);
-    await releaseHoldsOf(userId, session.metadata?.cartSessionId);   // no stock was taken: nothing to keep set aside
-    await Order.updateOne({ _id: order._id }, { $unset: { postOrderPending: '' } }).catch(() => {});
+    // no stock was taken: nothing to keep set aside (and the cart is left as it is)
+    if (await releaseHoldsOf(userId, session.metadata?.cartSessionId, session.id)) await Order.updateOne({ _id: order._id }, { $unset: { postOrderPending: '' } }).catch(() => {});
     return order;
   }
 
@@ -704,19 +720,23 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
 
   // Exactly-once side effects (stock helper is itself idempotent via order flag)
   await stockDecrementer(order);
-  // What was set aside for this buyer while they paid is theirs now (the stock was just taken, so it must come AFTER that: before it,
+  // What was set aside for this buyer on this Stripe page is theirs now (the stock was just taken, so it must come AFTER that: before it,
   // another buyer could be given the same unit in between).
-  await releaseHoldsOf(userId, session.metadata?.cartSessionId);
+  const holdReleased = await releaseHoldsOf(userId, session.metadata?.cartSessionId, session.id);
 
-  // Clear the cart that produced this session
+  // Clear the cart that produced this session, unless it has changed since the buyer started this checkout
   const cartFilter = userId
     ? { user: userId }
     : { sessionId: session.metadata?.cartSessionId };
   if (userId || session.metadata?.cartSessionId) {
-    await Cart.findOneAndUpdate(cartFilter, { items: [], discount: 0, couponCode: undefined });
+    await Cart.findOneAndUpdate({ ...cartFilter, ...cartUnchangedSince(session) }, { items: [], discount: 0, couponCode: undefined });
   }
-  // Everything that follows the order is done: a retry has nothing left to finish.
-  await Order.updateOne({ _id: order._id }, { $unset: { postOrderPending: '' } });
+  // Everything that follows the order is done: a retry has nothing left to finish. A failure to say so is not worth failing the order
+  // for (the mark stays, and the retry finds nothing left to undo: every step is repeatable).
+  if (holdReleased) {
+    await Order.updateOne({ _id: order._id }, { $unset: { postOrderPending: '' } })
+      .catch((err) => console.error(`Order ${order.orderNumber}: could not clear its unfinished mark (a retry will):`, err.message));
+  }
 
   // Confirmation email (non-blocking). A debit still clearing gets "received, processing" instead; the confirmation follows when it clears.
   const emailAddress = customer.email;
