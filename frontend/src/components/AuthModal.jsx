@@ -192,6 +192,7 @@ export default function AuthModal({ open, onClose, initialTab = 'signin' }) {
           <form onSubmit={handleSignin} className="flex flex-col gap-3">
             <input
               type="email"
+              aria-label="Email address"
               placeholder="Email address"
               value={form.email}
               onChange={(e) => setField('email', e.target.value)}
@@ -203,6 +204,7 @@ export default function AuthModal({ open, onClose, initialTab = 'signin' }) {
             <div className="relative">
               <input
                 type={showPw ? 'text' : 'password'}
+                aria-label="Password"
                 placeholder="Password"
                 value={form.password}
                 onChange={(e) => setField('password', e.target.value)}
@@ -245,6 +247,7 @@ export default function AuthModal({ open, onClose, initialTab = 'signin' }) {
             <div className="grid grid-cols-2 gap-3">
               <input
                 type="text"
+                aria-label="First name"
                 placeholder="First name"
                 value={form.firstName}
                 onChange={(e) => setField('firstName', e.target.value)}
@@ -254,6 +257,7 @@ export default function AuthModal({ open, onClose, initialTab = 'signin' }) {
               />
               <input
                 type="text"
+                aria-label="Last name"
                 placeholder="Last name"
                 value={form.lastName}
                 onChange={(e) => setField('lastName', e.target.value)}
@@ -264,6 +268,7 @@ export default function AuthModal({ open, onClose, initialTab = 'signin' }) {
             </div>
             <input
               type="email"
+              aria-label="Email address"
               placeholder="Email address"
               value={form.email}
               onChange={(e) => setField('email', e.target.value)}
@@ -275,6 +280,7 @@ export default function AuthModal({ open, onClose, initialTab = 'signin' }) {
             <div className="relative">
               <input
                 type={showPw ? 'text' : 'password'}
+                aria-label="Password"
                 placeholder="Password (min 8 chars, 1 uppercase, 1 number)"
                 value={form.password}
                 onChange={(e) => setField('password', e.target.value)}
@@ -334,6 +340,7 @@ export default function AuthModal({ open, onClose, initialTab = 'signin' }) {
               <form onSubmit={handleForgot} className="flex flex-col gap-3">
                 <input
                   type="email"
+                  aria-label="Email address"
                   placeholder="Email address"
                   value={form.forgotEmail}
                   onChange={(e) => setField('forgotEmail', e.target.value)}

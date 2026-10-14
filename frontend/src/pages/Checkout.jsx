@@ -14,6 +14,7 @@ import { ACCEPTED_PAYMENTS_SENTENCE } from '@/lib/payments';
 import { BANK_DEBIT, CARD, ETRANSFER, discountFor, etransferSizeProblem, offeredMethods, savingsLabel } from '@/lib/paymentMethods';
 import { HANDOFF_PATIENCE_MS, onRestoredFromCache } from '@/lib/pageShow';
 import { ecommerceItem, readGaIdentifiers, trackEvent } from '@/lib/analytics';
+import CartLoadError from '@/components/CartLoadError';
 
 // Checkout is handled by Stripe's hosted Checkout page:
 // - Address collection restricted to Canada (Province/Postal code form
@@ -65,7 +66,7 @@ function PaymentRow({ selected, onSelect, method, goods, disabledReason = '' }) 
 
 export default function Checkout() {
   useSEO({ title: 'Checkout — Reflexity RAM' });
-  const { items, subtotal, shipping, shippingFaster, itemCount, fetchCart, isLoading } = useCartStore();
+  const { items, subtotal, shipping, shippingFaster, itemCount, fetchCart, isLoading, loaded, loadFailed } = useCartStore();
   const navigate = useNavigate();
   const [redirecting, setRedirecting] = useState(false);
   // How the buyer pays. The server says which methods are on (card is always there); picking a cheaper one takes a
@@ -237,10 +238,12 @@ export default function Checkout() {
           <h1 className="text-3xl font-bold tracking-tight">Checkout</h1>
           <p className="text-[15px] text-neutral-400 mt-2 mb-8">Review your order, then pay securely with Stripe.</p>
 
-          {isLoading ? (
+          {isLoading || (items.length === 0 && !loadFailed && !loaded) ? (
             <div className="flex items-center gap-2 text-neutral-400 py-12">
               <Loader2 size={16} className="animate-spin" /> Loading your cart…
             </div>
+          ) : items.length === 0 && loadFailed ? (
+            <CartLoadError onRetry={fetchCart} />
           ) : items.length === 0 ? (
             <div className="glass rounded-2xl p-8 max-w-lg">
               <p className="font-semibold">Your cart is empty</p>

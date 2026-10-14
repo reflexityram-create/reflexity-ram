@@ -1,17 +1,19 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { authApi } from '@/lib/api';
+import { clearUrlToken, readUrlToken } from '@/lib/urlToken';
 import useAuthStore from '@/lib/authStore';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 
 export default function VerifyEmail() {
-  const [searchParams] = useSearchParams();
-  const token = searchParams.get('token');
+  const [token] = useState(() => readUrlToken());
   const [status, setStatus] = useState('loading'); // 'loading' | 'success' | 'error'
   const [message, setMessage] = useState('');
   const { initialize } = useAuthStore();
+
+  useEffect(() => { clearUrlToken(); }, []);
 
   useEffect(() => {
     if (!token) {
@@ -45,7 +47,7 @@ export default function VerifyEmail() {
             <div className="flex flex-col items-center gap-4 py-4">
               <CheckCircle size={40} className="text-emerald-400" />
               <div>
-                <p className="font-semibold text-lg">Email verified!</p>
+                <h1 className="font-semibold text-lg">Email verified!</h1>
                 <p className="text-[13px] text-neutral-400 mt-1">
                   Your email address has been confirmed. Your account is fully active.
                 </p>
@@ -57,7 +59,7 @@ export default function VerifyEmail() {
             <div className="flex flex-col items-center gap-4 py-4">
               <AlertTriangle size={40} className="text-amber-400" />
               <div>
-                <p className="font-semibold text-lg">Verification failed</p>
+                <h1 className="font-semibold text-lg">Verification failed</h1>
                 <p className="text-[13px] text-neutral-400 mt-1">{message}</p>
               </div>
               <div className="flex gap-3">

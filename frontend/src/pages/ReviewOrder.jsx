@@ -59,8 +59,8 @@ function ItemReviewForm({ token, item, onPublished }) {
           </button>
         ))}
       </div>
-      <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Review title (optional)" maxLength={120} />
-      <textarea className="input min-h-28 resize-y" value={body} onChange={(e) => setBody(e.target.value)} placeholder="How did it work for your system?" minLength={10} maxLength={2000} required />
+      <input className="input" aria-label="Review title (optional)" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Review title (optional)" maxLength={120} />
+      <textarea className="input min-h-28 resize-y" aria-label="Your review" value={body} onChange={(e) => setBody(e.target.value)} placeholder="How did it work for your system?" minLength={10} maxLength={2000} required />
       <button className="btn-primary w-full sm:w-auto" disabled={submitting}>{submitting ? "Publishing..." : "Publish review"}</button>
     </form>
   );

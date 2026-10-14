@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 
-export default function EmptyState({ icon: Icon, title, description, ctaLabel, ctaTo, secondaryLabel, secondaryTo, testId = "empty-state", as: Heading = "h3" }) {
+// `onCta` makes the main action a button (a retry) instead of a link: a link to the page the buyer is already on does nothing.
+export default function EmptyState({ icon: Icon, title, description, ctaLabel, ctaTo, onCta, secondaryLabel, secondaryTo, testId = "empty-state", as: Heading = "h3" }) {
   return (
     <div
       className="glass rounded-2xl p-12 text-center flex flex-col items-center"
@@ -18,7 +19,12 @@ export default function EmptyState({ icon: Icon, title, description, ctaLabel, c
         </p>
       )}
       <div className="flex flex-wrap items-center justify-center gap-3">
-        {ctaLabel && ctaTo && (
+        {ctaLabel && onCta && (
+          <button type="button" onClick={onCta} className="btn-primary" data-testid={`${testId}-cta`}>
+            {ctaLabel}
+          </button>
+        )}
+        {ctaLabel && ctaTo && !onCta && (
           <Link to={ctaTo} className="btn-primary" data-testid={`${testId}-cta`}>
             {ctaLabel}
           </Link>

@@ -46,16 +46,16 @@ export default function Security() {
           <form onSubmit={submit} className="space-y-3">
             <div>
               <label className="admin-label">Current password</label>
-              <input type="password" className="input" value={current} onChange={e => setCurrent(e.target.value)} required autoComplete="current-password" />
+              <input type="password" aria-label="Current password" className="input" value={current} onChange={e => setCurrent(e.target.value)} required autoComplete="current-password" />
             </div>
             <div>
               <label className="admin-label">New password</label>
-              <input type="password" className="input" value={next} onChange={e => setNext(e.target.value)} required autoComplete="new-password" minLength={12} />
+              <input type="password" aria-label="New password" className="input" value={next} onChange={e => setNext(e.target.value)} required autoComplete="new-password" minLength={12} />
               <p className="text-[11px] text-neutral-500 mt-1">At least 12 characters</p>
             </div>
             <div>
               <label className="admin-label">Confirm new password</label>
-              <input type="password" className="input" value={confirm} onChange={e => setConfirm(e.target.value)} required autoComplete="new-password" />
+              <input type="password" aria-label="Confirm new password" className="input" value={confirm} onChange={e => setConfirm(e.target.value)} required autoComplete="new-password" />
             </div>
             <button type="submit" disabled={saving} className="btn-primary flex items-center gap-2">
               {saving && <Loader2 size={14} className="animate-spin" />}

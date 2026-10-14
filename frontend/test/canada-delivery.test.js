@@ -18,7 +18,7 @@ test('checkout offers Standard, one flat Faster option and a signature box, and 
   assert.doesNotMatch(checkout, /checkout-postal-code|canadaQuote|isPostalCode|lib\/postalCode|Priority/);
   assert.doesNotMatch(api, /canadaQuote|canada-quote/);
   // the Faster price comes from the cart API (the server's number), the signature price is a constant
-  assert.match(checkout, /const \{ items, subtotal, shipping, shippingFaster, itemCount, fetchCart, isLoading \} = useCartStore\(\);/);
+  assert.match(checkout, /const \{ items, subtotal, shipping, shippingFaster, itemCount, fetchCart, isLoading, loaded, loadFailed \} = useCartStore\(\);/);
   assert.match(checkout, /\(useFaster \? shippingFaster : Number\(shipping \|\| 0\)\) \+ \(signature \? SIGNATURE_PRICE : 0\)/);
   assert.match(checkout, /price=\{shippingFaster\}/);
 });

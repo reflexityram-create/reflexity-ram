@@ -1,13 +1,14 @@
-import { useState } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Eye, EyeOff, Loader2, CheckCircle, AlertTriangle } from 'lucide-react';
 import { authApi } from '@/lib/api';
+import { clearUrlToken, readUrlToken } from '@/lib/urlToken';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 
 export default function ResetPassword() {
-  const [searchParams] = useSearchParams();
-  const token = searchParams.get('token');
+  const [token] = useState(() => readUrlToken());
+  useEffect(() => { clearUrlToken(); }, []);
 
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -43,7 +44,7 @@ export default function ResetPassword() {
             <div className="flex items-start gap-3">
               <AlertTriangle size={18} className="text-amber-400 shrink-0 mt-0.5" />
               <div>
-                <p className="font-semibold">Invalid reset link</p>
+                <h1 className="font-semibold">Invalid reset link</h1>
                 <p className="text-[13px] text-neutral-400 mt-1">
                   This link is missing a token. Please request a new password reset.
                 </p>
@@ -63,7 +64,7 @@ export default function ResetPassword() {
             </div>
           ) : (
             <>
-              <h2 className="text-xl font-bold tracking-tight mb-2">Set new password</h2>
+              <h1 className="text-xl font-bold tracking-tight mb-2">Set new password</h1>
               <p className="text-[13px] text-neutral-500 mb-6">
                 Choose a strong password for your Reflexity RAM account.
               </p>
@@ -71,6 +72,8 @@ export default function ResetPassword() {
                 <div className="relative">
                   <input
                     type={showPw ? 'text' : 'password'}
+                    aria-label="New password"
+                    autoComplete="new-password"
                     placeholder="New password (min 8 chars, 1 uppercase, 1 number)"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -81,14 +84,17 @@ export default function ResetPassword() {
                   <button
                     type="button"
                     onClick={() => setShowPw(v => !v)}
+                    aria-label={showPw ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPw}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white"
-                    tabIndex={-1}
                   >
                     {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
                 </div>
                 <input
                   type="password"
+                  aria-label="Confirm new password"
+                  autoComplete="new-password"
                   placeholder="Confirm new password"
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}

@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import EmptyState from '@/components/EmptyState';
+import CartLoadError from '@/components/CartLoadError';
 import QuantityStepper from '@/components/QuantityStepper';
 import useCartStore from '@/lib/cartStore';
 import { limitNote, quantityLimit } from '@/lib/quantity';
@@ -15,7 +16,7 @@ import { ecommerceItem, trackEvent } from '@/lib/analytics';
 
 export default function Cart() {
   useSEO({ title: 'Cart', description: 'Review your Reflexity RAM order before checkout.' });
-  const { items, subtotal, itemCount, isLoading, fetchCart, updateItem, removeItem } = useCartStore();
+  const { items, subtotal, itemCount, isLoading, loaded, loadFailed, fetchCart, updateItem, removeItem } = useCartStore();
   const viewCartTracked = useRef(false);
 
   useEffect(() => {
@@ -72,11 +73,13 @@ export default function Cart() {
           )}
         </div>
 
-        {isLoading && items.length === 0 ? (
+        {items.length === 0 && !loadFailed && (isLoading || !loaded) ? (
           <div className="flex items-center gap-2 text-neutral-400 py-12">
             <Loader2 size={16} className="animate-spin" />
             Loading cart…
           </div>
+        ) : items.length === 0 && loadFailed ? (
+          <CartLoadError onRetry={fetchCart} />
         ) : items.length === 0 ? (
           <EmptyState
             icon={ShoppingCart}
@@ -105,7 +108,10 @@ export default function Cart() {
                   </div>
                   <div className="flex flex-col items-end gap-3">
                     <button
+                      type="button"
                       onClick={() => removeFromCart(item)}
+                      aria-label={`Remove ${item.name} from cart`}
+                      title="Remove"
                       className="p-1.5 rounded-lg text-neutral-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
                       data-testid={`cart-remove-${item.slug}`}
                     >

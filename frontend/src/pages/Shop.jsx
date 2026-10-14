@@ -25,6 +25,7 @@ export default function Shop() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [attempt, setAttempt] = useState(0); // "Try again" after a failed load reads the catalog again
 
   useSEO({
     title: "Shop Tested DDR4 Server RAM in Canada — Reflexity RAM",
@@ -49,7 +50,7 @@ export default function Shop() {
       })
       .catch((requestError) => {
         if (active && requestError?.name !== "AbortError" && requestError?.code !== "ERR_CANCELED") {
-          setError("Failed to load products. Please refresh.");
+          setError("This is usually a slow connection or our server waking up. Try again in a moment.");
         }
       })
       .finally(() => {
@@ -60,7 +61,7 @@ export default function Shop() {
       active = false;
       controller.abort();
     };
-  }, []);
+  }, [attempt]);
 
   const publicProducts = products.filter(isPublicServerRam);
 
@@ -103,8 +104,8 @@ export default function Shop() {
               icon={Inbox}
               title="Could not load products"
               description={error}
-              ctaLabel="Refresh"
-              ctaTo="/shop"
+              ctaLabel="Try again"
+              onCta={() => setAttempt((n) => n + 1)}
               testId="shop-error-state"
               as="h2"
             />

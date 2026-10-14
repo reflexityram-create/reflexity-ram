@@ -61,11 +61,13 @@ api.interceptors.response.use(
 );
 
 // ─── Session ID for Guest Cart ─────────────────────────────────────────────────
+export const CART_SESSION_KEY = 'rfx_session_id';
+
 export function getOrCreateSessionId() {
-  let sessionId = localStorage.getItem('rfx_session_id');
+  let sessionId = localStorage.getItem(CART_SESSION_KEY);
   if (!sessionId) {
     sessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    localStorage.setItem('rfx_session_id', sessionId);
+    localStorage.setItem(CART_SESSION_KEY, sessionId);
   }
   return sessionId;
 }
