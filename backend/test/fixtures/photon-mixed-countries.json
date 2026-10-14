@@ -1,0 +1,211 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -79.3840055,
+     43.6536032
+    ]
+   },
+   "properties": {
+    "osm_id": 198500761,
+    "osm_type": "W",
+    "osm_key": "amenity",
+    "osm_value": "townhall",
+    "type": "house",
+    "housenumber": "100",
+    "street": "Queen Street West",
+    "postcode": "M5H 2N2",
+    "city": "Toronto",
+    "locality": "Financial District",
+    "state": "Ontario",
+    "country": "Canada",
+    "countrycode": "CA",
+    "name": "Toronto City Hall"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -75.6975146,
+     45.4216804
+    ]
+   },
+   "properties": {
+    "osm_id": 264238497,
+    "osm_type": "W",
+    "osm_key": "place",
+    "osm_value": "house",
+    "type": "house",
+    "housenumber": "100",
+    "street": "Queen Street",
+    "postcode": "K1P 1A4",
+    "city": "Ottawa",
+    "district": "Centretown",
+    "county": "Eastern Ontario",
+    "state": "Ontario",
+    "country": "Canada",
+    "countrycode": "CA"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -72.8740375,
+     41.6198966
+    ]
+   },
+   "properties": {
+    "osm_id": 8893355365,
+    "osm_type": "N",
+    "osm_key": "place",
+    "osm_value": "house",
+    "type": "house",
+    "housenumber": "100",
+    "street": "Queen Street",
+    "postcode": "06489",
+    "city": "Southington",
+    "district": "North End",
+    "county": "Capitol Planning Region",
+    "state": "Connecticut",
+    "country": "United States",
+    "countrycode": "US"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -79.4112397,
+     44.6058659
+    ]
+   },
+   "properties": {
+    "osm_id": 2043323403,
+    "osm_type": "N",
+    "osm_key": "place",
+    "osm_value": "house",
+    "type": "house",
+    "housenumber": "100",
+    "street": "Queen Street",
+    "postcode": "L3V 1R2",
+    "city": "Orillia",
+    "county": "Orillia (city)",
+    "state": "Ontario",
+    "country": "Canada",
+    "countrycode": "CA"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -86.538839,
+     49.7829198
+    ]
+   },
+   "properties": {
+    "osm_id": 3165952055,
+    "osm_type": "N",
+    "osm_key": "place",
+    "osm_value": "house",
+    "type": "house",
+    "housenumber": "100",
+    "street": "Queen Street",
+    "postcode": "P0T 2A0",
+    "city": "Greenstone",
+    "district": "Longlac",
+    "county": "Thunder Bay",
+    "state": "Ontario",
+    "country": "Canada",
+    "countrycode": "CA"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -80.7268491,
+     42.8680669
+    ]
+   },
+   "properties": {
+    "osm_id": 2111694652,
+    "osm_type": "N",
+    "osm_key": "place",
+    "osm_value": "house",
+    "type": "house",
+    "housenumber": "100",
+    "street": "Queen Street",
+    "postcode": "N4G 3A5",
+    "city": "Tillsonburg",
+    "county": "Oxford",
+    "state": "Ontario",
+    "country": "Canada",
+    "countrycode": "CA"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -75.65238,
+     45.0179879
+    ]
+   },
+   "properties": {
+    "osm_id": 832718975,
+    "osm_type": "N",
+    "osm_key": "place",
+    "osm_value": "house",
+    "type": "house",
+    "housenumber": "100",
+    "street": "Queen Street",
+    "postcode": "K0G 1J0",
+    "city": "North Grenville",
+    "district": "Kemptville",
+    "county": "Leeds and Grenville",
+    "state": "Ontario",
+    "country": "Canada",
+    "countrycode": "CA"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -75.6528812,
+     45.0176394
+    ]
+   },
+   "properties": {
+    "osm_id": 832739905,
+    "osm_type": "N",
+    "osm_key": "place",
+    "osm_value": "house",
+    "type": "house",
+    "housenumber": "100",
+    "street": "Queen Street",
+    "postcode": "K0G 1J0",
+    "city": "North Grenville",
+    "district": "Kemptville",
+    "county": "Leeds and Grenville",
+    "state": "Ontario",
+    "country": "Canada",
+    "countrycode": "CA"
+   }
+  }
+ ]
+}

@@ -218,7 +218,7 @@ test('a provider problem is logged once an hour per reason, as a reason code onl
 
 test('server: the address routes are mounted before the site-wide limiter, each with its own limit, and the paid pick has a daily cap', () => {
   const source = fs.readFileSync(require.resolve('../src/server.js'), 'utf8');
-  const suggestLimiter = source.indexOf("app.use('/api/address/suggest', addressSuggestLimiter);");
+  const suggestLimiter = source.indexOf("app.use('/api/address/suggest', addressSuggestLimiter, onlyForPhoton(photonSearchDayLimiter));");
   const pickLimiter = source.indexOf("app.use('/api/address/retrieve', addressPickLimiter, addressDayLimiter);");
   const router = source.indexOf("app.use('/api/address', createAddressRouter());");
   const global = source.indexOf('app.use(globalLimiter);');
@@ -235,4 +235,10 @@ test('server: the address routes are mounted before the site-wide limiter, each 
     assert.doesNotMatch(block, /passOnStoreError: true/, `${name} never fails open`);
     assert.match(block, /new MongoRateLimitStore\(\{ prefix: 'addr[a-z]+' \}\)/, `${name} counts in the shared store (not per process)`);
   }
+  // the free provider's own daily cap (searches for the whole site) is shared, fails closed, and only counts while Photon is the provider
+  const photonBlock = source.slice(source.indexOf('const photonSearchDayLimiter = rateLimit({')).split('\n});')[0];
+  assert.match(photonBlock, /max: photonDailyCap\(\),\s*keyGenerator: \(\) => 'everyone',/);
+  assert.match(photonBlock, /passOnStoreError: false/);
+  assert.match(photonBlock, /new MongoRateLimitStore\(\{ prefix: 'photonday' \}\)/);
+  assert.match(source, /const onlyForPhoton = \(limiter\) => \(req, res, next\) => \(addressProvider\(\) === 'photon' \? limiter\(req, res, next\) : next\(\)\);/);
 });

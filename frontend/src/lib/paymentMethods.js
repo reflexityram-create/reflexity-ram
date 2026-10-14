@@ -47,6 +47,8 @@ export function offeredMethods(fromServer) {
       const contactDiffers = id === ETRANSFER && byId.get(id)?.contactDiffers === true;
       // Whether the e-Transfer form may offer address suggestions (the server has a key); typing the address always works.
       const addressSuggest = id === ETRANSFER && byId.get(id)?.addressSuggest === true;
+      // Which service answers (the page words its notes by it): the free one does not check an address, Canada Post's does.
+      const addressSource = addressSuggest && byId.get(id)?.addressSource === 'photon' ? 'photon' : 'canadapost';
       const copy = METHOD_COPY[id];
       return {
         id, ...copy,
@@ -56,7 +58,7 @@ export function offeredMethods(fromServer) {
         ...(Number.isFinite(maxUnits) && maxUnits > 0 ? { maxUnits } : {}),
         ...(Number.isFinite(maxTotal) && maxTotal > 0 ? { maxTotal } : {}),
         ...(contactDiffers ? { contactDiffers } : {}),
-        ...(addressSuggest ? { addressSuggest } : {}),
+        ...(addressSuggest ? { addressSuggest, addressSource } : {}),
       };
     });
 }

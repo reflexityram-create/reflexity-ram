@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Loader2, Lock, ArrowRight, Clock, Landmark } from 'lucide-react';
 import { toast } from 'sonner';
@@ -13,7 +13,7 @@ import { ETRANSFER, PROVINCES, discountFor, etransferSizeProblem, normalizePosta
 import { ecommerceItem, readGaIdentifiers, trackEvent } from '@/lib/analytics';
 import { SUPPORT_EMAIL } from '@/lib/contact';
 import AddressSuggest from '@/components/AddressSuggest';
-import { applyAddress } from '@/lib/addressSuggest';
+import { applyAddress, postalNotes, provinceToSelect } from '@/lib/addressSuggest';
 
 // Pay by Interac e-Transfer. Stripe cannot take one, so this is the shop's own order form: the buyer gives a Canadian
 // address, we save the order UNPAID with its items held, and we email the address and message to send the transfer to.
@@ -54,7 +54,11 @@ export default function CheckoutEtransfer() {
   const [form, setForm] = useState(EMPTY);
   const [errors, setErrors] = useState({});
   const [agreed, setAgreed] = useState(false);
-  const [checked, setChecked] = useState(false);              // the address was picked from Canada Post's suggestions and not edited since
+  const [checked, setChecked] = useState(false);              // the address was picked from the suggestions and not edited since
+  // The free provider gives the postal AREA of the picked street (first three characters), never a full postal code: the typed code is compared with it.
+  const [zipHint, setZipHint] = useState('');
+  // Once the buyer (or a picked suggestion) has chosen the province, typing a postal code stops changing it and only warns.
+  const stateTouched = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const delivery = useMemo(() => readDelivery(location.state), [location.state]);
 
@@ -78,17 +82,33 @@ export default function CheckoutEtransfer() {
   // The server refuses an order over the shop's e-Transfer size limit; saying so here saves the buyer filling in the form.
   const sizeProblem = offer ? etransferSizeProblem({ units: Number(itemCount) || 0, total, maxUnits: offer.maxUnits, maxTotal: offer.maxTotal }, formatStorePrice) : '';
 
+  const freeSuggestions = offer?.addressSource === 'photon';
   const set = (name) => (event) => {
-    setForm((f) => ({ ...f, [name]: event.target.value }));
+    const value = event.target.value;
+    setForm((f) => {
+      const next = { ...f, [name]: value };
+      // A complete postal code names its province: select it, unless the buyer already chose one.
+      if (name === 'zip') { const province = provinceToSelect(value, { touched: stateTouched.current }); if (province) next.state = province; }
+      return next;
+    });
+    if (name === 'state') stateTouched.current = true;
     if (errors[name]) setErrors((e) => ({ ...e, [name]: undefined }));
-    if (ADDRESS_FIELDS.includes(name)) setChecked(false);
+    // Editing the address by hand takes away the "picked" mark and the postal-area hint (typing the postal code is what the free
+    // provider asks for, so that alone keeps them).
+    if (ADDRESS_FIELDS.includes(name) && !(name === 'zip' && freeSuggestions)) { setChecked(false); setZipHint(''); }
   };
   const typeStreet = (text) => set('line1')({ target: { value: text } });
   const pickAddress = (address) => {
     setForm((f) => applyAddress(f, address));
     setErrors((e) => ({ ...e, line1: undefined, city: undefined, state: undefined, zip: undefined }));
     setChecked(true);
+    setZipHint(address.zipHint || '');
+    stateTouched.current = true;
+    // The postal code is what is left to type.
+    if (!address.zip) window.setTimeout(() => document.querySelector('[data-testid="et-zip"]')?.focus(), 0);
   };
+  const notes = postalNotes({ zip: form.zip, state: form.state, hint: zipHint });
+  const provinceName = (code) => PROVINCES.find(([c]) => c === code)?.[1] || code;
 
   const submit = async (event) => {
     event.preventDefault();
@@ -167,7 +187,7 @@ export default function CheckoutEtransfer() {
                 <Field label="Email (we send the e-Transfer details here)" error={errors.email}><input className="input" type="email" autoComplete="email" inputMode="email" value={form.email} onChange={set('email')} aria-invalid={!!errors.email} data-testid="et-email" /></Field>
               )}
               <Field label="Phone" error={errors.phone}><input className="input" type="tel" autoComplete="tel" inputMode="tel" value={form.phone} onChange={set('phone')} aria-invalid={!!errors.phone} data-testid="et-phone" /></Field>
-              <AddressSuggest id="et-line1" label="Street address" value={form.line1} onChange={typeStreet} onPick={pickAddress} enabled={Boolean(offer?.addressSuggest)} error={errors.line1} verified={checked} inputProps={{ autoComplete: 'address-line1', 'data-testid': 'et-line1' }} />
+              <AddressSuggest id="et-line1" label="Street address" value={form.line1} onChange={typeStreet} onPick={pickAddress} enabled={Boolean(offer?.addressSuggest)} source={offer?.addressSource} error={errors.line1} verified={checked} inputProps={{ autoComplete: 'address-line1', 'data-testid': 'et-line1' }} />
               <Field label="Apartment, suite (optional)"><input className="input" autoComplete="address-line2" value={form.line2} onChange={set('line2')} data-testid="et-line2" /></Field>
               <div className="grid sm:grid-cols-3 gap-3">
                 <Field label="City" error={errors.city}><input className="input" autoComplete="address-level2" value={form.city} onChange={set('city')} aria-invalid={!!errors.city} data-testid="et-city" /></Field>
@@ -176,6 +196,17 @@ export default function CheckoutEtransfer() {
                 </select></Field>
                 <Field label="Postal code" error={errors.zip}><input className="input" autoComplete="postal-code" value={form.zip} onChange={set('zip')} aria-invalid={!!errors.zip} data-testid="et-zip" /></Field>
               </div>
+              {notes.length > 0 && (
+                <div className="space-y-1" role="status" data-testid="et-postal-notes">
+                  {notes.map((note) => (
+                    <p key={note.kind} data-testid={`et-postal-${note.kind}`} className={`text-[12px] ${note.kind === 'area-same' ? 'text-neutral-400' : 'text-amber-700 dark:text-amber-300'}`}>
+                      {note.kind === 'province' && `That postal code is in ${note.provinces.map(provinceName).join(' or ')}, but the province says ${provinceName(note.state)}. Please check both.`}
+                      {note.kind === 'area-differs' && `Check your postal code: this street is usually in area ${note.area}, and yours starts with ${note.typed}. If yours is right, you can ignore this.`}
+                      {note.kind === 'area-same' && `Same postal area as this street (${note.area}).`}
+                    </p>
+                  ))}
+                </div>
+              )}
               <p className="text-[12px] text-neutral-500">Shipping within Canada only. Pay by card if you ship anywhere else.</p>
             </section>
 
