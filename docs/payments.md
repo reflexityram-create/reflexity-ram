@@ -142,6 +142,44 @@ is `no_payment_required`, with no PaymentIntent and no charge. A *completed* suc
 (paid, stock taken, confirmation email, a note on the order and an owner alert titled "New order: $0, a discount code covered it").
 Before, it was ignored: no order, no stock taken, nothing for the buyer. No such code exists today.
 
+## Disputes and bank inquiries (`utils/disputes.js`)
+
+When a buyer's bank disputes a card or bank-debit payment, Stripe takes the money back at once (plus a fee) and sets a deadline for
+evidence; missing it loses the dispute by default. Stripe emails the owner, but until now nothing on the site knew: the order stayed
+paid and "Ready to ship", and nothing reached the phone. Stripe reports each step in three events, which the webhook
+(`POST /api/stripe/webhook`) now handles: `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed`.
+
+- **What is stored.** `Order.dispute` ({ id, status, reason, reasonText, amount, currency, openedAt, evidenceDueBy, closedAt, eventAt }), found
+  by the charge id or, when that is not stored yet, by the PaymentIntent. The order's own status, payment status, stock and history are
+  **not touched** (what to do about a dispute is the owner's call, made in Stripe), and the buyer's view of the order never carries it
+  (`customerOrders.js` is an explicit list).
+- **Late and repeated events are safe.** Stripe delivers events more than once and not always in order. The write is one atomic update
+  that only goes ahead if nothing newer is stored on the order: compared by the event's own time, whatever dispute it is about (a late
+  "inquiry closed" must not replace the real dispute that opened after it). Stripe's clock is whole seconds, so within the same second a
+  dispute never goes backwards through its stages (first response, under review, closed) and a different dispute is simply the latest to
+  arrive; an event delivered twice is taken twice, harmlessly. The alert has a key per dispute and kind, so a repeat says nothing new.
+- **The phone is told** (never a name, email, phone or address, only order number, amount, items and the bank's reason): a dispute
+  opened (high; says what Stripe took, the evidence deadline, and "do not ship it" or "send tracking and proof of delivery"), a bank
+  inquiry (high; no money is taken yet, but unanswered it can become a dispute), won (normal), lost (high), an inquiry closed or a
+  dispute prevented (low). A dispute for a payment with **no matching order** is announced too ("Dispute on a payment with no order"):
+  money was taken back either way.
+- **The admin shows it.** A red box at the very top of the order (reason, amount, deadline, advice, a link to the dispute in Stripe), a
+  pill ("Disputed", "Bank inquiry", "Dispute lost", "Dispute won") in the order sheet and in both lists, and the phone card stops saying
+  "Ready to ship" while the bank is disputing or asking and once the dispute is lost.
+- **A disputed buyer is not asked how the order went.** The "how was your order?" email is cancelled when a dispute or inquiry opens or
+  is lost, and not scheduled for a disputed order afterwards (unless the dispute was won). Scheduling re-checks the database when it
+  claims the order and again once the email is stored, so a dispute that lands at the very moment the order is marked shipped still
+  stops the email: whichever of the two finishes second sees the other.
+- **If recording fails the event is not lost.** A database error, or an alert that could not be written, makes the webhook answer 500 and
+  Stripe sends the event again (the alert code answers "nothing" both for "already told" and for "could not write"; for this message the
+  two are told apart by looking for the alert's key). The retry finds the dispute already stored and writes the missing alert. If a
+  newer event has arrived by then the retry is out of date and ignored, and the newer event carries its own alert.
+- **Needs a Stripe setting.** The webhook endpoint must be subscribed to those three events (Stripe Dashboard > Developers > Webhooks, or
+  the API: `enabled_events`). Without it nothing arrives and nothing here runs.
+- **Deliberately not done:** the site does not send evidence for the owner, does not refund, does not cancel or mark the order refunded
+  when a dispute is lost (the owner decides, and a lost dispute still counts in the revenue figure on the admin stats until the owner
+  changes the order), and does not block shipping (the box and the alert say not to).
+
 ## Known limits (decided, not forgotten)
 
 An independent review of this change fixed what could be fixed cheaply (everything above); these remain, on purpose:
@@ -165,6 +203,8 @@ An independent review of this change fixed what could be fixed cheaply (everythi
 ## Tests
 
 - `backend/test/payment-methods.test.js`: discount arithmetic, settings, delivery choices, the Stripe session payload.
+- `backend/test/disputes.test.js` (no database) and `backend/test/disputes.integration.test.js` (real MongoDB, through the signed webhook):
+  storage, alerts, late/out-of-order/racing events, redelivery, unmatched disputes. `frontend/test/admin-disputes.test.js`: what the owner sees.
 - `backend/test/payments-mongo.integration.test.js`: the whole flow on a **real MongoDB replica set** (transactions and races). Skipped
   unless `MONGODB_TEST_URI` is set; it drops that database. See the file's header for the Docker one-liner; run with
   `MONGODB_TEST_URI=... npm --prefix backend run test:payments`.

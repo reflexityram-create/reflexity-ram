@@ -25,6 +25,7 @@ const { BANK_DEBIT, bankDebitEnabled, paymentMethodSettings, automaticTaxEnabled
 const { isDisposableEmail } = require('../utils/disposableEmail');
 const { isFullyRefundedCharge } = require('../utils/refunds');
 const { cancelReviewRequest } = require('../utils/reviewRequests');
+const { recordDisputeEvent } = require('../utils/disputes');
 const { estimateDeliveryDate } = require('../utils/deliveryEstimate');
 const { shippingChoiceNote } = require('../utils/shippingChoice');
 const { resolveCanadaDelivery, DeliveryChoiceError } = require('../utils/canadaDelivery');
@@ -57,6 +58,7 @@ let orderCanceller = cancelOrderAndRestoreStock;
 let stockHolder = holdStockForCheckout;
 let stockHoldReleaser = releaseCheckoutHold;
 let checkoutSessionExpirer = (sessionId) => stripe.checkout.sessions.expire(sessionId);
+let disputeRecorder = recordDisputeEvent;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CHECKOUT SESSIONS (primary checkout flow)
@@ -1044,6 +1046,14 @@ router.post('/webhook', async (req, res) => {
         break;
       }
 
+      // ── A buyer's bank disputed a payment (or asked about one): record it on the order and tell the owner ──
+      case 'charge.dispute.created':
+      case 'charge.dispute.updated':
+      case 'charge.dispute.closed': {
+        await disputeRecorder(event);
+        break;
+      }
+
       default:
         // Log unhandled events for debugging but don't error
         console.log(`Unhandled Stripe event: ${event.type}`);
@@ -1069,6 +1079,7 @@ if (process.env.NODE_ENV === 'test') {
     holdStock = async () => ({ ok: true, held: false }),
     releaseHold = async () => 0,
     expireSession = async () => ({}),
+    recordDispute = recordDisputeEvent,
   } = {}) => {
     checkoutPriceEnsurer = ensurePrice;
     bankDebitCouponEnsurer = ensureCoupon;
@@ -1080,6 +1091,7 @@ if (process.env.NODE_ENV === 'test') {
     stockHolder = holdStock;
     stockHoldReleaser = releaseHold;
     checkoutSessionExpirer = expireSession;
+    disputeRecorder = recordDispute;
   };
   // The settlement steps are not routes of their own, so tests reach them here.
   router.internalsForTest = { fulfillCheckoutSession, settleBankDebitPaid, settleBankDebitFailed, isDelayedBankDebit, bankDebitInFlight };
