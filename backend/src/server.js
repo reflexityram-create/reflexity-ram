@@ -24,6 +24,8 @@ const reviewRoutes = require('./routes/reviews');
 const { createLeadRouter } = require('./routes/leads');
 const { createDeviceRouter } = require('./routes/device');
 const { createPaymentsRouter } = require('./routes/payments');
+const { createAddressRouter } = require('./routes/address');
+const { dailyLookupCap } = require('./utils/addressConfig');
 const { sweepEtransferOrdersThrottled } = require('./utils/etransfer');
 const { syncShippedOrdersThrottled } = require('./utils/trackingSync');
 const { createAdminDevicesRouter } = require('./routes/adminDevices');
@@ -162,6 +164,37 @@ const etransferLimiter = rateLimit({
   message: { error: 'Too many orders from this connection. Please try again later or email us.' },
 });
 
+// Address suggestions (routes/address.js): typing asks often, so it has its own budget and does not use up the buyer's site-wide one.
+// Picking a finished address is the paid lookup: a few per IP per hour, and one daily cap for the whole site so a script cannot spend the credit.
+const addressSuggestLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 150,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new MongoRateLimitStore({ prefix: 'addrfind' }),
+  passOnStoreError: false,
+  message: { error: 'Too many address searches, please type the address instead.' },
+});
+const addressPickLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new MongoRateLimitStore({ prefix: 'addrpick' }),
+  passOnStoreError: false,
+  message: { error: 'Too many address lookups, please type the address instead.' },
+});
+const addressDayLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: dailyLookupCap(),
+  keyGenerator: () => 'everyone',
+  standardHeaders: false,
+  legacyHeaders: false,
+  store: new MongoRateLimitStore({ prefix: 'addrday' }),
+  passOnStoreError: false,
+  message: { error: 'Address suggestions are paused for today, please type the address instead.' },
+});
+
 const leadLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 8,
@@ -172,6 +205,9 @@ const leadLimiter = rateLimit({
   message: { error: 'Too many quote requests, please try again later.' },
 });
 
+app.use('/api/address/suggest', addressSuggestLimiter);
+app.use('/api/address/retrieve', addressPickLimiter, addressDayLimiter);
+app.use('/api/address', createAddressRouter());
 app.use('/api/device/pair', devicePairLimiter);
 // onPoll: the phone is the one thing that asks often, so it also sweeps unpaid e-Transfer orders (expire / remind).
 app.use('/api/device', deviceLimiter, createDeviceRouter({ onPoll: () => sweepEtransferOrdersThrottled() }));

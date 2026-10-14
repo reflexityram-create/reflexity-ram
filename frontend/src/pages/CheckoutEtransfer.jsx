@@ -12,6 +12,8 @@ import { formatStorePrice, SIGNATURE_PRICE, STORE_CURRENCY_CODE } from '@/lib/cu
 import { ETRANSFER, PROVINCES, discountFor, etransferSizeProblem, normalizePostalCode, offeredMethods, validateEtransferForm } from '@/lib/paymentMethods';
 import { ecommerceItem, readGaIdentifiers, trackEvent } from '@/lib/analytics';
 import { SUPPORT_EMAIL } from '@/lib/contact';
+import AddressSuggest from '@/components/AddressSuggest';
+import { applyAddress } from '@/lib/addressSuggest';
 
 // Pay by Interac e-Transfer. Stripe cannot take one, so this is the shop's own order form: the buyer gives a Canadian
 // address, we save the order UNPAID with its items held, and we email the address and message to send the transfer to.
@@ -19,6 +21,8 @@ import { SUPPORT_EMAIL } from '@/lib/contact';
 // delivery choice, the stock): the figures on this page are a preview.
 
 const EMPTY = { firstName: '', lastName: '', email: '', phone: '', line1: '', line2: '', city: '', state: 'ON', zip: '' };
+// Editing any of these by hand takes away the "address checked" mark, which is only true of an address picked from the suggestions.
+const ADDRESS_FIELDS = ['line1', 'line2', 'city', 'state', 'zip'];
 
 // The delivery choice (Faster shipping, signature) comes from the checkout page, by navigation state or session storage.
 function readDelivery(state) {
@@ -50,6 +54,7 @@ export default function CheckoutEtransfer() {
   const [form, setForm] = useState(EMPTY);
   const [errors, setErrors] = useState({});
   const [agreed, setAgreed] = useState(false);
+  const [checked, setChecked] = useState(false);              // the address was picked from Canada Post's suggestions and not edited since
   const [submitting, setSubmitting] = useState(false);
   const delivery = useMemo(() => readDelivery(location.state), [location.state]);
 
@@ -76,6 +81,13 @@ export default function CheckoutEtransfer() {
   const set = (name) => (event) => {
     setForm((f) => ({ ...f, [name]: event.target.value }));
     if (errors[name]) setErrors((e) => ({ ...e, [name]: undefined }));
+    if (ADDRESS_FIELDS.includes(name)) setChecked(false);
+  };
+  const typeStreet = (text) => set('line1')({ target: { value: text } });
+  const pickAddress = (address) => {
+    setForm((f) => applyAddress(f, address));
+    setErrors((e) => ({ ...e, line1: undefined, city: undefined, state: undefined, zip: undefined }));
+    setChecked(true);
   };
 
   const submit = async (event) => {
@@ -155,7 +167,7 @@ export default function CheckoutEtransfer() {
                 <Field label="Email (we send the e-Transfer details here)" error={errors.email}><input className="input" type="email" autoComplete="email" inputMode="email" value={form.email} onChange={set('email')} aria-invalid={!!errors.email} data-testid="et-email" /></Field>
               )}
               <Field label="Phone" error={errors.phone}><input className="input" type="tel" autoComplete="tel" inputMode="tel" value={form.phone} onChange={set('phone')} aria-invalid={!!errors.phone} data-testid="et-phone" /></Field>
-              <Field label="Street address" error={errors.line1}><input className="input" autoComplete="address-line1" value={form.line1} onChange={set('line1')} aria-invalid={!!errors.line1} data-testid="et-line1" /></Field>
+              <AddressSuggest id="et-line1" label="Street address" value={form.line1} onChange={typeStreet} onPick={pickAddress} enabled={Boolean(offer?.addressSuggest)} error={errors.line1} verified={checked} inputProps={{ autoComplete: 'address-line1', 'data-testid': 'et-line1' }} />
               <Field label="Apartment, suite (optional)"><input className="input" autoComplete="address-line2" value={form.line2} onChange={set('line2')} data-testid="et-line2" /></Field>
               <div className="grid sm:grid-cols-3 gap-3">
                 <Field label="City" error={errors.city}><input className="input" autoComplete="address-level2" value={form.city} onChange={set('city')} aria-invalid={!!errors.city} data-testid="et-city" /></Field>

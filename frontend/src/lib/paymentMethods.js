@@ -45,6 +45,8 @@ export function offeredMethods(fromServer) {
       const maxTotal = id === ETRANSFER ? Number(byId.get(id)?.maxTotal) : NaN;
       // The server says whether e-Transfers go to an address other than the contact email (it never says which address).
       const contactDiffers = id === ETRANSFER && byId.get(id)?.contactDiffers === true;
+      // Whether the e-Transfer form may offer address suggestions (the server has a key); typing the address always works.
+      const addressSuggest = id === ETRANSFER && byId.get(id)?.addressSuggest === true;
       const copy = METHOD_COPY[id];
       return {
         id, ...copy,
@@ -54,6 +56,7 @@ export function offeredMethods(fromServer) {
         ...(Number.isFinite(maxUnits) && maxUnits > 0 ? { maxUnits } : {}),
         ...(Number.isFinite(maxTotal) && maxTotal > 0 ? { maxTotal } : {}),
         ...(contactDiffers ? { contactDiffers } : {}),
+        ...(addressSuggest ? { addressSuggest } : {}),
       };
     });
 }
