@@ -62,6 +62,7 @@ test('the e-Transfer wording: not our contact email, and the message is optional
   assert.match(order, /label="Message \(optional, helps us match it\)"/);
   assert.ok(order.indexOf('testId="et-recipient"') < order.indexOf('data-testid="et-not-contact"') && order.indexOf('data-testid="et-not-contact"') < order.indexOf('testId="et-amount"'), 'the warning is between the address and the amount');
   assert.doesNotMatch(order, /Message \(so we can match it\)/);
-  // the Terms say the same in their own words
-  assert.match(terms, /the address to pay \(it is not our contact email\) and an order number you can put in the message, which is optional but helps us match your payment/);
+  // the Terms stay true whichever address receives the money: they say the message is optional and do not say the address differs
+  assert.match(terms, /the address to pay and an order number you can put in the message, which is optional but helps us match your payment/);
+  assert.doesNotMatch(terms, /not our contact email/, 'static text cannot know which address the owner uses');
 });

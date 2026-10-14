@@ -28,7 +28,7 @@ test('a tracked shipping email shows the number and its link, and does not claim
   assert.match(message.html, /GD546149174CA/);
   assert.match(message.html, /Track your package/);
   assert.doesNotMatch(textOf(message.html), /without a tracking number/);
-  assert.equal(message.replyTo, undefined, 'the tracked email is unchanged');
+  assert.equal(message.replyTo, 'reflexityram@gmail.com', 'a reply to the tracked email reaches the shop too (it used to go to the no-reply address and bounce)');
 });
 
 test('an untracked shipping email says it plainly, shows no number, links to the order and can be answered', async () => {
