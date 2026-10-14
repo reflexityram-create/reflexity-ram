@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 // Swap the Resend SDK out before email.js loads so no test can send a real email.
 const sent = [];
+const sendOptions = [];
 const resendPath = require.resolve('resend');
 require.cache[resendPath] = {
   id: resendPath,
@@ -12,7 +13,8 @@ require.cache[resendPath] = {
     Resend: class {
       constructor() {
         this.emails = {
-          send: async (message) => {
+          send: async (message, options) => {
+            sendOptions.push(options);
             sent.push(message);
             return { data: { id: 'email_test' }, error: null };
           },
@@ -102,7 +104,9 @@ test('the email sent for a paid Stripe session shows its discount and tax', asyn
     Order.create = async (values) => ({ ...values, _id: 'order-id', orderNumber: 'RFX-EMAIL', stockDecremented: true });
     Cart.findOneAndUpdate = async () => undefined;
     Order.updateOne = async () => ({ modifiedCount: 1 });   // clears the order's "last steps pending" mark
-    stripeRouter.setCheckoutDependenciesForTest({
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: async (order) => {
+      if (order.checkoutEmail?.kind === 'confirmation') await require('../src/utils/email').sendOrderConfirmationEmail({ email: order.checkoutEmail.email, firstName: order.shippingAddress?.firstName, order });
+    },
       retrieveSession: async () => ({
         id: 'cs_email', payment_status: 'paid', metadata: { userId: 'guest', cartSessionId: 'session_0123456789' },
         line_items: { data: [{ price: { id: 'price_ddr4_64gb', unit_amount: 50000 }, quantity: 1 }] },
@@ -162,4 +166,9 @@ test('confirmation email has no duties row for an order without prepaid duties',
     const message = await sendFor(values);
     assert.deepEqual(rowsOf(message.html).map(([label]) => label), ['Subtotal', 'Shipping', 'Total']);
   }
+});
+
+test('checkout confirmations pass their stable provider deduplication key to Resend', async () => {
+  await sendOrderConfirmationEmail({ email: 'buyer@example.com', firstName: 'Buyer', order: order(), idempotencyKey: 'checkout-email:stable:checkoutEmail' });
+  assert.deepEqual(sendOptions.at(-1), { idempotencyKey: 'checkout-email:stable:checkoutEmail' });
 });
