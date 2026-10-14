@@ -312,7 +312,7 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
   const sessions = [];
   const expired = [];
   const cardApp = (extra = {}) => {
-    stripeRouter.setCheckoutDependenciesForTest({
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail,
       ensurePrice: async (p) => p.stripePriceId,
       ensureCoupon: async () => 'coupon_test',
       createSession: async (payload) => { const id = `cs_test_${sessions.length + 1}`; sessions.push({ id, payload }); return { id, url: `https://stripe.test/${id}` }; },
@@ -432,7 +432,7 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
     await seedCart(product, 1, A);
     await holdStockForCheckout({ owner: `s:${A}`, sessionId: 'cs_paid_1', lines: want(product) });
     const calls = [];
-    stripeRouter.setCheckoutDependenciesForTest({
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail,
       retrieveSession: async () => paid({ line_items: lineFor(product) }),
       decrementStock: async (order) => { calls.push(['decrement', (await holdsOf(product)).length]); return require('../src/utils/stock').decrementStockForOrder(order); },
       releaseHold: async (owner, options) => { calls.push(['release', await stockOf(product)]); return releaseCheckoutHold(owner, options); },
@@ -451,7 +451,7 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
     await seedCart(product, 1, A); await seedCart(product, 1, B);
     const app = cardApp();
     assert.equal((await post(app, { 'x-session-id': A })).status, 200);
-    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => paid({ line_items: lineFor(product) }), holdStock: holdStockForCheckout, releaseHold: releaseCheckoutHold });
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async () => paid({ line_items: lineFor(product) }), holdStock: holdStockForCheckout, releaseHold: releaseCheckoutHold });
     await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_paid_1');
     const second = await post(cardApp(), { 'x-session-id': B });
     assert.equal(second.status, 400);
@@ -463,7 +463,7 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
     const product = await seedProduct({ stockQuantity: 1 });
     await seedCart(product, 1, A);
     await holdStockForCheckout({ owner: `s:${A}`, sessionId: 'cs_paid_1', lines: want(product) });
-    stripeRouter.setCheckoutDependenciesForTest({
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail,
       retrieveSession: async () => paid({ line_items: lineFor(product), payment_intent: { id: 'pi_refunded_1', status: 'succeeded', latest_charge: { id: 'ch_refunded_1', refunded: true, amount_refunded: 14900, amount: 14900 } } }),
       releaseHold: releaseCheckoutHold,
     });
@@ -480,7 +480,7 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
     await seedCart(product, 2, A);
     await holdStockForCheckout({ owner: `s:${A}`, sessionId: 'cs_paid_1', lines: want(product, 2) });
     const realCartUpdate = Cart.findOneAndUpdate;
-    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => paid({ line_items: lineFor(product, 2) }), releaseHold: releaseCheckoutHold });
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async () => paid({ line_items: lineFor(product, 2) }), releaseHold: releaseCheckoutHold });
     // the server "stops" while emptying the cart: the order is saved, the stock taken, the hold released, the cart still full
     Cart.findOneAndUpdate = async () => { throw new Error('process stopped'); };
     const quiet = console.error; console.error = () => {};
@@ -506,7 +506,7 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
     const product = await seedProduct({ stockQuantity: 3 });
     const other = await seedProduct({ stockQuantity: 3 });
     await seedCart(product, 1, A);
-    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => paid({ line_items: lineFor(product) }), releaseHold: releaseCheckoutHold });
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async () => paid({ line_items: lineFor(product) }), releaseHold: releaseCheckoutHold });
     const realCartUpdate = Cart.findOneAndUpdate;
     Cart.findOneAndUpdate = async () => { throw new Error('process stopped'); };
     const quiet = console.error; console.error = () => {};
@@ -540,7 +540,7 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
     await seedCart(product, 1, A);
     await holdStockForCheckout({ owner: `s:${A}`, sessionId: 'cs_paid_1', lines: want(product, 1) });
     await holdStockForCheckout({ owner: `s:${A}`, sessionId: 'cs_newer', lines: want(product, 2) });
-    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => paid({ line_items: lineFor(product) }), releaseHold: releaseCheckoutHold });
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async () => paid({ line_items: lineFor(product) }), releaseHold: releaseCheckoutHold });
     await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_paid_1');
     assert.deepEqual((await holdsOf(product)).map((h) => [h.sessionId, h.qty]), [['cs_newer', 2]]);
   });
@@ -552,13 +552,13 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
     // untouched since: emptied
     await seedCart(product, 1, A);
     await Cart.collection.updateOne({ sessionId: A }, { $set: { updatedAt: new Date((created - 120) * 1000) } });
-    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async (id) => paid({ id, created, line_items: lineFor(product) }), releaseHold: releaseCheckoutHold });
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async (id) => paid({ id, created, line_items: lineFor(product) }), releaseHold: releaseCheckoutHold });
     await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_paid_1');
     assert.equal((await Cart.findOne({ sessionId: A })).items.length, 0);
     // something was added after the checkout started (another tab): it was not paid for, so it stays
     await seedCart(product, 1, B);
     await Cart.collection.updateOne({ sessionId: B }, { $set: { updatedAt: new Date() } });
-    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async (id) => paid({ id, created, metadata: { userId: 'guest', cartSessionId: B }, line_items: lineFor(product), payment_intent: { id: 'pi_b', status: 'succeeded', latest_charge: 'ch_b' } }), releaseHold: releaseCheckoutHold });
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async (id) => paid({ id, created, metadata: { userId: 'guest', cartSessionId: B }, line_items: lineFor(product), payment_intent: { id: 'pi_b', status: 'succeeded', latest_charge: 'ch_b' } }), releaseHold: releaseCheckoutHold });
     await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_paid_2');
     assert.equal((await Cart.findOne({ sessionId: B })).items.length, 1, 'edited after the checkout started: left alone');
   });
@@ -570,12 +570,12 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
     await holdStockForCheckout({ owner: `s:${A}`, sessionId: 'cs_paid_1', lines: want(product, 1) });
     const quiet = console.error; console.error = () => {};
     try {
-      stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => paid({ line_items: lineFor(product) }), releaseHold: async () => { throw new Error('database blip'); } });
+      stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async () => paid({ line_items: lineFor(product) }), releaseHold: async () => { throw new Error('database blip'); } });
       const order = await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_paid_1');
       assert.ok(order, 'the order is made all the same');
       assert.equal((await Order.findById(order._id).lean()).postOrderPending, true, 'and stays marked');
       assert.equal((await holdsOf(product)).length, 1, 'the hold is still there');
-      stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => paid({ line_items: lineFor(product) }), releaseHold: releaseCheckoutHold });
+      stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async () => paid({ line_items: lineFor(product) }), releaseHold: releaseCheckoutHold });
       await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_paid_1');
     } finally { console.error = quiet; }
     assert.deepEqual(await holdsOf(product), []);
@@ -633,7 +633,7 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
     await reset();
     const product = await seedProduct({ stockQuantity: 3 });
     await seedCart(product, 1, A);
-    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => free(product) });
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async () => free(product) });
     const order = await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_free_1');
     assert.ok(order, 'the order exists');
     assert.equal(order.total, 0);
@@ -658,7 +658,7 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
   await root.test('two $0 orders in a row both save: neither has a PaymentIntent, and that must not collide', async () => {
     await reset();
     const product = await seedProduct({ stockQuantity: 5 });
-    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async (id) => free(product, { id }) });
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async (id) => free(product, { id }) });
     const one = await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_free_a');
     const two = await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_free_b');
     assert.notEqual(String(one._id), String(two._id));
@@ -669,7 +669,7 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
     await reset();
     const product = await seedProduct({ stockQuantity: 3 });
     for (const [label, extra] of [['still open', { status: 'open' }], ['owes money', { amount_total: 14900 }], ['unpaid', { payment_status: 'unpaid' }]]) {
-      stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => free(product, extra) });
+      stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async () => free(product, extra) });
       assert.equal(await stripeRouter.internalsForTest.fulfillCheckoutSession(`cs_free_${label.replace(/\W/g, '')}`), null, label);
     }
     assert.equal(await Order.countDocuments(), 0);
@@ -680,7 +680,7 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
     await reset();
     const product = await seedProduct({ stockQuantity: 3 });
     const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => free(product) });
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async () => free(product) });
     const app = express();
     app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
     app.use('/api/stripe', stripeRouter);

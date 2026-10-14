@@ -1,5 +1,10 @@
 const mongoose = require('mongoose');
 
+const checkoutEmailSchema = new mongoose.Schema({
+  email: String, kind: String, status: { type: String, enum: ['pending', 'sending', 'sent', 'failed'] },
+  queuedAt: Date, claimedAt: Date, sentAt: Date, ready: Boolean,
+}, { _id: false });
+
 const orderItemSchema = new mongoose.Schema({
   product: {
     type: mongoose.Schema.Types.ObjectId,
@@ -100,6 +105,8 @@ const orderSchema = new mongoose.Schema({
   // (utils/stockHolds.js) and the cart that became this order emptied. A crash in between leaves it set, and the next retry of the
   // order (Stripe redelivers the event, the buyer reopens the success page) finishes the job.
   postOrderPending: { type: Boolean },
+  checkoutEmail: checkoutEmailSchema,
+  bankDebitClearedEmail: checkoutEmailSchema,
   // A dispute (chargeback) or a bank inquiry on this order's payment, kept up to date from Stripe's charge.dispute.* events
   // (utils/disputes.js). Only the owner sees it: the buyer's order shape (utils/customerOrders.js) is an explicit list without it.
   dispute: {

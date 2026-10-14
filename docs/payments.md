@@ -142,6 +142,20 @@ is `no_payment_required`, with no PaymentIntent and no charge. A *completed* suc
 (paid, stock taken, confirmation email, a note on the order and an owner alert titled "New order: $0, a discount code covered it").
 Before, it was ignored: no order, no stock taken, nothing for the buyer. No such code exists today.
 
+## Checkout email recovery
+
+New Stripe orders save their buyer-email marker in the same insert as the order. A bank debit saves a separate confirmation
+marker when it clears. Stripe redelivery, the success page, and the existing server job (one minute after startup, then every five
+minutes while awake) retry pending/failed sends; a sender that crashes releases its claim after five minutes. Concurrent workers
+claim one sender atomically. Each email has a stable Resend idempotency key, including when the send succeeds but its database stamp
+fails. The initial receipt becomes eligible only after the refund check; recovery repeats that check before releasing an unfinished
+receipt. Refunded/cancelled orders and obsolete pending-debit notices are not sent.
+
+Automatic attempts stop 23 hours after queuing, inside [Resend's 24-hour deduplication window](https://resend.com/docs/dashboard/emails/idempotency-keys). This is bounded recovery, not an
+exactly-once delivery guarantee: extended downtime, missing recipient data, and a provider outage lasting beyond that window need
+owner follow-up. Historical orders without a marker are never backfilled or emailed by deploying this change. This recovery covers
+Stripe checkout confirmations and pending/cleared bank-debit notices; e-Transfer and shipping keep their existing delivery paths.
+
 ## Disputes and bank inquiries (`utils/disputes.js`)
 
 When a buyer's bank disputes a card or bank-debit payment, Stripe takes the money back at once (plus a fee) and sets a deadline for
