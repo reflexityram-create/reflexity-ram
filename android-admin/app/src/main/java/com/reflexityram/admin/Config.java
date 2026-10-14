@@ -22,5 +22,5 @@ final class Config {
     /** A web-view session is renewed when it has less than this left (the server issues 24 h). */
     static final long SESSION_RENEW_BEFORE_MS = 12L * 60 * 60 * 1000;
 
-    static final String APP_VERSION = "1.2.0";
+    static final String APP_VERSION = "1.2.1";
 }

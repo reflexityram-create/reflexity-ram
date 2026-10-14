@@ -3,8 +3,8 @@
     {
       "id": "GHSA-vfj7-8cjw-p6xm",
       "package": "braces",
-      "expires": "2026-11-03",
-      "reason": "braces <= 3.0.3 can exhaust the stack on deeply nested brace patterns and no patched release exists (3.0.3 is the latest). It is only reached through build and dev tooling (nodemon/chokidar in the backend, tailwindcss/fast-glob/micromatch in the frontend build), which only ever feed it our own file globs, never request data. Re-check when braces publishes a fix; the entry stops working on the expiry date."
+      "expires": "2026-12-03",
+      "reason": "braces <= 3.0.3 can exhaust the stack on deeply nested brace patterns and no patched release exists (3.0.3 is the latest). It is only reached through build and dev tooling (nodemon/chokidar in the backend, which `npm ls braces --omit=dev` shows is absent from the production runtime; tailwindcss/chokidar/micromatch in the frontend build, which ships static files), which only ever feed it our own file globs, never request data. Re-evaluated 2026-10-14: the npm registry still has no release above 3.0.3 and the GitHub advisory still lists no patched version, so the expiry moved from 2026-11-03 to 2026-12-03. Re-check when braces publishes a fix; the entry stops working on the expiry date."
     }
   ]
 }
