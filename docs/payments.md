@@ -82,6 +82,17 @@ bank debits). A card order has no `paidAt` and is judged by its creation, exactl
 `order.etransfer_pending`, `order.etransfer_expired`, `order.bank_debit_pending`, `order.bank_debit_paid`, `order.payment_failed`,
 `order.payment_after_cancel`, `order.bank_debit_stale` join the events in `docs/phone-app.md`.
 
+## One order per payment (database indexes)
+
+The database itself refuses a second order for the same Stripe payment: `orders` has a unique index on the Checkout Session
+(`stripeCheckoutSessionId_1`) and one on the PaymentIntent (`stripePaymentIntentId_unique`, partial: it only holds orders that have a
+PaymentIntent, so e-Transfer orders are not in it). The webhook and the success page can both try to make the order; the one that loses
+gets a duplicate-key error and uses the winner's order. The server does not let Mongoose build these two (a plain `stripePaymentIntentId_1`
+left by an old schema made a unique index of that name fail a deploy on 2026-08-26). `migrations/ensureOrderPaymentIndexes.js` adds a
+missing one at startup: only when no two orders share the value, never dropping or rewriting an index, never stopping the server. The
+startup log says `Order payment-id unique indexes present`, or names what is missing and why. Production has the plain
+`stripePaymentIntentId_1` beside the new unique one; the plain one is harmless and was left in place on purpose.
+
 ## Known limits (decided, not forgotten)
 
 An independent review of this change fixed what could be fixed cheaply (everything above); these remain, on purpose:

@@ -163,8 +163,14 @@ orderSchema.index({ status: 1 });
 orderSchema.index({ paymentMethod: 1, paymentStatus: 1, status: 1, 'etransfer.expiresAt': 1 });
 // UNIQUE: the DB enforces one order per PaymentIntent even if the app-level
 // duplicate check races (two simultaneous submissions of the same PI).
-// sparse: allows legacy/manual orders without a PI.
-orderSchema.index({ stripePaymentIntentId: 1 }, { unique: true, sparse: true });
+// Partial (only orders whose PaymentIntent is a string): e-Transfer and zero-total orders have none, and a sparse index would
+// still hold an explicit null. It has its own name because production already holds a plain, non-unique `stripePaymentIntentId_1`
+// and a unique index of that NAME failed a deploy. The server does not build it through Mongoose: the migration in
+// migrations/ensureOrderPaymentIndexes.js does, from the same definition (a test checks the two agree).
+orderSchema.index(
+  { stripePaymentIntentId: 1 },
+  { name: 'stripePaymentIntentId_unique', unique: true, partialFilterExpression: { stripePaymentIntentId: { $type: 'string' } } },
+);
 // UNIQUE: one order per Checkout Session — this is the duplicate-fulfillment
 // guard. Both the webhook and the success-page fallback try to create the
 // order; whichever loses the race gets a duplicate-key error and reuses the

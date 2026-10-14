@@ -34,6 +34,7 @@ const { createAdminDevicesRouter } = require('./routes/adminDevices');
 const { createDeviceLimiter, createPairLimiter } = require('./middleware/phoneLimiters');
 const { fixMerchantProductData } = require('./migrations/fixMerchantProductData');
 const { ensureCartOwnershipIndexes } = require('./migrations/ensureCartOwnershipIndexes');
+const { ensureOrderPaymentIndexes } = require('./migrations/ensureOrderPaymentIndexes');
 const { syncActiveProductPrices } = require('./migrations/syncStoreCurrency');
 const WholesaleLot = require('./models/WholesaleLot');
 const WholesaleMediaAsset = require('./models/WholesaleMediaAsset');
@@ -324,15 +325,18 @@ mongoose
     // init() creates fresh collections while autoIndex is disabled. The cart
     // migration then converts legacy owner indexes without dropping them, and
     // ensureIndexes() installs every non-payment index before traffic is
-    // accepted. Payment-provider indexes are intentionally managed separately
-    // and must not be rewritten as a side effect of an unrelated release.
+    // accepted. The two payment-provider indexes stay out of that general pass
+    // (an old plain index of the same name once failed a deploy) and are handled
+    // by their own migration, which only ever ADDS a missing unique index, never
+    // drops or rewrites one, and never stops the server from starting.
     await Promise.all(startupModels.map((model) => model.init()));
     await ensureCartOwnershipIndexes();
     await Promise.all(startupModels.map((model) => model.ensureIndexes({
       toCreate: startupIndexDeclarations(model),
     })));
     console.log(`✅ MongoDB indexes ready (${startupModels.length} models)`);
-    // Read-only: the unique payment indexes are deliberately not built here (see above), but the duplicate-order guard depends on them, so say whether they exist.
+    await ensureOrderPaymentIndexes();
+    // Read-only: the duplicate-order guard depends on the unique payment indexes, so say whether they exist now.
     try {
       const orderIndexes = await Order.collection.indexes();
       const hasUnique = (field) => orderIndexes.some((ix) => ix.unique && Object.keys(ix.key || {}).length === 1 && ix.key[field] !== undefined);

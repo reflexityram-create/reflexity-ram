@@ -569,8 +569,14 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
     if (createErr.code === 11000) {
       // Lost the race against the other fulfillment path — reuse its order,
       // but still let this retry recover the stock decrement if the other path
-      // crashed after insert and before side effects.
-      const existingAfterRace = await Order.findOne({ stripeCheckoutSessionId: session.id });
+      // crashed after insert and before side effects. The PaymentIntent is looked up too: it is unique as well.
+      const intentId = typeof pi === 'string' ? pi : pi?.id;
+      const existingAfterRace = await Order.findOne({
+        $or: [{ stripeCheckoutSessionId: session.id }, ...(intentId ? [{ stripePaymentIntentId: intentId }] : [])],
+      });
+      // A duplicate key on anything else (an order number) has no order to reuse: fail, so Stripe delivers the event again,
+      // instead of answering "nothing to do" for a payment that has no order.
+      if (!existingAfterRace) throw createErr;
       return ensureCriticalFulfillmentEffects(existingAfterRace);
     }
     throw createErr;
