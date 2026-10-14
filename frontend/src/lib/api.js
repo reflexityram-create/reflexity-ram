@@ -195,6 +195,8 @@ export const adminApi = {
   getOrder: (id, config = {}) => api.get(`/admin/orders/${id}`, config),
   updateOrderTracking: (id, trackingNumber) => api.patch(`/admin/orders/${id}/tracking`, { trackingNumber }),
   updateOrderStatus: (id, data) => api.patch(`/admin/orders/${id}/status`, data),
+  // A shipped order whose tracking number is not one (or was only a placeholder): remove it and mark the order sent without tracking.
+  markOrderUntracked: (id) => api.post(`/admin/orders/${id}/sent-without-tracking`),
   markEtransferReceived: (id, data) => api.post(`/admin/orders/${id}/etransfer/received`, data),
   refundEtransfer: (id, data) => api.post(`/admin/orders/${id}/etransfer/refund`, data),
   sendReviewRequest: (id) => api.post(`/admin/orders/${id}/review-request`),
