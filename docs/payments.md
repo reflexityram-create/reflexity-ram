@@ -63,7 +63,9 @@ bank debits). A card order has no `paidAt` and is judged by its creation, exactl
    and is emailed, the address, the exact amount, and the order number to use as the message (optional, but it helps the owner match the
    transfer). The page and both emails say plainly that this address is **not** the shop's contact email (`reflexityram@gmail.com`, see
    `utils/contact.js`), and only when that is true: if the owner ever receives e-Transfers at the contact address itself, the sentence is
-   left out (`contactDiffers` in `GET /api/payments/methods` tells the page, without naming the address). One order is limited to
+   left out (`contactDiffers` in `GET /api/payments/methods` tells the page, without naming the address). **Since 2026-10-13 the owner receives
+   e-Transfers at the contact address itself** (`reflexityram@gmail.com`, registered as a second Autodeposit address in his TD app; Render
+   `ETRANSFER_RECIPIENT_EMAIL`), so today those sentences are NOT shown and `contactDiffers` is false. One order is limited to
    `ETRANSFER_MAX_UNITS` items and `ETRANSFER_MAX_TOTAL_CAD` dollars; at most 3 open orders per buyer and 8 orders an hour per IP.
 2. The owner sees the deposit in the bank and, in the order's **Payment** panel, enters the amount received and presses "I received this
    e-Transfer". Only an exact match is accepted unless the owner explicitly accepts a different amount with a note. This makes the order
@@ -105,3 +107,11 @@ An independent review of this change fixed what could be fixed cheaply (everythi
 - `backend/test/payments-mongo.integration.test.js`: the whole flow on a **real MongoDB replica set** (transactions and races). Skipped
   unless `MONGODB_TEST_URI` is set; it drops that database. See the file's header for the Docker one-liner; run with
   `MONGODB_TEST_URI=... npm --prefix backend run test:payments`.
+
+## Customer emails and replies
+
+Every email to a customer is sent from `noreply@reflexityram.com`, and that domain has **no mail server** (no MX record, checked 2026-10-13): a
+reply to the sender address bounces to the buyer and never reaches anyone. So every customer email sets `Reply-To: reflexityram@gmail.com`
+(verification, password reset, order confirmation, shipped with or without tracking, review request, tracking updates, every payment notice).
+`backend/test/customer-email-replies.test.js` fails if a new email is added without one. Before 2026-10-14 the order confirmation, the tracked
+shipped email, verification and password-reset emails had none, so a buyer's answer to them was lost.

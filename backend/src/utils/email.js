@@ -28,6 +28,7 @@ const sendVerificationEmail = async ({ email, firstName, token }) => {
   const { data, error } = await getResend().emails.send({
     from: FROM_EMAIL,
     to: email,
+    replyTo: SUPPORT_EMAIL,
     subject: 'Verify your Reflexity RAM account',
     html: `
       <!DOCTYPE html>
@@ -64,6 +65,7 @@ const sendPasswordResetEmail = async ({ email, firstName, token }) => {
   const { data, error } = await getResend().emails.send({
     from: FROM_EMAIL,
     to: email,
+    replyTo: SUPPORT_EMAIL,
     subject: 'Reset your Reflexity RAM password',
     html: `
       <!DOCTYPE html>
@@ -110,6 +112,7 @@ const sendOrderConfirmationEmail = async ({ email, firstName, order }) => {
   const { data, error } = await getResend().emails.send({
     from: FROM_EMAIL,
     to: email,
+    replyTo: SUPPORT_EMAIL,
     subject: `Order confirmed — ${order.orderNumber}`,
     html: `
       <!DOCTYPE html>
@@ -190,7 +193,7 @@ const sendShippingNotificationEmail = async ({ email, firstName, order, idempote
   const { data, error } = await getResend().emails.send({
     from: FROM_EMAIL,
     to: email,
-    ...(untracked ? { replyTo: SUPPORT_EMAIL } : {}),
+    replyTo: SUPPORT_EMAIL,
     subject: `Your order has shipped — ${order.orderNumber}`,
     html: `
       <!DOCTYPE html>

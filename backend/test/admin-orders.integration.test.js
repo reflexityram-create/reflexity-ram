@@ -192,7 +192,7 @@ test('the admin Orders list and shipping on a real MongoDB', { skip }, async (ro
       assert.equal(saved.untracked, false);
       assert.equal(shippingEmails().length, 1);
       assert.match(shippingEmails()[0].html, /GD546149174CA/);
-      assert.equal(shippingEmails()[0].replyTo, undefined);
+      assert.equal(shippingEmails()[0].replyTo, 'reflexityram@gmail.com');
     });
   });
 });
