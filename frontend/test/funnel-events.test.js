@@ -35,6 +35,11 @@ test('checkout begins on entry and reports a bounded error reason', async () => 
   assert.match(checkout, /'network_error'/);
 });
 
+test('a buyer turned away because someone else is paying for the last unit gets the server\'s sentence, and it stays on screen long enough to read', async () => {
+  const checkout = await source('pages/Checkout.jsx');
+  assert.match(checkout, /toast\.error\(err\.response\?\.data\?\.error \|\| 'Failed to start checkout', err\?\.response\?\.status === 409 \? \{ duration: 12000 \} : undefined\)/);
+});
+
 test('checkout return records complete, processing (a bank debit still clearing), pending, error and missing-session outcomes', async () => {
   const returned = await source('pages/CheckoutReturn.jsx');
   for (const outcome of ['missing_session', 'complete', 'processing', 'pending', 'error']) {

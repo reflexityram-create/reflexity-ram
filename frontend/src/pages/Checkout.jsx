@@ -225,7 +225,9 @@ export default function Checkout() {
             ? 'request_failed'
             : 'network_error';
       trackEvent('checkout_error', { reason });
-      toast.error(err.response?.data?.error || 'Failed to start checkout');
+      // A 409 is the hold turning the buyer away ("being checked out by another buyer, it frees up within N minutes"): a sentence to
+      // read and act on, so it stays up longer than the default few seconds.
+      toast.error(err.response?.data?.error || 'Failed to start checkout', err?.response?.status === 409 ? { duration: 12000 } : undefined);
       setRedirecting(false);
     }
   };
