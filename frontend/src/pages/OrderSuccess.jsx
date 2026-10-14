@@ -126,7 +126,7 @@ export default function OrderSuccess() {
           <div className="glass rounded-2xl p-8 max-w-lg flex items-start gap-3">
             <AlertTriangle size={18} className="text-amber-400 shrink-0 mt-0.5" />
             <div>
-              <p className="font-semibold">Order not found</p>
+              <h1 className="font-semibold">Order not found</h1>
               <p className="text-[13px] text-neutral-400 mt-1">
                 We couldn't find order <strong>{orderNumber}</strong>. Check your confirmation email.
               </p>
