@@ -25,6 +25,7 @@ function harness({ qty = 2, env = SETTINGS_ENV, lines, open = 0, cartConsumed = 
   const cart = { _id: 'c1', updatedAt: new Date('2026-10-14T11:00:00Z'), items: [{ product: 'p1', qty }] };
   const deps = {
     Cart: { findOne: async () => cart, updateOne: async (...args) => { calls.cartUpdates.push(args); return { modifiedCount: cartConsumed ? 1 : 0 }; } },
+    prepareCap: async () => async () => 1,
     Order: { countDocuments: async () => open },
     resolveLines: async () => lines || [{ item: { qty }, product: product() }],
     createOrder: async (data, { beforeCommit }) => { await beforeCommit({}); calls.created = data; return { ...data, _id: 'o1', orderNumber: 'RFX-TEST-1' }; },

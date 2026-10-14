@@ -978,6 +978,25 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
     } finally { delete process.env.ETRANSFER_MAX_TOTAL_CAD; }
   });
 
+  await root.test('the e-Transfer cap is atomic across different carts and different products for one email', async () => {
+    await reset();
+    const carts = [];
+    for (let i = 0; i < 6; i++) {
+      const product = await seedProduct({ slug: `cap-${i}`, sku: `CAP-${i}`, stripePriceId: `price_cap_${i}` });
+      const sessionId = `cap_session_${i}_0123456789`;
+      await seedCart(product, 1, sessionId); carts.push({ product, sessionId });
+    }
+    const results = await Promise.allSettled(carts.map(({ sessionId }) => place({ sessionId })));
+    assert.equal(results.filter((r) => r.status === 'fulfilled').length, 3);
+    const refused = results.filter((r) => r.status === 'rejected');
+    assert.ok(refused.every((r) => r.reason instanceof EtransferError && r.reason.status === 429));
+    assert.equal(await Order.countDocuments(), 3);
+    assert.equal(sent.length, 3);
+    assert.equal(await Cart.countDocuments({ 'items.0': { $exists: true } }), 3, 'refused carts survive transaction rollback');
+    const products = await Product.find().lean();
+    assert.equal(products.reduce((n, p) => n + p.stockQuantity, 0), 57, 'only three units reserved');
+  });
+
   await root.test('review F3: five simultaneous submits of one cart make exactly one order, one set of instructions and one alert', async () => {
     await reset();
     const product = await seedProduct();
