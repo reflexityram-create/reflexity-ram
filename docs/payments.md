@@ -93,6 +93,55 @@ missing one at startup: only when no two orders share the value, never dropping 
 startup log says `Order payment-id unique indexes present`, or names what is missing and why. Production has the plain
 `stripePaymentIntentId_1` beside the new unique one; the plain one is harmless and was left in place on purpose.
 
+## Stock is set aside while a buyer pays by card (`utils/stockHolds.js`)
+
+A paid order takes its stock when the payment is confirmed, which used to leave a gap: two buyers could both pay for the last unit, and
+the second payment found nothing left. Now, when a buyer is sent to Stripe, the quantities in their cart are **held** for 30 minutes (60
+for a bank debit; `CHECKOUT_STOCK_HOLD_MINUTES` changes the first, 5 to 240). A second buyer who asks for the same unit meanwhile is told
+it is being checked out by someone else and how many minutes until it frees up if they do not finish. They are given no link to pay.
+
+- A hold changes no stock number. What a buyer can have is the stock minus the live holds of everyone *else*, so a buyer's own retry never
+  blocks them. Holds live in `Product.stockHolds` (never returned by any query that does not ask for it): checking "enough left?" and
+  writing the hold is one atomic update, which is what makes simultaneous buyers come out one winner and the rest refused.
+- A buyer has one hold per product, and it remembers the Stripe page it was made for (`sessionId`). Paying on a page gives back exactly
+  that page's hold, so a newer page of the same buyer keeps its own. A cart's holds are taken in ONE database transaction: all of them
+  or none, so a refused try leaves everything as it was (an earlier page stays protected, nothing is ever "put back" by hand) and nobody
+  sees a half-made hold. A new hold gives up, in the same transaction, what the buyer held on products they have taken out of the cart.
+- Order of steps in `POST /create-checkout-session`: the Stripe page is made first, the hold second. A Stripe failure therefore never
+  touches a hold, and a refusal costs only a page nobody was given the link to, which is closed again as tidiness.
+- The hold is given back when the order is made (after the stock is taken, never before), when the e-Transfer lane makes an order for the
+  same buyer, when a guest signs in and their cart becomes the account's, or by running out. A retry of an order whose first attempt
+  stopped before its last steps (Stripe redelivers the event, the buyer reopens the success page) finishes them: the order carries
+  `postOrderPending` until the hold is given back and the cart is emptied, and keeps it if either step fails, so the next retry tries
+  again. The cart is emptied only if nobody touched it since the buyer *started that checkout* (Stripe's session time, five seconds of
+  slack for clocks): items added in another tab afterwards were not paid for and stay. (Opening the cart page can also touch it, when a
+  price or name changed meanwhile: then it is left as it is and the buyer sees what remains.)
+- The e-Transfer lane respects other buyers' holds. It still takes the stock for an e-Transfer whose money has already arrived (marking
+  it received after the 48-hour hold lapsed), whatever is held.
+- It is advisory and fails open: if a hold cannot be written the sale goes ahead as before. A payment that arrives after its hold lapsed
+  and finds the stock gone is still clamped at zero, flagged `OVERSOLD` on the order and alerted to the owner's phone.
+- A hold never keeps a buyer waiting for long. Its transaction has a deadline (`CHECKOUT_HOLD_TIMEOUT_MS`, default 5000): when two carts
+  after the same products collide, the database turns the second writer away and the driver retries it, and without a deadline that could
+  go on for the driver's default two minutes. The deadline is the driver's own `timeoutMS`, which cancels the transaction (a
+  `Promise.race` would leave it running). Past it the buyer is sent to pay without a hold, like after any other failure to hold. Each retry
+  of the transaction works from the time it runs at, so a rival hold that lapsed meanwhile does not wrongly refuse the buyer.
+- The clamp itself used to crash on a real database (Mongoose refuses an array update without `updatePipeline`, and every test stubbed that
+  call), so an oversold payment became a 500 and a retry loop instead of a flagged order. Fixed in the same change; the real-database
+  test `stock-holds.integration.test.js` covers it.
+- **Limits, on purpose.** A checkout that is abandoned keeps the unit set aside until the hold runs out (30 minutes), so a curious visitor
+  can block the last unit for that long, and a script could keep doing it (every request is rate limited); shorten
+  `CHECKOUT_STOCK_HOLD_MINUTES` if it ever matters. There is one hold per buyer, not one per Stripe page: a buyer who opens two checkout
+  pages for the same cart (two tabs) has one hold and both pages stay payable, so paying in both makes two orders (the old double-payment
+  case; the second ends in the oversold alert if the stock is gone). A signed-in buyer who signs out and checks out as a guest is a
+  different buyer for holds until theirs runs out.
+
+## A checkout that costs nothing
+
+A discount code that covers the whole order (and shipping that is free) leaves a Stripe session with nothing to pay: its `payment_status`
+is `no_payment_required`, with no PaymentIntent and no charge. A *completed* such session with a zero total now becomes an ordinary order
+(paid, stock taken, confirmation email, a note on the order and an owner alert titled "New order: $0, a discount code covered it").
+Before, it was ignored: no order, no stock taken, nothing for the buyer. No such code exists today.
+
 ## Known limits (decided, not forgotten)
 
 An independent review of this change fixed what could be fixed cheaply (everything above); these remain, on purpose:

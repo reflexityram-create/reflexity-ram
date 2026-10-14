@@ -193,7 +193,7 @@ test('Faster shipping is refused for a big order, the flat rate and the signatur
 
 // ── the order the owner makes the label from ────────────────────────────────────────────────────
 test('a paid order says which Canada Post service and option to buy, and dates delivery from Xpresspost\'s 3 days', async () => {
-  const originals = [Product.findOne, Order.findOne, Order.create, Cart.findOneAndUpdate];
+  const originals = [Product.findOne, Order.findOne, Order.create, Cart.findOneAndUpdate, Order.updateOne];
   const created = [];
   const session = (id, metadata, label) => ({
     id, payment_status: 'paid',
@@ -210,6 +210,7 @@ test('a paid order says which Canada Post service and option to buy, and dates d
     Order.findOne = async () => null;
     Order.create = async (values) => { created.push(values); return { ...values, _id: 'order-id', orderNumber: `RFX-${created.length}`, stockDecremented: true }; };
     Cart.findOneAndUpdate = async () => undefined;
+    Order.updateOne = async () => ({ modifiedCount: 1 });   // clears the order's "last steps pending" mark
     const sessions = {
       cs_fast: session('cs_fast', { shippingCountry: 'CA', canadaPostService: 'DOM.XP', signature: 'yes', canadaPostTransitDays: '3' }, `${FASTER_SHIPPING_LABEL} + signature on delivery`),
       cs_fast_only: session('cs_fast_only', { shippingCountry: 'CA', canadaPostService: 'DOM.XP', signature: 'no', canadaPostTransitDays: '3' }, FASTER_SHIPPING_LABEL),
@@ -238,7 +239,7 @@ test('a paid order says which Canada Post service and option to buy, and dates d
     assert.ok(daysAway(flat) >= 10 && daysAway(flat) <= 13, `flat rate: ${daysAway(flat)} days`); // 3 + 6 = 9 business days
   } finally {
     stripeRouter.setCheckoutDependenciesForTest();
-    [Product.findOne, Order.findOne, Order.create, Cart.findOneAndUpdate] = originals;
+    [Product.findOne, Order.findOne, Order.create, Cart.findOneAndUpdate, Order.updateOne] = originals;
   }
 });
 
@@ -246,7 +247,7 @@ test('a paid order says which Canada Post service and option to buy, and dates d
 // the buyer chose (the test above gives the session an already-expanded rate, which real Stripe does not). This fake behaves like Stripe: the rate object comes back
 // only when the expansion is requested.
 test('the order records the shipping option the buyer paid for: the fulfilment asks Stripe to expand the rate', async () => {
-  const originals = [Product.findOne, Order.findOne, Order.create, Cart.findOneAndUpdate];
+  const originals = [Product.findOne, Order.findOne, Order.create, Cart.findOneAndUpdate, Order.updateOne];
   const created = [];
   let asked = [];
   try {
@@ -254,6 +255,7 @@ test('the order records the shipping option the buyer paid for: the fulfilment a
     Order.findOne = async () => null;
     Order.create = async (values) => { created.push(values); return { ...values, _id: 'order-id', orderNumber: 'RFX-1', stockDecremented: true }; };
     Cart.findOneAndUpdate = async () => undefined;
+    Order.updateOne = async () => ({ modifiedCount: 1 });   // clears the order's "last steps pending" mark
     const label = `${FASTER_SHIPPING_LABEL} + signature on delivery`;
     const retrieveSession = async (id, options = {}) => {
       asked = options.expand || [];
@@ -283,7 +285,7 @@ test('the order records the shipping option the buyer paid for: the fulfilment a
     assert.match(created[0].adminNotes, /^SHIPPING: the buyer paid for "Faster shipping[^"]*\+ signature on delivery"\./);
   } finally {
     stripeRouter.setCheckoutDependenciesForTest();
-    [Product.findOne, Order.findOne, Order.create, Cart.findOneAndUpdate] = originals;
+    [Product.findOne, Order.findOne, Order.create, Cart.findOneAndUpdate, Order.updateOne] = originals;
   }
 });
 

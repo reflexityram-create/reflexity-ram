@@ -103,6 +103,20 @@ const productSchema = new mongoose.Schema({
   },
   stockLabel: { type: String },
   stockQuantity: { type: Number, default: 0, min: 0 },
+  // Units set aside for buyers who are in Stripe Checkout right now, so two buyers cannot both start paying for the last
+  // one (utils/stockHolds.js). `owner` is "u:<user id>" or "s:<guest cart session>", so a buyer's own hold never blocks
+  // them. Only ever written by that module, and select:false so no query returns it unless it asks (the guest session
+  // ids in it must never reach an API response).
+  stockHolds: {
+    type: [new mongoose.Schema({
+      owner: { type: String, required: true },
+      sessionId: { type: String },   // the Stripe Checkout page this hold was made for
+      qty: { type: Number, required: true, min: 1 },
+      expiresAt: { type: Date, required: true },
+    }, { _id: false })],
+    select: false,
+    default: undefined,
+  },
   estimatedDispatch: { type: String },
   images: [imageSchema],
   tags: [{ type: String, trim: true }],

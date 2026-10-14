@@ -95,12 +95,13 @@ test('the email sent for a paid Stripe session shows its discount and tax', asyn
   const Order = require('../src/models/Order');
   const Product = require('../src/models/Product');
   const stripeRouter = require('../src/routes/stripe');
-  const originals = [Product.findOne, Order.findOne, Order.create, Cart.findOneAndUpdate];
+  const originals = [Product.findOne, Order.findOne, Order.create, Cart.findOneAndUpdate, Order.updateOne];
   try {
     Product.findOne = async () => ({ _id: 'product-id', slug: 'ddr4-64gb', sku: 'DDR4-64', name: '64GB DDR4', images: [] });
     Order.findOne = async () => null;
     Order.create = async (values) => ({ ...values, _id: 'order-id', orderNumber: 'RFX-EMAIL', stockDecremented: true });
     Cart.findOneAndUpdate = async () => undefined;
+    Order.updateOne = async () => ({ modifiedCount: 1 });   // clears the order's "last steps pending" mark
     stripeRouter.setCheckoutDependenciesForTest({
       retrieveSession: async () => ({
         id: 'cs_email', payment_status: 'paid', metadata: { userId: 'guest', cartSessionId: 'session_0123456789' },
@@ -137,7 +138,7 @@ test('the email sent for a paid Stripe session shows its discount and tax', asyn
   } finally {
     const stripeRouter = require('../src/routes/stripe');
     stripeRouter.setCheckoutDependenciesForTest();
-    [Product.findOne, Order.findOne, Order.create, Cart.findOneAndUpdate] = originals;
+    [Product.findOne, Order.findOne, Order.create, Cart.findOneAndUpdate, Order.updateOne] = originals;
   }
 });
 

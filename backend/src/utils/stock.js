@@ -1,6 +1,7 @@
 const Product = require('../models/Product');
 const Order = require('../models/Order');
 const { recordAdminEvent } = require('./adminEvents');
+const { freeForExpr, availabilityOf, releaseCheckoutHold } = require('./stockHolds');
 
 const NON_FULFILLABLE_STATUSES = new Set(['cancelled', 'refunded']);
 const cancellationClaimFilter = (orderId, expected) => {
@@ -108,7 +109,9 @@ const decrementStockForOrder = async (order) => {
         const pre = await Product.findOneAndUpdate(
           { _id: item.product },
           [{ $set: { stockQuantity: { $max: [0, { $subtract: ['$stockQuantity', item.qty] }] } } }],
-          { new: false, session }
+          // updatePipeline: Mongoose refuses an array update without it ("Cannot pass an array to query updates"). Every test stubbed
+          // this call, so the clamp that is meant to catch an oversold payment threw on a real database instead.
+          { new: false, session, updatePipeline: true }
         );
         const available = Math.max(0, pre?.stockQuantity ?? 0);
         item.decrementedQty = Math.min(available, item.qty);
@@ -160,29 +163,45 @@ const decrementStockForOrder = async (order) => {
 // A paid order that cannot be filled is the owner's problem to fix (decrementStockForOrder clamps and flags it). An
 // UNPAID order has no such excuse: it must either get every unit or not exist, so these helpers take stock strictly.
 class InsufficientStockError extends Error {
-  constructor(item, available) {
+  // `held` = the stock is there but another buyer has it set aside while they pay by card (utils/stockHolds.js).
+  constructor(item, available, { held = false } = {}) {
     super(`Not enough stock for ${item?.sku || item?.slug || 'an item'}`);
     this.name = 'InsufficientStockError';
     this.status = 409;
     this.available = available;
-    this.publicMessage = available > 0
-      ? `Only ${available} of "${item?.name}" ${available === 1 ? 'is' : 'are'} left now. Update your cart and try again.`
-      : `"${item?.name}" just sold out.`;
+    this.held = held;
+    this.publicMessage = held
+      ? (available > 0
+        ? `Only ${available} of "${item?.name}" can be reserved right now: another buyer is checking out with the rest. Try again in a few minutes.`
+        : `"${item?.name}" is being checked out by another buyer right now. Try again in a few minutes.`)
+      : available > 0
+        ? `Only ${available} of "${item?.name}" ${available === 1 ? 'is' : 'are'} left now. Update your cart and try again.`
+        : `"${item?.name}" just sold out.`;
   }
 }
 
 // Inside a transaction: take every line's quantity or throw (which rolls the whole transaction back).
-const takeStockStrict = async (items, session) => {
+// `holdOwner` (a utils/stockHolds.js owner key) makes it respect what OTHER buyers have set aside while they pay by card; leave
+// it out to take the stock regardless (an e-Transfer whose money already arrived).
+const takeStockStrict = async (items, session, { holdOwner } = {}) => {
+  const now = new Date();
   for (const item of items) {
     if (!item.product) continue;
     const taken = await Product.findOneAndUpdate(
-      { _id: item.product, stockQuantity: { $gte: item.qty } },
+      {
+        _id: item.product,
+        stockQuantity: { $gte: item.qty },
+        ...(holdOwner !== undefined ? { $expr: freeForExpr(now, holdOwner, item.qty) } : {}),
+      },
       { $inc: { stockQuantity: -item.qty } },
       { new: false, session }
     );
     if (!taken) {
-      const current = await Product.findById(item.product).select('stockQuantity').session(session).lean();
-      throw new InsufficientStockError(item, Math.max(0, Number(current?.stockQuantity) || 0));
+      const current = await Product.findById(item.product).select('+stockHolds stockQuantity').session(session).lean();
+      const { stock, available } = availabilityOf(current, holdOwner, now);
+      // The stock itself is enough but someone else's hold is in the way: say so, rather than "sold out".
+      const held = holdOwner !== undefined && stock >= item.qty && available < item.qty;
+      throw new InsufficientStockError(item, held ? available : stock, { held });
     }
     await syncStockLabels(item.product, session);
   }
@@ -194,7 +213,7 @@ const takeStockStrict = async (items, session) => {
  * The order is saved with stockDecremented: true, so cancelling or expiring it gives the stock back exactly
  * (cancelOrderAndRestoreStock).
  */
-const createOrderWithReservation = async (data, { beforeCommit } = {}) => {
+const createOrderWithReservation = async (data, { beforeCommit, holdOwner } = {}) => {
   let created = null;
   await withStockTransaction(async (session) => {
     created = null;
@@ -203,7 +222,9 @@ const createOrderWithReservation = async (data, { beforeCommit } = {}) => {
       stockDecremented: true,
       items: data.items.map((item) => ({ ...item, decrementedQty: item.qty })),
     }], { session });
-    await takeStockStrict(order.items, session);
+    await takeStockStrict(order.items, session, { holdOwner });
+    // The buyer's own card-checkout hold (if they had started one) is of no use now: this order has the stock.
+    if (holdOwner) await releaseCheckoutHold(holdOwner, { session });
     // Work that must commit with the order or not at all. The e-Transfer lane empties the buyer's cart here, so one cart
     // can only ever become one order, however many requests (two tabs, a retry, a script) arrive at the same moment.
     if (beforeCommit) await beforeCommit(session, order);
