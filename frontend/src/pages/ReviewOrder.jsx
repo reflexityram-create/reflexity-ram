@@ -111,7 +111,7 @@ export default function ReviewOrder() {
             <div className="glass rounded-2xl p-8 flex items-start gap-3">
               <AlertTriangle size={18} className="text-amber-400 shrink-0 mt-0.5" />
               <div>
-                <p className="font-semibold">Review link not available</p>
+                <h1 className="font-semibold">Review link not available</h1>
                 <p className="text-[13px] text-neutral-400 mt-1">{error}</p>
                 <p className="text-[13px] text-neutral-400 mt-3">
                   If you ordered with an account, you can <Link to="/account" className="underline">sign in</Link> and review from the product page.
