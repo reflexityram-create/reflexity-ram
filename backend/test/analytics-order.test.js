@@ -33,10 +33,12 @@ test('the order\'s discount is spread over the items, and value is the sum of th
   assert.equal(result.value, result.items.reduce((sum, i) => sum + i.price * i.quantity, 0));
 });
 
-test('rounding stays in whole cents and the value never goes below zero', () => {
+test('the value keeps the exact discount when it does not divide into unit prices; it never goes below zero', () => {
   const odd = analyticsOrder({ discount: 1, items: [{ sku: 'A', name: 'A', price: 0.99, qty: 3 }] });
-  assert.equal(odd.items[0].price, 0.66);
-  assert.equal(odd.value, 1.98);
+  assert.equal(odd.items[0].price, 0.66, 'the unit price is rounded to the cent');
+  assert.equal(odd.value, 1.97, '2.97 of goods less the 1.00 discount, exactly');
+  const many = analyticsOrder({ discount: 134.15, items: [{ sku: 'M', name: 'M', price: 135.5, qty: 99 }] });
+  assert.equal(many.value, 13280.35, '13,414.50 less 134.15: rounding per unit does not add up over 99 units');
   const all = analyticsOrder({ discount: 500, items: [{ sku: 'B', name: 'B', price: 100, qty: 1 }] });
   assert.equal(all.value, 0);
   assert.equal(all.items[0].price, 0);

@@ -585,19 +585,25 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
       const again = await checkoutSessionRetriever(session.id, { expand: ['payment_intent.latest_charge'] });
       const nowCharge = again?.payment_intent?.latest_charge;
       if (nowCharge && typeof nowCharge === 'object' && isFullyRefundedCharge(nowCharge)) {
+        // The money went back: this is not a sale to confirm, whatever the database says next.
+        refunded = true;
         // Not conditional on the stock: the buyer's success page can take it for this order meanwhile, and a known refund
         // must still win. Stock already taken stays taken (as for any refund) and the owner's alert says so.
-        const marked = await Order.findOneAndUpdate(
-          { _id: order._id, paymentStatus: 'paid' },
-          {
-            $set: { paymentStatus: 'refunded', status: 'refunded', adminNotes: ['REFUNDED in Stripe while this order was being recorded: do NOT ship.', order.adminNotes].filter(Boolean).join('\n') },
-            $push: { statusHistory: { status: 'refunded', note: 'Refunded in Stripe while this order was being recorded', timestamp: new Date() } },
-          },
-          { returnDocument: 'after' },
-        );
-        // Not matched: something changed it first (Stripe's refund event, say). Read it back and go by what it says now.
-        const current = marked || await Order.findById(order._id);
-        if (current) { order = current; refunded = current.paymentStatus === 'refunded'; }
+        try {
+          const marked = await Order.findOneAndUpdate(
+            { _id: order._id, paymentStatus: 'paid' },
+            {
+              $set: { paymentStatus: 'refunded', status: 'refunded', adminNotes: ['REFUNDED in Stripe while this order was being recorded: do NOT ship.', order.adminNotes].filter(Boolean).join('\n') },
+              $push: { statusHistory: { status: 'refunded', note: 'Refunded in Stripe while this order was being recorded', timestamp: new Date() } },
+            },
+            { returnDocument: 'after' },
+          );
+          // Not matched: something changed it first (Stripe's refund event, say). Read it back for the owner's alert.
+          const current = marked || await Order.findById(order._id);
+          if (current) order = current;
+        } catch (markErr) {
+          console.error(`🚨 Order ${order.orderNumber} was refunded in Stripe but could not be marked refunded:`, markErr.message);
+        }
       }
     } catch (recheckErr) {
       console.error(`Refund re-check failed for checkout session ${session.id}:`, recheckErr.message);

@@ -1160,6 +1160,31 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
     } finally { stripeRouter.setCheckoutDependenciesForTest(); }
   });
 
+  await root.test('review 2026-10-14: a refund seen on the second look is never confirmed as a sale, even if the database then fails', async () => {
+    await bankSetup();
+    const before = sent.length;
+    let reads = 0;
+    const realFindById = Order.findById;
+    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async (id, options = {}) => {
+      reads += 1;
+      if (reads === 2) {
+        // Stripe's charge.refunded got there first and marked the order; then the database fails the read-back.
+        await Order.updateOne({ stripeCheckoutSessionId: id }, { $set: { paymentStatus: 'refunded', status: 'refunded' } });
+        Order.findById = () => { throw new Error('database blip'); };
+      }
+      const charge = { id: 'ch_card_review', object: 'charge', refunded: reads > 1, amount_refunded: reads > 1 ? 28400 : 0 };
+      return asStripe(() => cardSession(), charge)(id, options);
+    } });
+    try {
+      await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_test_bankdebit_1');
+      Order.findById = realFindById;
+      assert.equal(sent.length, before, 'no "order confirmed" email');
+      assert.equal(await AdminEvent.countDocuments({ type: 'order.paid' }), 0, 'no "new order, paid" alert');
+      assert.ok(await AdminEvent.findOne({ type: 'order.refunded' }));
+      assert.equal((await Order.findOne({ stripeCheckoutSessionId: 'cs_test_bankdebit_1' })).paymentStatus, 'refunded');
+    } finally { Order.findById = realFindById; stripeRouter.setCheckoutDependenciesForTest(); }
+  });
+
   await root.test('review 2026-10-14: if the second look at the charge fails, the paid order goes ahead as before', async () => {
     const product = await bankSetup();
     let reads = 0;
