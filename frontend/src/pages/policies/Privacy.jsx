@@ -23,7 +23,7 @@ export default function Privacy() {
         {
           heading: "Address suggestions",
           body: [
-            "When address suggestions are on, what you type in the street address box on the Interac e-Transfer page is sent through our server to Canada Post's AddressComplete service, which suggests and checks Canadian addresses. We do not keep those searches, and Canada Post already receives your address from us when we ship your order. You can ignore the suggestions and type your address yourself.",
+            "When address suggestions are on, what you type in the street address box on the Interac e-Transfer page is sent through our server to an address search service that suggests Canadian addresses: either Canada Post's AddressComplete service, or Photon, a free open-source service run by Komoot on OpenStreetMap data. Only the text you typed is sent (never your name, email or connection address), and we do not keep those searches. Canada Post already receives your address from us when we ship your order. You can ignore the suggestions and type your address yourself.",
           ],
         },
         {
@@ -58,6 +58,7 @@ export default function Privacy() {
               "Resend — sends our order and review emails.",
               "Google Analytics — measures site traffic and shopping steps so we can find where visits end or checkout fails. A hidden tab or the last recorded step does not tell us why someone left. We do not send names, email addresses, shipping addresses, or payment details in these events.",
               "Google Customer Reviews and its store rating badge — as described above.",
+              "Canada Post's AddressComplete or Photon (Komoot, on OpenStreetMap data) — suggest addresses as you type on the Interac e-Transfer page, when suggestions are on. They receive only the text you typed.",
               "Cloudflare, Render, and MongoDB Atlas — host the website and store order records.",
             ] },
             "We do not run cross-site behavioral advertising.",
@@ -79,7 +80,7 @@ export default function Privacy() {
           heading: "Updates to this policy",
           body: [
             "If we change anything material, we'll update this page and notify recent customers by email.",
-            "Last updated: October 9, 2026.",
+            "Last updated: October 14, 2026.",
           ],
         },
       ]}

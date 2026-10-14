@@ -25,7 +25,7 @@ const { createLeadRouter } = require('./routes/leads');
 const { createDeviceRouter } = require('./routes/device');
 const { createPaymentsRouter } = require('./routes/payments');
 const { createAddressRouter } = require('./routes/address');
-const { dailyLookupCap } = require('./utils/addressConfig');
+const { onlyWhenProvider, dailyLookupCap, photonDailyCap } = require('./utils/addressConfig');
 const { sweepEtransferOrdersThrottled } = require('./utils/etransfer');
 const { syncShippedOrdersThrottled } = require('./utils/trackingSync');
 const { createAdminDevicesRouter } = require('./routes/adminDevices');
@@ -195,6 +195,19 @@ const addressDayLimiter = rateLimit({
   message: { error: 'Address suggestions are paused for today, please type the address instead.' },
 });
 
+// The free provider (Photon) is a public server run for "moderate use": one daily cap on searches for the whole site, so that a script
+// cannot get the shop blocked. It only counts while Photon is the provider (the paid provider is capped on finished addresses above).
+const photonSearchDayLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: photonDailyCap(),
+  keyGenerator: () => 'everyone',
+  standardHeaders: false,
+  legacyHeaders: false,
+  store: new MongoRateLimitStore({ prefix: 'photonday' }),
+  passOnStoreError: false,
+  message: { error: 'Address suggestions are paused for today, please type the address instead.' },
+});
+
 const leadLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 8,
@@ -205,8 +218,10 @@ const leadLimiter = rateLimit({
   message: { error: 'Too many quote requests, please try again later.' },
 });
 
-app.use('/api/address/suggest', addressSuggestLimiter);
-app.use('/api/address/retrieve', addressPickLimiter, addressDayLimiter);
+app.use('/api/address/suggest', addressSuggestLimiter, onlyWhenProvider('photon', photonSearchDayLimiter));
+// The daily cap on finished addresses guards PAID lookups (Canada Post). A free pick (Photon) only reads our own memory, so it is not
+// counted: otherwise anyone could use up the day's picks for every buyer with made-up ids.
+app.use('/api/address/retrieve', addressPickLimiter, onlyWhenProvider('canadapost', addressDayLimiter));
 app.use('/api/address', createAddressRouter());
 app.use('/api/device/pair', devicePairLimiter);
 // onPoll: the phone is the one thing that asks often, so it also sweeps unpaid e-Transfer orders (expire / remind).

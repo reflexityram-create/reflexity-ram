@@ -1,0 +1,60 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -73.554142,
+     45.5088382
+    ]
+   },
+   "properties": {
+    "osm_id": 20919180,
+    "osm_type": "W",
+    "osm_key": "amenity",
+    "osm_value": "townhall",
+    "type": "house",
+    "housenumber": "275",
+    "street": "Rue Notre-Dame Est",
+    "postcode": "H2Y 1G8",
+    "city": "Montreal",
+    "district": "Ville-Marie",
+    "locality": "Chinatown",
+    "county": "Urban agglomeration of Montreal",
+    "state": "Quebec",
+    "country": "Canada",
+    "countrycode": "CA",
+    "name": "Hôtel de Ville de Montréal"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -73.5538625,
+     45.5087247
+    ]
+   },
+   "properties": {
+    "osm_id": 2007138991,
+    "osm_type": "N",
+    "osm_key": "place",
+    "osm_value": "house",
+    "type": "house",
+    "housenumber": "275",
+    "street": "Rue Notre-Dame Est",
+    "postcode": "H2Y 3B3",
+    "city": "Montreal",
+    "district": "Ville-Marie",
+    "locality": "Chinatown",
+    "county": "Urban agglomeration of Montreal",
+    "state": "Quebec",
+    "country": "Canada",
+    "countrycode": "CA"
+   }
+  }
+ ]
+}

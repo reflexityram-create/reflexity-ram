@@ -1,0 +1,135 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -79.3841028,
+     43.6520357
+    ]
+   },
+   "properties": {
+    "osm_id": 10717674077,
+    "osm_type": "N",
+    "osm_key": "amenity",
+    "osm_value": "bicycle_parking",
+    "type": "house",
+    "housenumber": "100",
+    "street": "Queen St W",
+    "postcode": "M5H 2N1",
+    "city": "Toronto",
+    "locality": "Financial District",
+    "state": "Ontario",
+    "country": "Canada",
+    "countrycode": "CA",
+    "name": "The Nathan Phillips Square Bicycle Station"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -79.3840055,
+     43.6536032
+    ]
+   },
+   "properties": {
+    "osm_id": 198500761,
+    "osm_type": "W",
+    "osm_key": "amenity",
+    "osm_value": "townhall",
+    "type": "house",
+    "housenumber": "100",
+    "street": "Queen Street West",
+    "postcode": "M5H 2N2",
+    "city": "Toronto",
+    "locality": "Financial District",
+    "state": "Ontario",
+    "country": "Canada",
+    "countrycode": "CA",
+    "name": "Toronto City Hall"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -79.3832344,
+     43.65313
+    ]
+   },
+   "properties": {
+    "osm_id": 2478475864,
+    "osm_type": "N",
+    "osm_key": "amenity",
+    "osm_value": "library",
+    "type": "house",
+    "housenumber": "100",
+    "street": "Queen Street West",
+    "postcode": "M5H 2N3",
+    "city": "Toronto",
+    "locality": "Financial District",
+    "state": "Ontario",
+    "country": "Canada",
+    "countrycode": "CA",
+    "name": "Toronto Public Library - City Hall"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -79.4186392,
+     43.6430326
+    ]
+   },
+   "properties": {
+    "osm_id": 22793935,
+    "osm_type": "W",
+    "osm_key": "amenity",
+    "osm_value": "hospital",
+    "type": "house",
+    "housenumber": "1001",
+    "street": "Queen Street West",
+    "postcode": "M6J 1H4",
+    "city": "Toronto",
+    "locality": "West Queen West",
+    "state": "Ontario",
+    "country": "Canada",
+    "countrycode": "CA",
+    "name": "Centre For Addiction and Mental Health - Queen Street Site"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -79.3840848,
+     43.6537645
+    ]
+   },
+   "properties": {
+    "osm_id": 5441763274,
+    "osm_type": "N",
+    "osm_key": "office",
+    "osm_value": "government",
+    "type": "house",
+    "housenumber": "100",
+    "street": "Queen Street West",
+    "postcode": "M5H 3M9",
+    "city": "Toronto",
+    "locality": "Financial District",
+    "state": "Ontario",
+    "country": "Canada",
+    "countrycode": "CA",
+    "name": "Service Canada"
+   }
+  }
+ ]
+}

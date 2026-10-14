@@ -373,7 +373,8 @@ function captureEvents() {
   Object.defineProperty(mongoose.connection, 'readyState', { get: () => 1, configurable: true });
   return { saved, restore: () => { AdminEvent.create = realCreate; if (realState) Object.defineProperty(mongoose.connection, 'readyState', realState); else delete mongoose.connection.readyState; } };
 }
-const PRIVATE = ['buyer@example.com', 'Sam', 'Queen St', '416', 'Toronto', 'M5H'];
+// The phone is looked for as a phone (CI 2026-10-14 failed on a bare '416': events carry ObjectIds, hex, which can contain it by chance).
+const PRIVATE = ['buyer@example.com', 'Sam', 'Queen St', '4165550123', '416-555', '416 555', '(416)', 'Toronto', 'M5H'];
 const assertPrivate = (event) => { for (const secret of PRIVATE) assert.ok(!JSON.stringify(event).includes(secret), `${event.type} leaks "${secret}"`); };
 const paidOrder = (extra = {}) => ({
   _id: new mongoose.Types.ObjectId(), orderNumber: 'RFX-TEST-1', total: 281.3, paymentMethod: 'stripe', paymentStatus: 'paid', status: 'processing',

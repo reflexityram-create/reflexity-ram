@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { DEBOUNCE_MS, MIN_CHARS, QUIET_AFTER_PROBLEM_MS, applyAddress, dropsOnDismiss, nextActive, resultsAnnouncement, worthSearching } from '../src/lib/addressSuggest.js';
+import { DEBOUNCE_MS, MIN_CHARS, QUIET_AFTER_PROBLEM_MS, applyAddress, dropsOnDismiss, nextActive, postalNotes, provinceToSelect, provincesForPostalCode, resultsAnnouncement, sourceNote, OSM_COPYRIGHT_URL, pickFailedNote, worthSearching } from '../src/lib/addressSuggest.js';
 import { ETRANSFER, offeredMethods } from '../src/lib/paymentMethods.js';
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
@@ -76,7 +76,8 @@ test('the box is an accessible combobox, only opens a list for real results, and
   assert.equal((box.match(/addressApi\.retrieve\(/g) || []).length, 1, 'one place spends a lookup');
   // soft failure
   assert.match(box, /if \(data\?\.unavailable\) \{ quietUntil\.current = Date\.now\(\) \+ QUIET_AFTER_PROBLEM_MS;/);
-  assert.match(box, /We could not check that address just now\. Please fill it in below\./);
+  // A failed pick says so (the words depend on the provider: pickFailedNote, tested below).
+  assert.match(box, /setNote\(pickFailedNote\(source\)\)/);
   assert.match(box, /\+ DEBOUNCE_MS|, DEBOUNCE_MS\)/);
   assert.match(box, /await addressApi\.suggest\(text, lastId, controller\.current\.signal\);\s*if \(request !== latest\.current\) return;/, 'a late list never overwrites a newer search');
   assert.match(box, /await addressApi\.retrieve\(suggestion\.id, controller\.current\.signal\);\s*if \(request !== latest\.current\) return;/, 'a late pick never overwrites a newer one');
@@ -93,8 +94,8 @@ test('the e-Transfer page uses the box only when the server says so, marks "chec
   assert.match(page, /enabled=\{Boolean\(offer\?\.addressSuggest\)\}/);
   assert.match(page, /verified=\{checked\}/);
   assert.match(page, /const ADDRESS_FIELDS = \['line1', 'line2', 'city', 'state', 'zip'\];/);
-  assert.match(page, /if \(ADDRESS_FIELDS\.includes\(name\)\) setChecked\(false\);/);
-  assert.match(page, /const pickAddress = \(address\) => \{[\s\S]*?setForm\(\(f\) => applyAddress\(f, address\)\);[\s\S]*?setChecked\(true\);/);
+  assert.match(page, /if \(ADDRESS_FIELDS\.includes\(name\) && !\(name === 'zip' && freeSuggestions\)\) \{ setChecked\(false\); setZipHint\(''\); \}/);
+  assert.match(page, /const pickAddress = \(address, \{ startedAt = Infinity \} = \{\}\) => \{[\s\S]*?setForm\(\(f\) => applyAddress\(f, address\)\);[\s\S]*?setChecked\(true\);/);
   assert.match(page, /inputProps=\{\{ autoComplete: 'address-line1', 'data-testid': 'et-line1' \}\}/, 'browser autofill and the test id are kept');
   const api = await read('../src/lib/api.js');
   assert.match(api, /suggest: \(q, lastId, signal\) => publicApi\.get\('\/address\/suggest'/);
@@ -104,7 +105,146 @@ test('the e-Transfer page uses the box only when the server says so, marks "chec
 test('the Privacy page says where the typed address goes', async () => {
   const privacy = await read('../src/pages/policies/Privacy.jsx');
   assert.match(privacy, /heading: "Address suggestions"/);
-  assert.match(privacy, /sent through our server to Canada Post's AddressComplete service/);
-  assert.match(privacy, /We do not keep those searches/);
+  assert.match(privacy, /sent through our server to an address search service that suggests Canadian addresses: either Canada Post's AddressComplete service, or Photon, a free open-source service run by Komoot on OpenStreetMap data/);
+  assert.match(privacy, /Only the text you typed is sent \(never your name, email or connection address\)/);
+  assert.match(privacy, /we do not keep those searches/);
+  assert.match(privacy, /Canada Post's AddressComplete or Photon \(Komoot, on OpenStreetMap data\) — suggest addresses as you type on the Interac e-Transfer page, when suggestions are on\. They receive only the text you typed\./);
+  assert.match(privacy, /Last updated: October 14, 2026\./);
   assert.match(privacy, /You can ignore the suggestions and type your address yourself\./);
+});
+
+// ── The free provider (Photon / OpenStreetMap), 2026-10-14 ─────────────────────────────────────────────────────────────────────────
+test('the free provider only suggests houses, so the box waits for a number; Canada Post\'s waits for three characters as before', () => {
+  assert.equal(worthSearching('queen street west', 'photon'), false);
+  assert.equal(worthSearching('12', 'photon'), false, 'two characters never search');
+  assert.equal(worthSearching('12 e', 'photon'), true);
+  assert.equal(worthSearching('100 queen', 'photon'), true);
+  assert.equal(worthSearching('queen street west', 'canadapost'), true);
+  assert.equal(worthSearching('queen street west'), true, 'the default is the paid provider');
+  assert.match(sourceNote('photon'), /OpenStreetMap/);
+  assert.doesNotMatch(sourceNote('photon'), /Canada Post/);
+  assert.match(sourceNote('canadapost'), /Canada Post/);
+  assert.equal(sourceNote(undefined), sourceNote('canadapost'));
+});
+
+test('a suggestion with no postal code leaves the one the buyer already typed, and one with a postal code still replaces it', () => {
+  const form = { line1: '100 que', line2: '', city: '', state: 'ON', zip: 'M5H 2N2' };
+  const free = { line1: '100 Queen St W', line2: '', city: 'Toronto', state: 'ON', zip: '', zipHint: 'M5H' };
+  assert.equal(applyAddress(form, free).zip, 'M5H 2N2');
+  assert.equal(applyAddress({ ...form, zip: '' }, free).zip, '');
+  assert.equal(applyAddress(form, { ...free, zip: 'M5H 2N1' }).zip, 'M5H 2N1', 'a postal code from Canada Post is authoritative');
+});
+
+test('the first letter of a postal code names the province, and X is shared by the two territories', () => {
+  const expected = { A: 'NL', B: 'NS', C: 'PE', E: 'NB', G: 'QC', H: 'QC', J: 'QC', K: 'ON', L: 'ON', M: 'ON', N: 'ON', P: 'ON', R: 'MB', S: 'SK', T: 'AB', V: 'BC', Y: 'YT' };
+  for (const [letter, province] of Object.entries(expected)) assert.deepEqual(provincesForPostalCode(`${letter}1A 1A1`), [province], letter);
+  assert.deepEqual(provincesForPostalCode('X0A 0H0'), ['NT', 'NU']);
+  for (const none of ['', 'D1A 1A1', 'W1A 1A1', 'Z1A 1A1', 'O1A 1A1', '1A1', undefined, null]) assert.deepEqual(provincesForPostalCode(none), [], JSON.stringify(none));
+  assert.deepEqual(provincesForPostalCode(' m5h 2n2 '), ['ON'], 'case and spaces are forgiven');
+});
+
+test('a complete postal code selects its province unless the buyer chose one, and never guesses between two', () => {
+  assert.equal(provinceToSelect('T2G 2M3'), 'AB');
+  assert.equal(provinceToSelect('t2g2m3'), 'AB');
+  assert.equal(provinceToSelect('V6B 6B1', { touched: false }), 'BC');
+  assert.equal(provinceToSelect('V6B 6B1', { touched: true }), '', 'a province the buyer (or a suggestion) chose stays');
+  assert.equal(provinceToSelect('V6B'), '', 'a partly typed code changes nothing');
+  assert.equal(provinceToSelect('V6B 6B'), '');
+  assert.equal(provinceToSelect('X0A 0H0'), '', 'two territories share X: no guess');
+  assert.equal(provinceToSelect('D1A 1A1'), '');
+  assert.equal(provinceToSelect(''), '');
+});
+
+test('the postal code notes point at a likely slip and say nothing while the code is still being typed', () => {
+  const kinds = (args) => postalNotes(args).map((n) => n.kind);
+  // province: only judged once the code is complete
+  assert.deepEqual(kinds({ zip: 'T2G 2M3', state: 'ON' }), ['province']);
+  assert.deepEqual(postalNotes({ zip: 'T2G 2M3', state: 'ON' })[0], { kind: 'province', provinces: ['AB'], state: 'ON' });
+  assert.deepEqual(kinds({ zip: 'T2G 2M3', state: 'AB' }), []);
+  assert.deepEqual(kinds({ zip: 'T2G', state: 'ON' }), [], 'not complete yet');
+  assert.deepEqual(kinds({ zip: 'X0A 0H0', state: 'NU' }), []);
+  assert.deepEqual(kinds({ zip: 'X0A 0H0', state: 'ON' }), ['province']);
+  assert.deepEqual(kinds({ zip: '', state: 'ON' }), []);
+  // postal area: against the suggested street's area (first three characters), from three characters on
+  assert.deepEqual(kinds({ zip: 'M5H 2N2', state: 'ON', hint: 'M5H' }), ['area-same']);
+  assert.deepEqual(kinds({ zip: 'm5h', state: 'ON', hint: 'M5H' }), ['area-same']);
+  assert.deepEqual(kinds({ zip: 'M6J 1A1', state: 'ON', hint: 'M5H' }), ['area-differs']);
+  assert.deepEqual(postalNotes({ zip: 'M6J 1A1', state: 'ON', hint: 'M5H' })[0], { kind: 'area-differs', area: 'M5H', typed: 'M6J' });
+  assert.deepEqual(kinds({ zip: 'M5', state: 'ON', hint: 'M5H' }), [], 'fewer than three characters say nothing');
+  assert.deepEqual(kinds({ zip: 'M5H 2N2', state: 'ON', hint: '' }), [], 'no hint, no comparison');
+  assert.deepEqual(kinds({ zip: 'M5H 2N2', state: 'ON', hint: 'M5' }), [], 'a hint that is not three characters is ignored');
+  // both at once
+  assert.deepEqual(kinds({ zip: 'T2G 2M3', state: 'ON', hint: 'M5H' }), ['province', 'area-differs']);
+});
+
+test('the server\'s provider name reaches the page: "photon" only when the server says so, otherwise Canada Post', () => {
+  const listed = (entry) => offeredMethods([{ id: 'etransfer', discountPct: 2, ...entry }]).find((m) => m.id === ETRANSFER);
+  assert.equal(listed({ addressSuggest: true, addressSource: 'photon' }).addressSource, 'photon');
+  assert.equal(listed({ addressSuggest: true, addressSource: 'canadapost' }).addressSource, 'canadapost');
+  assert.equal(listed({ addressSuggest: true }).addressSource, 'canadapost', 'an older server that does not say is the paid provider');
+  assert.equal(listed({ addressSuggest: true, addressSource: 'something else' }).addressSource, 'canadapost');
+  assert.equal('addressSource' in listed({ addressSuggest: false, addressSource: 'photon' }), false, 'suggestions off: no source');
+});
+
+test('the e-Transfer page words its notes by the provider, never claims a check the free one did not make, and selects the province from the postal code', async () => {
+  const page = await read('../src/pages/CheckoutEtransfer.jsx');
+  assert.match(page, /source=\{offer\?\.addressSource\}/);
+  assert.match(page, /const freeSuggestions = offer\?\.addressSource === 'photon';/);
+  assert.match(page, /if \(name === 'zip'\) \{ const province = provinceToSelect\(value, \{ touched: stateTouched\.current \}\); if \(province\) next\.state = province; \}/);
+  assert.match(page, /if \(name === 'state'\) stateTouched\.current = true;/);
+  assert.match(page, /setZipHint\(address\.zipHint \|\| ''\);\s*stateTouched\.current = true;/, 'a picked province counts as chosen');
+  assert.match(page, /const notes = postalNotes\(\{ zip: form\.zip, state: form\.state, hint: zipHint \}\);/);
+  assert.match(page, /data-testid="et-postal-notes"/);
+  const box = await read('../src/components/AddressSuggest.jsx');
+  assert.match(box, /verified && !error && source === 'photon'[\s\S]*?data-testid="address-suggested"[\s\S]*?filled in from <a href=\{OSM_COPYRIGHT_URL\}[^>]*>OpenStreetMap<\/a>/);
+  assert.match(box, /verified && !error && source !== 'photon'[\s\S]*?data-testid="address-verified"[\s\S]*?checked against Canada Post/);
+  const photonBlock = box.slice(box.indexOf("source === 'photon' && ("), box.indexOf("source !== 'photon' && ("));
+  assert.doesNotMatch(photonBlock, /checked against/i, 'the free provider\'s note never says "checked"');
+});
+
+// OpenStreetMap's licence: the credit sits under the results without a click, OUTSIDE the list's own scroll and outside the listbox
+// (review 2026-10-14: inside a 288 px scrolling list, five results pushed it out of view), links to the copyright page, and a press on
+// it does not close the list (the field keeps focus, as with the options), so the link can actually be followed.
+test("the free provider's suggestions carry a linked OpenStreetMap credit, outside the scrolling list, that a press does not close", async () => {
+  assert.equal(OSM_COPYRIGHT_URL, 'https://www.openstreetmap.org/copyright');
+  assert.match(sourceNote('photon'), /^Suggestions © OpenStreetMap contributors\./);
+  const box = await readFile(new URL('../src/components/AddressSuggest.jsx', import.meta.url), 'utf8');
+  const listEnd = box.indexOf('</ul>');
+  const creditAt = box.indexOf('data-testid="address-credit"');
+  assert.ok(listEnd > 0 && creditAt > listEnd, 'the credit comes after the listbox closes');
+  assert.match(box, /role="listbox"[\s\S]*?className="max-h-72 overflow-y-auto"/, 'only the list scrolls');
+  const credit = box.slice(box.lastIndexOf('<div', creditAt), box.indexOf('</div>', creditAt));
+  assert.match(credit, /onMouseDown=\{\(event\) => event\.preventDefault\(\)\}/);
+  assert.match(credit, /source === 'photon'[\s\S]*?<a href=\{OSM_COPYRIGHT_URL\} target="_blank" rel="noopener noreferrer"[^>]*>OpenStreetMap contributors<\/a>/);
+});
+
+// Review 2026-10-14 (finding 1): a pick still on its way could come back after the buyer had typed something else, and overwrite it.
+// Typing in the street cancels the pick at once; editing a field the pick fills makes the page drop the pick when it arrives.
+test('a late pick never overwrites what the buyer typed meanwhile', async () => {
+  const box = await readFile(new URL('../src/components/AddressSuggest.jsx', import.meta.url), 'utf8');
+  const typedInto = box.slice(box.indexOf('const typedInto = '), box.indexOf('const pick = '));
+  assert.match(typedInto, /if \(inflight\.current === 'pick'\) \{ latest\.current \+= 1; controller\.current\?\.abort\(\); inflight\.current = null; setBusy\(false\); \}/);
+  assert.ok(typedInto.indexOf("inflight.current === 'pick'") < typedInto.indexOf('onChange(text)'), 'cancelled before anything else happens');
+  assert.match(box, /const startedAt = performance\.now\(\);[\s\S]*?onPick\(data\.address, \{ startedAt \}\)/);
+  const page = await readFile(new URL('../src/pages/CheckoutEtransfer.jsx', import.meta.url), 'utf8');
+  assert.match(page, /const PICK_FILLS = \['line1', 'city', 'state'\];/);
+  assert.match(page, /if \(PICK_FILLS\.includes\(name\) \|\| \(name === 'zip' && !freeSuggestions\)\) addressEditedAt\.current = performance\.now\(\);/);
+  assert.match(page, /const pickAddress = \(address, \{ startedAt = Infinity \} = \{\}\) => \{\s*if \(addressEditedAt\.current > startedAt\) return;/);
+});
+
+// The postal-area hint is OpenStreetMap's and can be wrong (1 of 18 measured), so its note must read as advice, never as a refusal.
+test('the postal-area note says it can be ignored', async () => {
+  const page = await readFile(new URL('../src/pages/CheckoutEtransfer.jsx', import.meta.url), 'utf8');
+  assert.match(page, /note\.kind === 'area-differs' && `Check your postal code: this street is usually in area \$\{note\.area\}, and yours starts with \$\{note\.typed\}\. If yours is right, you can ignore this\.`/);
+});
+
+// A failed or expired pick: the free provider never claims to "check" an address, in this note either.
+test('a failed pick is worded by the provider', async () => {
+  assert.doesNotMatch(pickFailedNote('photon'), /check/i);
+  assert.match(pickFailedNote('photon'), /type it below/);
+  assert.match(pickFailedNote('canadapost'), /could not check that address/);
+  assert.equal(pickFailedNote(undefined), pickFailedNote('canadapost'));
+  const box = await readFile(new URL('../src/components/AddressSuggest.jsx', import.meta.url), 'utf8');
+  assert.equal((box.match(/setNote\(pickFailedNote\(source\)\)/g) || []).length, 2);
+  assert.doesNotMatch(box, /could not check that address/);
 });
