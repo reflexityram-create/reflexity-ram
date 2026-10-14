@@ -101,7 +101,7 @@ test('every shipping line states handling and transit days that match the saved 
   const xml = await feedItems([product()]);
   const lines = xml.match(/<g:shipping>[\s\S]*?<\/g:shipping>/g);
   // Without Canada Post keys (as here) only the Canada line is written, and the
-  // US is never promised (US orders paused 2026-10-04: duties must be prepaid).
+  // US is never promised without configured postage and prepaid duties.
   assert.equal(lines.length, 1);
   for (const line of lines) {
     assert.match(line, /<g:min_handling_time>1<\/g:min_handling_time><g:max_handling_time>3<\/g:max_handling_time>/);
@@ -110,6 +110,37 @@ test('every shipping line states handling and transit days that match the saved 
   }
   assert.match(lines[0], /<g:country>CA<\/g:country>/);
   assert.doesNotMatch(xml, /<g:country>US<\/g:country>/);
+});
+
+test('US feed shipping matches each product checkout total including prepaid duties; failures leave other markets intact', async (t) => {
+  const asked = [];
+  feedRouter.setFeedShippingForTest({
+    enabled: () => true,
+    quote: async () => [],
+    usQuote: async ({ lines }) => {
+      assert.equal(lines.length, 1);
+      const { product: item, qty } = lines[0];
+      asked.push([item.sku, qty]);
+      if (item.sku === 'NO-CUSTOMS') throw new Error('Missing customs data');
+      if (item.sku === 'INVALID') return { total: NaN };
+      return { service: { name: 'Tracked Packet – USA', price: 18, transitDays: 5 }, total: item.price === 500 ? 77.42 : 39.13 };
+    },
+  });
+  t.after(() => feedRouter.setFeedShippingForTest());
+  const xml = await feedItems([
+    product(), product({ sku: 'EXPENSIVE', price: 500 }),
+    product({ sku: 'NO-CUSTOMS' }), product({ sku: 'INVALID' }),
+  ]);
+  const items = xml.split('<item>').slice(1);
+  assert.match(items[0], /<g:country>US<\/g:country>[\s\S]*<g:price>39\.13 CAD<\/g:price>/);
+  assert.match(items[1], /<g:country>US<\/g:country>[\s\S]*<g:price>77\.42 CAD<\/g:price>/);
+  assert.match(items[0], /<g:min_transit_time>5<\/g:min_transit_time><g:max_transit_time>8<\/g:max_transit_time>/);
+  for (const item of items.slice(2)) {
+    assert.doesNotMatch(item, /<g:country>US<\/g:country>/);
+    assert.match(item, /<g:country>CA<\/g:country>/);
+  }
+  assert.equal(asked.length, 4);
+  assert.ok(asked.every(([, qty]) => qty === 1));
 });
 
 test('the feed image is a trimmed, padded 1200x900 delivery of the Cloudinary original', async () => {
