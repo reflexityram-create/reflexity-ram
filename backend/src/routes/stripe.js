@@ -585,15 +585,19 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
       const again = await checkoutSessionRetriever(session.id, { expand: ['payment_intent.latest_charge'] });
       const nowCharge = again?.payment_intent?.latest_charge;
       if (nowCharge && typeof nowCharge === 'object' && isFullyRefundedCharge(nowCharge)) {
+        // Not conditional on the stock: the buyer's success page can take it for this order meanwhile, and a known refund
+        // must still win. Stock already taken stays taken (as for any refund) and the owner's alert says so.
         const marked = await Order.findOneAndUpdate(
-          { _id: order._id, paymentStatus: 'paid', stockDecremented: { $ne: true } },
+          { _id: order._id, paymentStatus: 'paid' },
           {
             $set: { paymentStatus: 'refunded', status: 'refunded', adminNotes: ['REFUNDED in Stripe while this order was being recorded: do NOT ship.', order.adminNotes].filter(Boolean).join('\n') },
-            $push: { statusHistory: { status: 'refunded', note: 'Refunded in Stripe while this order was being recorded; no stock taken', timestamp: new Date() } },
+            $push: { statusHistory: { status: 'refunded', note: 'Refunded in Stripe while this order was being recorded', timestamp: new Date() } },
           },
           { returnDocument: 'after' },
         );
-        if (marked) { order = marked; refunded = true; }
+        // Not matched: something changed it first (Stripe's refund event, say). Read it back and go by what it says now.
+        const current = marked || await Order.findById(order._id);
+        if (current) { order = current; refunded = current.paymentStatus === 'refunded'; }
       }
     } catch (recheckErr) {
       console.error(`Refund re-check failed for checkout session ${session.id}:`, recheckErr.message);
@@ -602,7 +606,7 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
 
   if (refunded) {
     // Nothing to take from stock, confirm to the buyer or report as a sale; the owner is told what happened.
-    await recordAdminEvent({ type: 'order.refunded', title: 'Refunded before the order was recorded', body: `${describeOrder(order)} · do not ship`, priority: 'high', order, dedupeKey: `order.refunded:${order._id}` });
+    await recordAdminEvent({ type: 'order.refunded', title: 'Refunded before the order was recorded', body: `${describeOrder(order)} · do not ship${order.stockDecremented ? ' · its stock was taken: put it back' : ''}`, priority: 'high', order, dedupeKey: `order.refunded:${order._id}` });
     console.log(`💸 Checkout session ${session.id} was refunded before its order existed → order ${order.orderNumber} recorded as refunded`);
     return order;
   }

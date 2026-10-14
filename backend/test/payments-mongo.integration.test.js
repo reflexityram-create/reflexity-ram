@@ -1138,6 +1138,28 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
     } finally { stripeRouter.setCheckoutDependenciesForTest(); }
   });
 
+  await root.test('review 2026-10-14: a known refund still wins when the buyer\'s success page takes the stock in the same moment', async () => {
+    const product = await bankSetup();
+    const before = sent.length;
+    let reads = 0;
+    const { fulfillCheckoutSession } = stripeRouter.internalsForTest;
+    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async (id, options = {}) => {
+      reads += 1;
+      if (reads === 2) await fulfillCheckoutSession(id);   // the success page's own call: finds the new order, takes its stock
+      const charge = { id: 'ch_card_review', object: 'charge', refunded: reads > 1, amount_refunded: reads > 1 ? 28400 : 0 };
+      return asStripe(() => cardSession(), charge)(id, options);
+    } });
+    try {
+      const order = await fulfillCheckoutSession('cs_test_bankdebit_1');
+      assert.equal(order.paymentStatus, 'refunded');
+      assert.equal(order.status, 'refunded');
+      assert.equal(await stockOf(product), 8, 'the stock the success page took stays taken, as for any refund');
+      assert.equal(sent.length, before, 'no "order confirmed" email');
+      const alert = await AdminEvent.findOne({ type: 'order.refunded' }).lean();
+      assert.match(alert.body, /do not ship · its stock was taken: put it back$/);
+    } finally { stripeRouter.setCheckoutDependenciesForTest(); }
+  });
+
   await root.test('review 2026-10-14: if the second look at the charge fails, the paid order goes ahead as before', async () => {
     const product = await bankSetup();
     let reads = 0;

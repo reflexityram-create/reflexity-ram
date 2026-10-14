@@ -16,13 +16,14 @@ const cartState = (cart) => ({
   loadFailed: false,
 });
 
-// Cart answers can arrive in any order (the server can take seconds to wake up), so which one is shown is decided here.
-// The order requests STARTED in says nothing about which one saw the newer cart, so:
+// Cart answers can arrive in any order (the server can take seconds to wake up), and the order requests STARTED in says
+// nothing about the order the server handled them in. So:
 //  - a change (add, quantity, remove, clear) answers with the cart after that change: shown unless a later change was made;
-//  - a read is shown only if it is the latest read and no change was made while it was on its way (that change's own
-//    answer is at least as new as anything the read saw);
-//  - when the latest change fails, the cart is read again once no change is on its way: a read set aside for it, or an
-//    earlier change's answer it overtook, cannot leave the page out of date or waiting.
+//  - a read is shown only if it is the latest read, no change was on its way when it started, and none was made since
+//    (whether it saw a change or not cannot be known, and the change's own answer is shown anyway);
+//  - when changes overlapped, or the latest one failed, the cart is read once more after all of them are done: the
+//    answer set aside could have been the newest, and a read set aside for a change that failed must not leave the page
+//    out of date or waiting.
 // isLoading counts requests on their way, so it cannot be left on.
 let pending = 0;
 let latestRead = 0;
@@ -36,6 +37,7 @@ const useCartStore = create((set, get) => {
 
   // One change to the server's cart. Resolves to { ok: true } or { ok: false, err } and never throws.
   const change = async (send) => {
+    if (changesOnTheirWay > 0) rereadWhenSettled = true;
     const mine = ++latestChange;
     changesOnTheirWay += 1;
     started();
@@ -67,7 +69,8 @@ const useCartStore = create((set, get) => {
     fetchCart: async () => {
       const read = ++latestRead;
       const changesBefore = latestChange;
-      const stillCurrent = () => read === latestRead && changesBefore === latestChange && changesOnTheirWay === 0;
+      const startedClean = changesOnTheirWay === 0;
+      const stillCurrent = () => read === latestRead && startedClean && changesBefore === latestChange;
       started({ loadFailed: false });
       try {
         const { data } = await cartApi.get();

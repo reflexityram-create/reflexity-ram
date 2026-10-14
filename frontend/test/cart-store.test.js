@@ -117,19 +117,24 @@ test('after an order is placed, a read still on its way does not bring the bough
   assert.equal(store.getState().loaded, true);
 });
 
-test('two quick quantity changes: only the later answer is shown, whatever order they come back in', async () => {
+test('two quick quantity changes: the earlier answer never replaces the later one, and the cart is read once both are done', async () => {
   const first = deferred();
   const second = deferred();
   const answers = [first, second];
-  const store = await loadStore({ update: () => answers.shift().promise });
-  store.setState({ items: [{ ...hynix, qty: 1 }], itemCount: 1 });
+  let reads = 0;
+  const store = await loadStore({ update: () => answers.shift().promise, get: async () => { reads += 1; return cartOf([{ ...hynix, qty: 3 }]); } });
+  store.setState({ items: [{ ...hynix, qty: 1 }], itemCount: 1, loaded: true });
   const a = store.getState().updateItem(hynix.slug, 2);
   const b = store.getState().updateItem(hynix.slug, 3);
   second.resolve(cartOf([{ ...hynix, qty: 3 }]));
   await b;
+  assert.equal(store.getState().items[0].qty, 3);
   first.resolve(cartOf([{ ...hynix, qty: 2 }]));
   const resultA = await a;
   assert.equal(resultA.success, true, 'the earlier change still reports that it worked');
+  assert.equal(store.getState().items[0].qty, 3, 'the earlier answer did not replace the later one');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(reads, 1, 'the two changes overlapped, so the cart was read once they were both done');
   assert.equal(store.getState().items[0].qty, 3);
   assert.equal(store.getState().isLoading, false);
 });
@@ -199,4 +204,48 @@ test('after an order is placed, a change that fails afterwards does not read the
   assert.equal(reads, 0, 'no read: the server may not have emptied the cart yet');
   assert.deepEqual(store.getState().items, []);
   assert.equal(store.getState().isLoading, false);
+});
+
+// The second review (of the version that only looked at changes on their way when a read ANSWERED) found two more orders.
+test('a read that started while an add was on its way is set aside even when the add answers first', async () => {
+  const add = deferred();
+  const read = deferred();
+  const store = await loadStore({ add: () => add.promise, get: () => read.promise });
+  const adding = store.getState().addItem(hynix.slug, 1);
+  const reading = store.getState().fetchCart();
+  add.resolve(cartOf([hynix]));
+  await adding;
+  read.resolve(cartOf([]));                            // the server read the cart before the add was saved
+  await reading;
+  assert.deepEqual(store.getState().items, [hynix]);
+  assert.equal(store.getState().isLoading, false);
+});
+
+test('two adds the server saved in the other order: the cart is read once both are done and shows both', async () => {
+  const addA = deferred();
+  const addB = deferred();
+  let reads = 0;
+  const store = await loadStore({
+    add: (slug) => (slug === hynix.slug ? addA.promise : addB.promise),
+    get: async () => { reads += 1; return cartOf([samsung, hynix]); },
+  });
+  const a = store.getState().addItem(hynix.slug, 1);
+  const b = store.getState().addItem(samsung.slug, 1);
+  addB.resolve(cartOf([samsung]));                      // B was saved first
+  await b;
+  addA.resolve(cartOf([samsung, hynix]));               // A was saved after it: the newest cart, but A started first
+  await a;
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(reads, 1);
+  assert.deepEqual(store.getState().items.map((i) => i.slug), [samsung.slug, hynix.slug]);
+  assert.equal(store.getState().isLoading, false);
+});
+
+test('a single add with nothing else on its way does not read the cart again', async () => {
+  let reads = 0;
+  const store = await loadStore({ add: async () => cartOf([hynix]), get: async () => { reads += 1; return cartOf([hynix]); } });
+  await store.getState().addItem(hynix.slug, 1);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(reads, 0);
+  assert.deepEqual(store.getState().items, [hynix]);
 });
