@@ -462,7 +462,8 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
     const paid = `${((session.amount_total || 0) / 100).toFixed(2)} ${String(session.currency || '').toUpperCase()}`.trim();
     await recordAdminEvent({
       type: 'payment.unmatched', title: 'Paid, but no order was made: needs you', priority: 'high', path: '/admin/orders',
-      body: `${session.customer_details?.email || 'A buyer'} paid ${paid} (Stripe checkout ${checkoutSessionId}); none of its ${unmappedPrices.length} line item(s) matches a product.`,
+      // Lock-screen text: the amount and the Stripe checkout ID (the buyer is found from it in Stripe), never the buyer's email.
+      body: `Paid ${paid}, Stripe checkout ${checkoutSessionId}: none of its ${unmappedPrices.length} line item(s) matches a product.`,
       dedupeKey: `payment.unmatched:${checkoutSessionId}`,
     });
     return null;
@@ -575,7 +576,31 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
     throw createErr;
   }
 
-  if (refundedFirst) {
+  // A refund made while this order was being written (after the session above was read) found no order to mark and was
+  // acknowledged. Now that the order exists, read the charge once more: a refund before this read is seen here, one after it
+  // finds the order. A failed read leaves the order as it is (it is paid, as far as anything here knows).
+  let refunded = refundedFirst;
+  if (!refunded && !delayed && order.stripeChargeId) {
+    try {
+      const again = await checkoutSessionRetriever(session.id, { expand: ['payment_intent.latest_charge'] });
+      const nowCharge = again?.payment_intent?.latest_charge;
+      if (nowCharge && typeof nowCharge === 'object' && isFullyRefundedCharge(nowCharge)) {
+        const marked = await Order.findOneAndUpdate(
+          { _id: order._id, paymentStatus: 'paid', stockDecremented: { $ne: true } },
+          {
+            $set: { paymentStatus: 'refunded', status: 'refunded', adminNotes: ['REFUNDED in Stripe while this order was being recorded: do NOT ship.', order.adminNotes].filter(Boolean).join('\n') },
+            $push: { statusHistory: { status: 'refunded', note: 'Refunded in Stripe while this order was being recorded; no stock taken', timestamp: new Date() } },
+          },
+          { returnDocument: 'after' },
+        );
+        if (marked) { order = marked; refunded = true; }
+      }
+    } catch (recheckErr) {
+      console.error(`Refund re-check failed for checkout session ${session.id}:`, recheckErr.message);
+    }
+  }
+
+  if (refunded) {
     // Nothing to take from stock, confirm to the buyer or report as a sale; the owner is told what happened.
     await recordAdminEvent({ type: 'order.refunded', title: 'Refunded before the order was recorded', body: `${describeOrder(order)} · do not ship`, priority: 'high', order, dedupeKey: `order.refunded:${order._id}` });
     console.log(`💸 Checkout session ${session.id} was refunded before its order existed → order ${order.orderNumber} recorded as refunded`);

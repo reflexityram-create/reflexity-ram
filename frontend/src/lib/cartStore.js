@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import { cartApi } from './api';
 
+// shippingFaster: the price of Faster shipping for this cart, null when it is not offered.
+const EMPTY_CART = { items: [], subtotal: 0, shipping: 0, shippingFaster: null, itemCount: 0, discount: 0, couponCode: null };
+
 const cartState = (cart) => ({
   items: cart.items || [],
   subtotal: cart.subtotal || 0,
@@ -13,123 +16,115 @@ const cartState = (cart) => ({
   loadFailed: false,
 });
 
-// Every cart request takes a number and only the newest one's answer is applied: a slow read that started before an
-// "Add to cart" (the server can take seconds to wake up) must not put the older cart back when it finally arrives.
-let latestRequest = 0;
+// Cart answers can arrive in any order (the server can take seconds to wake up), so which one is shown is decided here.
+// The order requests STARTED in says nothing about which one saw the newer cart, so:
+//  - a change (add, quantity, remove, clear) answers with the cart after that change: shown unless a later change was made;
+//  - a read is shown only if it is the latest read and no change was made while it was on its way (that change's own
+//    answer is at least as new as anything the read saw);
+//  - when the latest change fails, the cart is read again once no change is on its way: a read set aside for it, or an
+//    earlier change's answer it overtook, cannot leave the page out of date or waiting.
+// isLoading counts requests on their way, so it cannot be left on.
+let pending = 0;
+let latestRead = 0;
+let latestChange = 0;
+let changesOnTheirWay = 0;
+let rereadWhenSettled = false;
 
-const useCartStore = create((set, get) => ({
-  items: [],
-  shipping: 0,
-  shippingFaster: null, // price of Faster shipping for this cart, null when not offered
-  subtotal: 0,
-  itemCount: 0,
-  discount: 0,
-  couponCode: null,
-  isLoading: false,
-  loaded: false,     // the server's cart has been read (or changed) at least once since the page loaded
-  loadFailed: false, // the last read failed: the cart pages offer to try again instead of saying the cart is empty
-  isOpen: false,
+const useCartStore = create((set, get) => {
+  const started = (extra = {}) => { pending += 1; set({ isLoading: true, ...extra }); };
+  const finished = () => { pending -= 1; set({ isLoading: pending > 0 }); };
 
-  // Fetch cart from server — only overwrites store if fetch succeeds
-  fetchCart: async () => {
-    const request = ++latestRequest;
-    set({ isLoading: true, loadFailed: false });
+  // One change to the server's cart. Resolves to { ok: true } or { ok: false, err } and never throws.
+  const change = async (send) => {
+    const mine = ++latestChange;
+    changesOnTheirWay += 1;
+    started();
     try {
-      const { data } = await cartApi.get();
-      if (request !== latestRequest) return;
-      set({
-        ...cartState(data.cart),
-        isLoading: false,
+      const { data } = await send();
+      if (mine === latestChange) set(cartState(data.cart));
+      return { ok: true };
+    } catch (err) {
+      if (mine === latestChange) rereadWhenSettled = true;
+      return { ok: false, err };
+    } finally {
+      changesOnTheirWay -= 1;
+      finished();
+      if (changesOnTheirWay === 0 && rereadWhenSettled) {
+        rereadWhenSettled = false;
+        get().fetchCart();
+      }
+    }
+  };
+
+  return {
+    ...EMPTY_CART,
+    isLoading: false,
+    loaded: false,     // the server's cart has been read (or changed) at least once since the page loaded
+    loadFailed: false, // the last read failed: the cart pages offer to try again instead of saying the cart is empty
+    isOpen: false,
+
+    // Fetch cart from server — only overwrites store if fetch succeeds
+    fetchCart: async () => {
+      const read = ++latestRead;
+      const changesBefore = latestChange;
+      const stillCurrent = () => read === latestRead && changesBefore === latestChange && changesOnTheirWay === 0;
+      started({ loadFailed: false });
+      try {
+        const { data } = await cartApi.get();
+        if (stillCurrent()) set(cartState(data.cart));
+      } catch (err) {
+        // Don't wipe items on network error — keep whatever is in memory
+        if (stillCurrent()) set({ loadFailed: true });
+        console.error('Failed to fetch cart:', err?.response?.data || err?.message || err);
+      } finally {
+        finished();
+      }
+    },
+
+    // Add item to cart
+    addItem: async (slug, qty = 1) => {
+      const result = await change(() => cartApi.add(slug, qty));
+      if (result.ok) return { success: true };
+      console.error('addItem error:', result.err?.response?.data || result.err?.message);
+      return { success: false, message: result.err?.response?.data?.error || 'Failed to add to cart' };
+    },
+
+    // Update item quantity
+    updateItem: async (slug, qty) => {
+      const result = await change(() => cartApi.update(slug, qty));
+      if (result.ok) return { success: true };
+      console.error('updateItem error:', result.err?.response?.data || result.err?.message);
+      return { success: false, message: result.err?.response?.data?.error || 'Could not update the quantity' };
+    },
+
+    // Remove item from cart
+    removeItem: async (slug) => {
+      const result = await change(() => cartApi.remove(slug));
+      if (!result.ok) console.error('removeItem error:', result.err?.response?.data || result.err?.message);
+    },
+
+    // Clear cart on server + locally
+    clearCart: async () => {
+      const result = await change(async () => {
+        await cartApi.clear();
+        return { data: { cart: EMPTY_CART } };
       });
-    } catch (err) {
-      if (request !== latestRequest) return;
-      // Don't wipe items on network error — keep whatever is in memory
-      set({ isLoading: false, loadFailed: true });
-      console.error('Failed to fetch cart:', err?.response?.data || err?.message || err);
-    }
-  },
+      if (!result.ok) console.error('clearCart error:', result.err?.response?.data || result.err?.message);
+    },
 
-  // Add item to cart
-  addItem: async (slug, qty = 1) => {
-    const request = ++latestRequest;
-    set({ isLoading: true });
-    try {
-      const { data } = await cartApi.add(slug, qty);
-      if (request === latestRequest) {
-        set({
-          ...cartState(data.cart),
-          isLoading: false,
-        });
-      }
-      return { success: true };
-    } catch (err) {
-      if (request === latestRequest) set({ isLoading: false });
-      const message = err.response?.data?.error || 'Failed to add to cart';
-      console.error('addItem error:', err?.response?.data || err?.message);
-      return { success: false, message };
-    }
-  },
+    // Clear cart locally only (after order placed). An answer still on its way would bring the bought items back: dropped.
+    clearCartLocal: () => {
+      latestRead += 1;
+      latestChange += 1;
+      rereadWhenSettled = false;
+      set({ ...EMPTY_CART, loaded: true, loadFailed: false });
+    },
 
-  // Update item quantity
-  updateItem: async (slug, qty) => {
-    const request = ++latestRequest;
-    set({ isLoading: true });
-    try {
-      const { data } = await cartApi.update(slug, qty);
-      if (request === latestRequest) {
-        set({
-          ...cartState(data.cart),
-          isLoading: false,
-        });
-      }
-      return { success: true };
-    } catch (err) {
-      if (request === latestRequest) set({ isLoading: false });
-      console.error('updateItem error:', err?.response?.data || err?.message);
-      return { success: false, message: err.response?.data?.error || 'Could not update the quantity' };
-    }
-  },
-
-  // Remove item from cart
-  removeItem: async (slug) => {
-    const request = ++latestRequest;
-    set({ isLoading: true });
-    try {
-      const { data } = await cartApi.remove(slug);
-      if (request === latestRequest) {
-        set({
-          ...cartState(data.cart),
-          isLoading: false,
-        });
-      }
-    } catch (err) {
-      if (request === latestRequest) set({ isLoading: false });
-      console.error('removeItem error:', err?.response?.data || err?.message);
-    }
-  },
-
-  // Clear cart on server + locally
-  clearCart: async () => {
-    const request = ++latestRequest;
-    try {
-      await cartApi.clear();
-      if (request === latestRequest) set({ items: [], subtotal: 0, shipping: 0, shippingFaster: null, itemCount: 0, discount: 0, couponCode: null, isLoading: false, loaded: true, loadFailed: false });
-    } catch (err) {
-      if (request === latestRequest) set({ isLoading: false });
-      console.error('clearCart error:', err?.response?.data || err?.message);
-    }
-  },
-
-  // Clear cart locally only (after order placed). A read still on its way would bring the bought items back: it is dropped.
-  clearCartLocal: () => {
-    latestRequest += 1;
-    set({ items: [], subtotal: 0, shipping: 0, shippingFaster: null, itemCount: 0, discount: 0, couponCode: null, isLoading: false, loaded: true, loadFailed: false });
-  },
-
-  // Cart drawer
-  openCart: () => set({ isOpen: true }),
-  closeCart: () => set({ isOpen: false }),
-  toggleCart: () => set((s) => ({ isOpen: !s.isOpen })),
-}));
+    // Cart drawer
+    openCart: () => set({ isOpen: true }),
+    closeCart: () => set({ isOpen: false }),
+    toggleCart: () => set((s) => ({ isOpen: !s.isOpen })),
+  };
+});
 
 export default useCartStore;

@@ -1114,6 +1114,47 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
     } finally { stripeRouter.setCheckoutDependenciesForTest(); }
   });
 
+  await root.test('review 2026-10-14: a refund made WHILE the order was being written is caught by the second look at the charge', async () => {
+    const product = await bankSetup();
+    const before = sent.length;
+    let reads = 0;
+    // The first read (the one the order is built from) sees an unrefunded charge; the refund lands before the order is saved,
+    // its charge.refunded finds no order, and only the second look, after the save, can see it.
+    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async (id, options = {}) => {
+      reads += 1;
+      const charge = { id: 'ch_card_review', object: 'charge', refunded: reads > 1, amount_refunded: reads > 1 ? 28400 : 0 };
+      return asStripe(() => cardSession(), charge)(id, options);
+    } });
+    try {
+      const order = await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_test_bankdebit_1');
+      assert.equal(reads, 2);
+      assert.equal(order.paymentStatus, 'refunded');
+      assert.equal(order.status, 'refunded');
+      assert.match(order.adminNotes, /REFUNDED in Stripe while this order was being recorded: do NOT ship/);
+      assert.equal(await stockOf(product), 10, 'no stock taken');
+      assert.equal(sent.length, before, 'no "order confirmed" email');
+      assert.ok(await AdminEvent.findOne({ type: 'order.refunded' }));
+      assert.equal(await AdminEvent.countDocuments({ type: 'order.paid' }), 0);
+    } finally { stripeRouter.setCheckoutDependenciesForTest(); }
+  });
+
+  await root.test('review 2026-10-14: if the second look at the charge fails, the paid order goes ahead as before', async () => {
+    const product = await bankSetup();
+    let reads = 0;
+    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async (id, options = {}) => {
+      reads += 1;
+      if (reads > 1) throw new Error('Stripe is unreachable');
+      return asStripe(() => cardSession(), { id: 'ch_card_review', object: 'charge', refunded: false, amount_refunded: 0 })(id, options);
+    } });
+    try {
+      const order = await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_test_bankdebit_1');
+      assert.equal(order.paymentStatus, 'paid');
+      assert.equal(order.status, 'processing');
+      assert.equal(await stockOf(product), 8);
+      assert.match(sent.at(-1).subject, /Order confirmed/);
+    } finally { stripeRouter.setCheckoutDependenciesForTest(); }
+  });
+
   await root.test('review 2026-10-14: a payment partly refunded before its order existed is an ordinary paid order with a note', async () => {
     const product = await bankSetup();
     const partial = { id: 'ch_card_review', object: 'charge', refunded: false, amount_refunded: 1000 };
@@ -1154,14 +1195,15 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
 
       // nothing matches at all: no order, and the owner hears about it once
       const nothing = { id: 'prod_gone', object: 'product', metadata: { slug: 'no-such-slug', productId: '64b7f0c2a1b2c3d4e5f60719' } };
-      stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => cardSession({ id: 'cs_nothing', payment_intent: { id: 'pi_nothing', status: 'succeeded', latest_charge: 'ch_nothing' }, line_items: line(nothing) }) });
+      stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => cardSession({ id: 'cs_nothing', currency: 'cad', payment_intent: { id: 'pi_nothing', status: 'succeeded', latest_charge: 'ch_nothing' }, line_items: line(nothing) }) });
       assert.equal(await fulfillCheckoutSession('cs_nothing'), null);
       assert.equal(await fulfillCheckoutSession('cs_nothing'), null);
       assert.equal(await Order.countDocuments({ stripeCheckoutSessionId: 'cs_nothing' }), 0);
       const alerts = await AdminEvent.find({ type: 'payment.unmatched' }).lean();
       assert.equal(alerts.length, 1, 'one alert, however often it is retried');
       assert.equal(alerts[0].priority, 'high');
-      assert.match(alerts[0].body, /sam@example\.com paid 284\.00 .*cs_nothing/);
+      assert.match(alerts[0].body, /^Paid 284\.00 CAD, Stripe checkout cs_nothing: none of its 1 line item\(s\) matches a product\.$/);
+      assert.ok(!alerts[0].body.includes('sam@example.com'), 'lock-screen text never carries the buyer\'s email');
     } finally { stripeRouter.setCheckoutDependenciesForTest(); }
   });
 
@@ -1214,5 +1256,24 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
     assert.equal((await Order.findById(tracked._id)).shippingNotification.status, 'failed', 'tracked parcels are the tracking worker\'s');
     assert.equal((await Order.findById(done._id)).shippingNotification.status, 'sent');
     assert.deepEqual(await retryUntrackedShipmentNotices(), { checked: 0, sent: 0, failed: 0 }, 'nothing is sent twice');
+  });
+
+  await root.test('review 2026-10-14: when more notices keep failing than one run tries, the next run tries the others', async () => {
+    await reset();
+    const { retryUntrackedShipmentNotices, notifyShipment } = require('../src/utils/shippingNotifications');
+    const make = () => Order.create({
+      guestEmail: 'sam@example.com', items: [{ slug: 'ddr4-16gb', sku: 'D4-16', name: '16GB DDR4 ECC RDIMM', price: 135, qty: 1 }],
+      shippingAddress: { firstName: 'Sam', lastName: 'Buyer', line1: '100 Queen St W', city: 'Toronto', state: 'ON', zip: 'M5H 2N2', country: 'CA' },
+      subtotal: 135, total: 149, paymentStatus: 'paid', status: 'shipped', untracked: true, shippedAt: new Date(), shippingNotification: { status: 'failed' },
+    });
+    const orders = [await make(), await make(), await make()];
+    const tried = [];
+    const failing = (order, options) => { tried.push(String(order._id)); return notifyShipment(order, { ...options, sendEmail: async () => { throw new Error('mail down'); } }); };
+    const first = await retryUntrackedShipmentNotices({ notify: failing, limit: 2 });
+    assert.deepEqual(first, { checked: 2, sent: 0, failed: 2 });
+    const second = await retryUntrackedShipmentNotices({ notify: failing, limit: 2, now: () => new Date(Date.now() + 1000) });
+    assert.equal(second.checked, 2);
+    assert.equal(tried[2], String(orders[2]._id), 'the one not tried yet goes first in the next run');
+    assert.deepEqual(new Set(tried), new Set(orders.map((o) => String(o._id))), 'every notice was tried');
   });
 });

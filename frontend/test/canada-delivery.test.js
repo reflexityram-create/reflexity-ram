@@ -43,10 +43,16 @@ test('a big order sees why there is no Faster option, with a way to ask', async 
 
 test('the cart store keeps the Faster price from every cart response', async () => {
   const store = await read('../src/lib/cartStore.js');
-  assert.match(store, /shippingFaster: null,/);
   assert.match(store, /shippingFaster: cart\.shippingFaster \?\? null,/);
-  assert.equal((store.match(/\.\.\.cartState\(data\.cart\)/g) || []).length, 4, 'fetch, add, update and remove');
-  assert.equal((store.match(/shippingFaster: null, itemCount: 0/g) || []).length, 2, 'both ways of clearing');
+  // Every answer is applied through cartState: the read, and the one helper every change goes through.
+  assert.equal((store.match(/set\(cartState\(data\.cart\)\)/g) || []).length, 2, 'the read and the change helper');
+  for (const action of ['addItem', 'updateItem', 'removeItem', 'clearCart']) {
+    assert.match(store, new RegExp(`${action}: async [^]*?await change\\(`), action);
+  }
+  // Both ways of clearing reset it.
+  assert.match(store, /const EMPTY_CART = \{[^}]*shippingFaster: null, itemCount: 0/);
+  assert.match(store, /clearCartLocal: \(\) => \{[^}]*set\(\{ \.\.\.EMPTY_CART,/);
+  assert.match(store, /return \{ data: \{ cart: EMPTY_CART \} \};/);
 });
 
 test('the order page says which delivery the buyer paid for', async () => {

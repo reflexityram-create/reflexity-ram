@@ -133,3 +133,70 @@ test('two quick quantity changes: only the later answer is shown, whatever order
   assert.equal(store.getState().items[0].qty, 3);
   assert.equal(store.getState().isLoading, false);
 });
+
+// The independent review of the first version of this guard (which kept only the newest request STARTED) found two orders it
+// got wrong; each test below failed against it.
+test('a read that started while an add was on its way does not hide the add when it answers first', async () => {
+  const add = deferred();
+  const store = await loadStore({ add: () => add.promise, get: async () => cartOf([]) });
+  const adding = store.getState().addItem(hynix.slug, 1);
+  await store.getState().fetchCart();                 // answers with the cart from before the add
+  add.resolve(cartOf([hynix]));
+  const result = await adding;
+  assert.equal(result.success, true);
+  assert.deepEqual(store.getState().items, [hynix], 'the add\'s answer is shown');
+  assert.equal(store.getState().isLoading, false);
+});
+
+test('a failed add while the first read was on its way reads the cart again instead of leaving the page waiting', async () => {
+  const firstRead = deferred();
+  let reads = 0;
+  const store = await loadStore({
+    get: () => { reads += 1; return reads === 1 ? firstRead.promise : Promise.resolve(cartOf([hynix])); },
+    add: async () => { throw Object.assign(new Error('Request failed'), { response: { data: { error: 'Only 1 unit available' } } }); },
+  });
+  const reading = store.getState().fetchCart();
+  const result = await quiet(() => store.getState().addItem(samsung.slug, 1));
+  assert.equal(result.success, false);
+  assert.equal(result.message, 'Only 1 unit available');
+  firstRead.resolve(cartOf([]));
+  await reading;
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(reads, 2, 'the cart was read again');
+  assert.equal(store.getState().loaded, true);
+  assert.deepEqual(store.getState().items, [hynix]);
+  assert.equal(store.getState().isLoading, false, 'no spinner left on');
+});
+
+test('when the later of two changes fails, the cart is read again (the earlier change\'s answer had been set aside)', async () => {
+  const first = deferred();
+  let reads = 0;
+  const store = await loadStore({
+    update: (slug, qty) => (qty === 2 ? first.promise : Promise.reject(Object.assign(new Error('400'), { response: { data: { error: 'Only 2 units available' } } }))),
+    get: async () => { reads += 1; return cartOf([{ ...hynix, qty: 2 }]); },
+  });
+  store.setState({ items: [{ ...hynix, qty: 1 }], itemCount: 1, loaded: true });
+  const a = store.getState().updateItem(hynix.slug, 2);
+  const b = await quiet(() => store.getState().updateItem(hynix.slug, 3));
+  assert.equal(b.success, false);
+  first.resolve(cartOf([{ ...hynix, qty: 2 }]));
+  assert.equal((await a).success, true);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(reads, 1);
+  assert.equal(store.getState().items[0].qty, 2, 'the server\'s cart (the first change went through) is shown');
+  assert.equal(store.getState().isLoading, false);
+});
+
+test('after an order is placed, a change that fails afterwards does not read the old cart back', async () => {
+  const add = deferred();
+  let reads = 0;
+  const store = await loadStore({ add: () => add.promise, get: async () => { reads += 1; return cartOf([hynix]); } });
+  const adding = store.getState().addItem(hynix.slug, 1);
+  store.getState().clearCartLocal();
+  add.reject(new Error('network down'));
+  await quiet(() => adding);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(reads, 0, 'no read: the server may not have emptied the cart yet');
+  assert.deepEqual(store.getState().items, []);
+  assert.equal(store.getState().isLoading, false);
+});

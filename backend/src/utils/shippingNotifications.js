@@ -51,7 +51,11 @@ async function retryUntrackedShipmentNotices(overrides = {}) {
       { 'shippingNotification.status': { $in: ['pending', 'failed'] } },
       { 'shippingNotification.status': 'sending', 'shippingNotification.claimedAt': { $lt: new Date(now.getTime() - CLAIM_MS) } },
     ],
-  }).populate('user', 'firstName email').limit(deps.limit);
+  })
+    // Least recently tried first (never tried sorts first): each attempt stamps claimedAt, so when more than `limit` keep failing
+    // the next run moves on to the others instead of trying the same ones again.
+    .sort({ 'shippingNotification.claimedAt': 1, _id: 1 })
+    .populate('user', 'firstName email').limit(deps.limit);
   const summary = { checked: 0, sent: 0, failed: 0 };
   for (const order of orders) {
     const result = await deps.notify(order, { now: deps.now });
@@ -62,8 +66,8 @@ async function retryUntrackedShipmentNotices(overrides = {}) {
   return summary;
 }
 
-// The server runs it on its own timer (as it does the e-Transfer sweep), at most every 15 minutes, and never throws.
-const RETRY_EVERY_MS = 15 * 60 * 1000;
+// The server runs it on its own timer (as it does the e-Transfer sweep), at most once an hour, and never throws.
+const RETRY_EVERY_MS = 60 * 60 * 1000;
 let lastRetryAt = 0;
 let retrying = false;
 async function retryUntrackedShipmentNoticesThrottled({ now = Date.now(), run = retryUntrackedShipmentNotices } = {}) {
