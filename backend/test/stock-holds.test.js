@@ -79,7 +79,7 @@ function recordingModel(results) {
   return {
     calls,
     // a transaction: the callback runs, an error raised inside it is passed up (the real driver aborts and rolls back first)
-    startSession: async () => ({ withTransaction: async (work) => { calls.push({ op: 'begin' }); await work(); calls.push({ op: 'commit' }); }, endSession: async () => { calls.push({ op: 'end' }); } }),
+    startSession: async () => ({ withTransaction: async (work, options) => { calls.push({ op: 'begin', options }); await work(); calls.push({ op: 'commit' }); }, endSession: async () => { calls.push({ op: 'end' }); } }),
     // `results` are what each product's update answers: a document when it was written, null when the product was refused
     findOneAndUpdate: async (filter, update, options) => { calls.push({ op: 'hold', filter, update, options }); return results.shift(); },
     updateMany: async (filter, update, options) => { calls.push({ op: 'release', filter, update, options }); return { modifiedCount: 1 }; },
@@ -102,6 +102,41 @@ test('the hold is ONE conditional pipeline update per product, inside one transa
   assert.deepEqual(call.update[0].$set.stockHolds.$concatArrays[1], [{ owner: 's:me', sessionId: 'cs_page_1', qty: 2, expiresAt: new Date(NOW.getTime() + 30 * MINUTE) }], 'the hold remembers its Stripe page');
   assert.deepEqual(cleanup.filter, { 'stockHolds.owner': 's:me', _id: { $nin: ['p1'] } });
   assert.ok(cleanup.options.session, 'the cleanup is part of the same transaction');
+});
+
+test('the transaction gives up by itself after a few seconds (the driver cancels it), and the limit can be set', async () => {
+  const original = process.env.CHECKOUT_HOLD_TIMEOUT_MS;
+  try {
+    delete process.env.CHECKOUT_HOLD_TIMEOUT_MS;
+    const model = recordingModel([{ _id: 'p1' }]);
+    await holds.holdStockForCheckout({ owner: 's:me', lines: [{ product: 'p1', name: 'X', qty: 1 }], now: NOW, ProductModel: model });
+    assert.deepEqual(model.calls[0].options, { timeoutMS: 5000 });
+    for (const [value, expected] of [['1200', 1200], ['0', 5000], ['-3', 5000], ['abc', 5000]]) {
+      process.env.CHECKOUT_HOLD_TIMEOUT_MS = value;
+      const again = recordingModel([{ _id: 'p1' }]);
+      await holds.holdStockForCheckout({ owner: 's:me', lines: [{ product: 'p1', name: 'X', qty: 1 }], now: NOW, ProductModel: again });
+      assert.equal(again.calls[0].options.timeoutMS, expected, `"${value}"`);
+    }
+  } finally {
+    if (original === undefined) delete process.env.CHECKOUT_HOLD_TIMEOUT_MS; else process.env.CHECKOUT_HOLD_TIMEOUT_MS = original;
+  }
+});
+
+test('a retry of the transaction (after a transient error) works from the time it runs at, not from the first attempt', async () => {
+  const seen = [];
+  const ProductModel = {
+    startSession: async () => ({
+      // the driver runs the callback again after a transient error, a little later
+      withTransaction: async (work) => { await work(); await new Promise((resolve) => setTimeout(resolve, 25)); await work(); },
+      endSession: async () => {},
+    }),
+    findOneAndUpdate: async (filter, update) => { seen.push({ expires: update[0].$set.stockHolds.$concatArrays[1][0].expiresAt.getTime(), at: filter.$expr }); return { _id: 'p1' }; },
+    updateMany: async () => ({ modifiedCount: 0 }),
+  };
+  const result = await holds.holdStockForCheckout({ owner: 's:me', lines: [{ product: 'p1', name: 'X', qty: 1 }], minutes: 30, ProductModel });
+  assert.equal(seen.length, 2);
+  assert.ok(seen[1].expires - seen[0].expires >= 20, 'the second attempt\'s expiry is later: it was computed again');
+  assert.equal(result.expiresAt.getTime(), seen[1].expires, 'and the answer is the last attempt\'s');
 });
 
 test('a product named twice in one cart is held once, with the quantities added', async () => {
@@ -264,6 +299,17 @@ test('a hold that fails never stops the sale: the buyer is sent to pay and the f
   assert.equal(seen.sessions, 1);
   assert.deepEqual(seen.expired, [], 'the page is kept: the buyer is on it');
   assert.match(lines.join('\n'), /Stock hold failed; checkout continues without it: database blip/);
+});
+
+test('a hold whose transaction timed out is just another failure to hold: the buyer is sent to pay without one', async (t) => {
+  const lines = [];
+  const original = console.error; console.error = (...args) => lines.push(args.join(' ')); t.after(() => { console.error = original; });
+  const { app, seen } = routeHarness(t, { holdStock: async () => { throw Object.assign(new Error('Timed out during withTransaction'), { name: 'MongoOperationTimeoutError' }); } });
+  const response = await checkout(app);
+  assert.equal(response.status, 200);
+  assert.equal(response.body.url, 'https://stripe.test/hold');
+  assert.deepEqual(seen.expired, [], 'the page is kept: the buyer is sent to it');
+  assert.match(lines.join('\n'), /Stock hold failed; checkout continues without it: Timed out during withTransaction/);
 });
 
 test('a checkout that fails validation (bad payment method) makes no page and holds nothing', async (t) => {

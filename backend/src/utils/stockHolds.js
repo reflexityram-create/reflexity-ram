@@ -24,6 +24,14 @@ const BANK_DEBIT_HOLD_MINUTES = 60;   // an instant bank verification can take l
 const MIN_MINUTES = 5;
 const MAX_MINUTES = 240;
 
+// How long a buyer may be kept waiting while the database sorts out who gets the last unit (two carts after the same products wait
+// for each other). Past it the transaction is cancelled by the driver itself and the checkout goes ahead without a hold.
+const DEFAULT_TRANSACTION_TIMEOUT_MS = 5000;
+const holdTimeoutMs = () => {
+  const configured = Number(process.env.CHECKOUT_HOLD_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : DEFAULT_TRANSACTION_TIMEOUT_MS;
+};
+
 const holdMinutes = ({ bankDebit = false } = {}) => {
   const configured = Number(process.env.CHECKOUT_STOCK_HOLD_MINUTES);
   const base = Number.isFinite(configured) && configured >= MIN_MINUTES && configured <= MAX_MINUTES ? Math.floor(configured) : DEFAULT_HOLD_MINUTES;
@@ -73,11 +81,12 @@ class HoldRefused extends Error {
  * nothing, in ONE database transaction: if any line cannot be had the whole thing rolls back, so nobody ever sees a half-made hold and
  * the buyer's earlier hold (an earlier, still payable page) is exactly as it was. Two buyers after the last unit meet on the same
  * product document and one of them is made to wait for the other, then sees its hold. When it works, holds the buyer had on products
- * that are no longer in this cart are given up in the same transaction.
+ * that are no longer in this cart are given up in the same transaction. The transaction gives up by itself after `timeoutMs`.
+ * `now` is only for tests: each attempt of the transaction (it is retried on a transient error) works from the time it runs at.
  * Returns { ok: true } or { ok: false, status: 409, message }. `lines` are { product: <id>, name, qty }; a product named twice counts
  * once, with the quantities added.
  */
-async function holdStockForCheckout({ owner, sessionId = null, lines, minutes = holdMinutes(), now = new Date(), ProductModel = Product }) {
+async function holdStockForCheckout({ owner, sessionId = null, lines, minutes = holdMinutes(), now = null, timeoutMs = holdTimeoutMs(), ProductModel = Product }) {
   if (!owner) return { ok: true, held: false };
   const wanted = new Map();
   for (const line of lines || []) {
@@ -89,27 +98,30 @@ async function holdStockForCheckout({ owner, sessionId = null, lines, minutes = 
   }
   // The same order for everyone: two carts with the same products never wait on each other in opposite orders.
   const ordered = [...wanted.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, line]) => line);
-  const expiresAt = new Date(now.getTime() + minutes * 60000);
+  let expiresAt;
   const session = await ProductModel.startSession();
   try {
     await session.withTransaction(async () => {
+      const at = now || new Date();
+      expiresAt = new Date(at.getTime() + minutes * 60000);
       for (const line of ordered) {
         const updated = await ProductModel.findOneAndUpdate(
-          { _id: line.product, $expr: freeForExpr(now, owner, line.qty) },
+          { _id: line.product, $expr: freeForExpr(at, owner, line.qty) },
           // The new array is: the live holds of everyone else (this also drops expired ones) plus this owner's, replacing their old one.
-          [{ $set: { stockHolds: { $concatArrays: [liveHoldsOfOthers(now, owner), [{ owner, sessionId, qty: line.qty, expiresAt }]] } } }],
+          [{ $set: { stockHolds: { $concatArrays: [liveHoldsOfOthers(at, owner), [{ owner, sessionId, qty: line.qty, expiresAt }]] } } }],
           { returnDocument: 'after', timestamps: false, updatePipeline: true, projection: { _id: 1 }, session },
         );
         if (!updated) throw new HoldRefused(line);   // rolls the whole transaction back
       }
       // The cart this hold is for is the buyer's cart now: what they held on products they have since taken out is not needed.
       await releaseCheckoutHold(owner, { ProductModel, session, exceptProducts: ordered.map((line) => line.product) });
-    });
+    }, { timeoutMS: timeoutMs });
   } catch (err) {
     if (!(err instanceof HoldRefused)) throw err;
     const current = await ProductModel.findById(err.line.product).select('+stockHolds stockQuantity name').lean();
     if (!current) return { ok: false, status: 409, message: `"${err.line.name}" is no longer available.` };
-    return { ok: false, status: 409, message: shortageMessage({ name: current.name || err.line.name, qty: err.line.qty }, availabilityOf(current, owner, now), now) };
+    const readAt = now || new Date();
+    return { ok: false, status: 409, message: shortageMessage({ name: current.name || err.line.name, qty: err.line.qty }, availabilityOf(current, owner, readAt), readAt) };
   } finally {
     await session.endSession();
   }
@@ -141,6 +153,7 @@ module.exports = {
   DEFAULT_HOLD_MINUTES,
   BANK_DEBIT_HOLD_MINUTES,
   holdMinutes,
+  holdTimeoutMs,
   ownerKey,
   freeForExpr,
   availabilityOf,

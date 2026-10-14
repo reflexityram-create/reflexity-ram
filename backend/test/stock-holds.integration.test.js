@@ -222,6 +222,43 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
     assert.deepEqual((await holdsOf(first)).map((h) => [h.owner, h.sessionId, h.qty]).sort(), [['s:me', 'cs_page_1', 2], ['s:third', 'cs_third', 1]]);
   });
 
+  await root.test('giving a hold back inside a transaction is part of that transaction: if it is rolled back, the hold is still there (the e-Transfer order and the hold cleanup rely on it)', async () => {
+    await reset();
+    const product = await seedProduct({ stockQuantity: 2 });
+    await holdStockForCheckout({ owner: 's:me', sessionId: 'cs_1', lines: want(product) });
+    const session = await Product.startSession();
+    try {
+      await assert.rejects(() => session.withTransaction(async () => {
+        assert.equal(await releaseCheckoutHold('s:me', { session }), 1);
+        const inside = await Product.findById(product._id).select('+stockHolds').session(session).lean();
+        assert.deepEqual(inside.stockHolds, [], 'inside the transaction it is already gone');
+        throw new Error('rolled back on purpose');
+      }), /rolled back on purpose/);
+    } finally { await session.endSession(); }
+    assert.deepEqual((await holdsOf(product)).map((h) => [h.owner, h.sessionId]), [['s:me', 'cs_1']], 'outside, nothing happened');
+  });
+
+  await root.test('a hold stuck behind another open transaction on the same product gives up at its deadline (the driver cancels it), leaves nothing behind, and works again once the blocker is gone', async () => {
+    await reset();
+    const product = await seedProduct({ stockQuantity: 3 });
+    const blocker = await Product.startSession();
+    blocker.startTransaction();
+    try {
+      // another transaction has written this product and is not finished: a second writer is turned away and retried until the deadline
+      await Product.updateOne({ _id: product._id }, { $inc: { stockQuantity: 0 } }, { session: blocker });
+      const started = Date.now();
+      await assert.rejects(
+        () => holdStockForCheckout({ owner: 's:me', sessionId: 'cs_1', lines: want(product), timeoutMs: 1000 }),
+        (err) => err.name === 'MongoOperationTimeoutError',
+      );
+      const waited = Date.now() - started;
+      assert.ok(waited < 3000, `gave up after ${waited} ms: the deadline was 1000 (the driver may stop a little before it), the default retry window is 120000`);
+    } finally { await blocker.abortTransaction(); await blocker.endSession(); }
+    assert.deepEqual(await holdsOf(product), [], 'nothing was left behind');
+    assert.equal((await holdStockForCheckout({ owner: 's:me', sessionId: 'cs_1', lines: want(product) })).ok, true, 'and the next hold works');
+    assert.equal((await holdsOf(product)).length, 1);
+  });
+
   await root.test('holds are never shown: not by a normal read, not by the public product projection, and a hold does not touch updatedAt', async () => {
     await reset();
     const product = await seedProduct({ stockQuantity: 2 });

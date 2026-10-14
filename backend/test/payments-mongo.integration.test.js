@@ -1,6 +1,8 @@
 // Runs against a REAL MongoDB replica set (transactions are part of what is being tested): the e-Transfer lane and the
 // bank-debit settlement. Skipped unless MONGODB_TEST_URI is set, like the Atlas stock test. Locally:
-//   docker run -d --name rfx-pay-mongo -p 127.0.0.1:27019:27017 mongo:7 --replSet rs0 --bind_ip_all
+//   docker run -d --name rfx-pay-mongo --ulimit nofile=65536:65536 -p 127.0.0.1:27019:27017 mongo:7 --replSet rs0 --bind_ip_all
+//   (the --ulimit matters: with this machine's default of 1024 open files mongod aborts after about twenty runs of these suites, because every run drops and
+//   recreates its collections and leaves a few dozen file handles open; the tests then hang until killed)
 //   docker exec rfx-pay-mongo mongosh --quiet --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:27017"}]})'
 //   MONGODB_TEST_URI='mongodb://127.0.0.1:27019/rfx_payments_test?directConnection=true' npm --prefix backend run test:payments
 // It drops the database named in the URI, so point it only at a throw-away one.

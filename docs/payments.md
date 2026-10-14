@@ -120,6 +120,11 @@ it is being checked out by someone else and how many minutes until it frees up i
   it received after the 48-hour hold lapsed), whatever is held.
 - It is advisory and fails open: if a hold cannot be written the sale goes ahead as before. A payment that arrives after its hold lapsed
   and finds the stock gone is still clamped at zero, flagged `OVERSOLD` on the order and alerted to the owner's phone.
+- A hold never keeps a buyer waiting for long. Its transaction has a deadline (`CHECKOUT_HOLD_TIMEOUT_MS`, default 5000): when two carts
+  after the same products collide, the database turns the second writer away and the driver retries it, and without a deadline that could
+  go on for the driver's default two minutes. The deadline is the driver's own `timeoutMS`, which cancels the transaction (a
+  `Promise.race` would leave it running). Past it the buyer is sent to pay without a hold, like after any other failure to hold. Each retry
+  of the transaction works from the time it runs at, so a rival hold that lapsed meanwhile does not wrongly refuse the buyer.
 - The clamp itself used to crash on a real database (Mongoose refuses an array update without `updatePipeline`, and every test stubbed that
   call), so an oversold payment became a 500 and a retry loop instead of a flagged order. Fixed in the same change; the real-database
   test `stock-holds.integration.test.js` covers it.

@@ -314,6 +314,8 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
     const holdOwner = ownerKey({ userId, sessionId });
     if (holdOwner) {
       try {
+        // (The hold's own transaction gives up after a few seconds, so a busy database cannot keep the buyer waiting: they are then sent
+        // to pay without a hold, like after any other failure to hold.)
         const hold = await stockHolder({
           owner: holdOwner,
           sessionId: session.id,
