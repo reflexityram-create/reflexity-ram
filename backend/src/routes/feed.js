@@ -6,6 +6,7 @@ const {
 const { labeledFeedImagePath } = require('../config/feedImages');
 const canadaPost = require('../utils/canadaPost');
 const { internationalOptions } = require('../utils/internationalShipping');
+const { quoteUnitedStates } = require('../utils/usCheckout');
 
 const router = express.Router();
 const BASE_URL = 'https://reflexityram.com';
@@ -66,6 +67,30 @@ const FEED_QUOTE_CONCURRENCY = 8;
 const FEED_SKIP_COUNTRIES = new Set(['KR']);
 let quoteAbroad = internationalOptions;
 let shipsAbroad = () => canadaPost.isConfigured();
+let quoteUs = quoteUnitedStates;
+// US checkout prepays customs inside shipping. Quotes are free (no Zonos
+// order or postage label is created); use the same product-specific total
+// as checkout rather than promising the international postage-only price.
+const unitedStatesShipping = async (products) => {
+  if (!shipsAbroad()) return new Map();
+  const queue = [...products];
+  const lines = new Map();
+  const worker = async () => {
+    while (queue.length) {
+      const product = queue.shift();
+      try {
+        const quote = await quoteUs({ lines: [{ product, qty: 1 }] });
+        if (Number.isFinite(quote.total) && quote.total >= 0) {
+          lines.set(product, { ...quote.service, country: 'US', price: quote.total });
+        }
+      } catch {
+        // Missing customs data or a failed quote must not hide other markets.
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: 3 }, worker));
+  return lines;
+};
 const internationalShipping = async () => {
   if (!shipsAbroad()) return [];
   const queue = INTERNATIONAL_COUNTRIES.filter((country) => !FEED_SKIP_COUNTRIES.has(country));
@@ -117,6 +142,7 @@ const description = (product) => {
 router.get('/feed.xml', async (_req, res) => {
   try {
     const [products, abroad] = await Promise.all([publicFeedProducts(), internationalShipping()]);
+    const usShipping = await unitedStatesShipping(products);
     let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0"><channel>\n';
     xml += `<title>Reflexity RAM</title><link>${BASE_URL}</link><description>Tested server memory modules</description>\n`;
     for (const product of products) {
@@ -142,6 +168,7 @@ router.get('/feed.xml', async (_req, res) => {
       const shippingPrice = shippingPriceForProduct(product);
       for (const country of ALLOWED_SHIPPING_COUNTRIES) xml += shippingXml(country, shippingPrice);
       for (const line of abroad) xml += abroadShippingXml(line);
+      if (usShipping.has(product)) xml += abroadShippingXml(usShipping.get(product));
       xml += '</item>\n';
     }
     res.type('application/xml').set('Cache-Control', 'public, max-age=3600').send(`${xml}</channel></rss>`);
@@ -168,9 +195,10 @@ router.get('/feed.csv', async (_req, res) => {
 });
 
 // Tests swap the Canada Post quotes; with no arguments the real ones come back.
-router.setFeedShippingForTest = ({ quote, enabled } = {}) => {
+router.setFeedShippingForTest = ({ quote, enabled, usQuote } = {}) => {
   quoteAbroad = quote || internationalOptions;
   shipsAbroad = enabled || (() => canadaPost.isConfigured());
+  quoteUs = usQuote || quoteUnitedStates;
 };
 
 module.exports = router;
