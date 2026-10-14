@@ -523,7 +523,7 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
   });
   const paidSession = () => session({ payment_status: 'paid', payment_intent: { id: 'pi_bankdebit_1', status: 'succeeded', latest_charge: 'ch_bankdebit_1' } });
   const withStripe = async (current, run) => {
-    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => current() });
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async () => current() });
     try { await run(stripeRouter.internalsForTest); } finally { stripeRouter.setCheckoutDependenciesForTest(); }
   };
   const bankSetup = async () => {
@@ -532,6 +532,93 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
     await seedCart(product, 2);
     return product;
   };
+
+  await root.test('checkout email: a crash immediately after the order insert is recovered without another stock decrement or email', async () => {
+    const product = await bankSetup();
+    const create = Order.create;
+    await withStripe(() => paidSession(), async ({ fulfillCheckoutSession }) => {
+      Order.create = async (...args) => { await create.apply(Order, args); throw new Error('process stopped after durable insert'); };
+      try { await assert.rejects(fulfillCheckoutSession('cs_test_bankdebit_1'), /process stopped/); }
+      finally { Order.create = create; }
+      assert.equal(sent.length, 0);
+      await require('../src/utils/checkoutEmails').retryCheckoutEmails({ recover: fulfillCheckoutSession });
+      const recovered = await fulfillCheckoutSession('cs_test_bankdebit_1');
+      assert.equal((await Order.findById(recovered._id)).checkoutEmail.status, 'sent');
+      await fulfillCheckoutSession('cs_test_bankdebit_1');
+      assert.equal(await stockOf(product), 8);
+      assert.equal(sent.length, 1);
+    });
+  });
+
+  await root.test('checkout email: a provider failure retries from the saved marker, and old orders without markers are silent', async () => {
+    await bankSetup();
+    await withStripe(() => paidSession(), async ({ fulfillCheckoutSession }) => {
+      process.env.FAIL_EMAIL = '1';
+      const order = await fulfillCheckoutSession('cs_test_bankdebit_1');
+      assert.equal((await Order.findById(order._id)).checkoutEmail.status, 'failed');
+      delete process.env.FAIL_EMAIL;
+      const { retryCheckoutEmails } = require('../src/utils/checkoutEmails');
+      await retryCheckoutEmails();
+      await fulfillCheckoutSession('cs_test_bankdebit_1');
+      assert.equal(sent.length, 1);
+      await Order.updateOne({ _id: order._id }, { $unset: { checkoutEmail: '' } });
+      await retryCheckoutEmails();
+      await fulfillCheckoutSession('cs_test_bankdebit_1');
+      assert.equal(sent.length, 1, 'no replay of historic confirmations');
+    });
+  });
+
+  await root.test('checkout email: acceptance followed by a failed database stamp reuses the provider key, including racing retries', async () => {
+    await bankSetup();
+    await withStripe(() => paidSession(), async ({ fulfillCheckoutSession }) => {
+      process.env.FAIL_EMAIL = '1';
+      const order = await fulfillCheckoutSession('cs_test_bankdebit_1');
+      delete process.env.FAIL_EMAIL;
+      const { deliverCheckoutEmail } = require('../src/utils/checkoutEmails');
+      const keys = new Set(); let attempts = 0; let failStamp = true;
+      const model = {
+        findOneAndUpdate: (...args) => Order.findOneAndUpdate(...args),
+        updateOne: (...args) => {
+          if (failStamp && args[1].$set['checkoutEmail.status'] === 'sent') { failStamp = false; throw new Error('stamp lost'); }
+          return Order.updateOne(...args);
+        },
+      };
+      const confirm = async ({ idempotencyKey }) => { attempts++; keys.add(idempotencyKey); };
+      const fresh = await Order.findById(order._id);
+      assert.equal((await deliverCheckoutEmail(fresh, 'checkoutEmail', { Order: model, confirm })).status, 'failed');
+      await Promise.all(Array.from({ length: 5 }, () => deliverCheckoutEmail(fresh, 'checkoutEmail', { Order: model, confirm })));
+      assert.equal(attempts, 2); assert.equal(keys.size, 1);
+      assert.equal((await Order.findById(order._id)).checkoutEmail.status, 'sent');
+    });
+  });
+
+  await root.test('checkout email: a dead sender lease expires, but retries stop before provider deduplication expires', async () => {
+    await bankSetup();
+    await withStripe(() => paidSession(), async ({ fulfillCheckoutSession }) => {
+      process.env.FAIL_EMAIL = '1';
+      const order = await fulfillCheckoutSession('cs_test_bankdebit_1');
+      delete process.env.FAIL_EMAIL;
+      const { retryCheckoutEmails } = require('../src/utils/checkoutEmails');
+      await Order.updateOne({ _id: order._id }, { $set: { 'checkoutEmail.status': 'sending', 'checkoutEmail.claimedAt': new Date(Date.now() - 6 * 60000) } });
+      await retryCheckoutEmails(); assert.equal(sent.length, 1);
+      await Order.updateOne({ _id: order._id }, { $set: { 'checkoutEmail.status': 'failed', 'checkoutEmail.queuedAt': new Date(Date.now() - 24 * HOUR) } });
+      await retryCheckoutEmails(); assert.equal(sent.length, 1);
+    });
+  });
+
+  await root.test('checkout email: a failed bank-debit clearing confirmation retries without replaying the pending notice', async () => {
+    await bankSetup(); let current = session();
+    await withStripe(() => current, async ({ fulfillCheckoutSession, settleBankDebitPaid }) => {
+      await fulfillCheckoutSession('cs_test_bankdebit_1');
+      current = paidSession(); process.env.FAIL_EMAIL = '1';
+      await settleBankDebitPaid('cs_test_bankdebit_1');
+      delete process.env.FAIL_EMAIL;
+      await require('../src/utils/checkoutEmails').retryCheckoutEmails();
+      await settleBankDebitPaid('cs_test_bankdebit_1');
+      assert.equal(sent.filter((m) => /bank debit processing/.test(m.subject)).length, 1);
+      assert.equal(sent.filter((m) => /Order confirmed/.test(m.subject)).length, 1);
+    });
+  });
 
   await root.test('bank debit: authorized but not cleared makes a pending order that holds stock, tells the buyer and the owner, and is idempotent', async () => {
     const product = await bankSetup();
@@ -699,7 +786,7 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
 
   await root.test('the success-page poll sees a clearing debit as "processing" with an order number, and a card sale as before', async () => {
     await bankSetup();
-    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => session() });
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async () => session() });
     try {
       const app = express();
       app.use('/api/stripe', stripeRouter);
@@ -722,7 +809,7 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
     const product = await bankSetup();
     await seedCart(product, 1, 'session_second_buyer_0123456');
     const sessions = new Map();
-    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async (id) => sessions.get(id) });
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async (id) => sessions.get(id) });
     const app = express();
     app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
     app.use('/api/stripe', stripeRouter);
@@ -891,6 +978,25 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
     } finally { delete process.env.ETRANSFER_MAX_TOTAL_CAD; }
   });
 
+  await root.test('the e-Transfer cap is atomic across different carts and different products for one email', async () => {
+    await reset();
+    const carts = [];
+    for (let i = 0; i < 6; i++) {
+      const product = await seedProduct({ slug: `cap-${i}`, sku: `CAP-${i}`, stripePriceId: `price_cap_${i}` });
+      const sessionId = `cap_session_${i}_0123456789`;
+      await seedCart(product, 1, sessionId); carts.push({ product, sessionId });
+    }
+    const results = await Promise.allSettled(carts.map(({ sessionId }) => place({ sessionId })));
+    assert.equal(results.filter((r) => r.status === 'fulfilled').length, 3);
+    const refused = results.filter((r) => r.status === 'rejected');
+    assert.ok(refused.every((r) => r.reason instanceof EtransferError && r.reason.status === 429));
+    assert.equal(await Order.countDocuments(), 3);
+    assert.equal(sent.length, 3);
+    assert.equal(await Cart.countDocuments({ 'items.0': { $exists: true } }), 3, 'refused carts survive transaction rollback');
+    const products = await Product.find().lean();
+    assert.equal(products.reduce((n, p) => n + p.stockQuantity, 0), 57, 'only three units reserved');
+  });
+
   await root.test('review F3: five simultaneous submits of one cart make exactly one order, one set of instructions and one alert', async () => {
     await reset();
     const product = await seedProduct();
@@ -998,7 +1104,7 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
       payment_intent: { id: 'pi_card_1', latest_charge: 'ch_card_1' },
     });
     const poll = async (current) => {
-      stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => current });
+      stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async () => current });
       const app = express();
       app.use('/api/stripe', stripeRouter);
       const server = http.createServer(app);
@@ -1095,7 +1201,7 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
     const product = await bankSetup();
     const before = sent.length;
     const refunded = { id: 'ch_card_review', object: 'charge', refunded: true, amount_refunded: 28400 };
-    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: asStripe(() => cardSession(), refunded) });
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: asStripe(() => cardSession(), refunded) });
     try {
       const { fulfillCheckoutSession } = stripeRouter.internalsForTest;
       const order = await fulfillCheckoutSession('cs_test_bankdebit_1');
@@ -1122,7 +1228,7 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
     let reads = 0;
     // The first read (the one the order is built from) sees an unrefunded charge; the refund lands before the order is saved,
     // its charge.refunded finds no order, and only the second look, after the save, can see it.
-    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async (id, options = {}) => {
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async (id, options = {}) => {
       reads += 1;
       const charge = { id: 'ch_card_review', object: 'charge', refunded: reads > 1, amount_refunded: reads > 1 ? 28400 : 0 };
       return asStripe(() => cardSession(), charge)(id, options);
@@ -1145,7 +1251,7 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
     const before = sent.length;
     let reads = 0;
     const { fulfillCheckoutSession } = stripeRouter.internalsForTest;
-    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async (id, options = {}) => {
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async (id, options = {}) => {
       reads += 1;
       if (reads === 2) await fulfillCheckoutSession(id);   // the success page's own call: finds the new order, takes its stock
       const charge = { id: 'ch_card_review', object: 'charge', refunded: reads > 1, amount_refunded: reads > 1 ? 28400 : 0 };
@@ -1167,7 +1273,7 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
     const before = sent.length;
     let reads = 0;
     const realFindById = Order.findById;
-    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async (id, options = {}) => {
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async (id, options = {}) => {
       reads += 1;
       if (reads === 2) {
         // Stripe's charge.refunded got there first and marked the order; then the database fails the read-back.
@@ -1190,7 +1296,7 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
   await root.test('review 2026-10-14: if the second look at the charge fails, the paid order goes ahead as before', async () => {
     const product = await bankSetup();
     let reads = 0;
-    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async (id, options = {}) => {
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async (id, options = {}) => {
       reads += 1;
       if (reads > 1) throw new Error('Stripe is unreachable');
       return asStripe(() => cardSession(), { id: 'ch_card_review', object: 'charge', refunded: false, amount_refunded: 0 })(id, options);
@@ -1207,7 +1313,7 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
   await root.test('review 2026-10-14: a payment partly refunded before its order existed is an ordinary paid order with a note', async () => {
     const product = await bankSetup();
     const partial = { id: 'ch_card_review', object: 'charge', refunded: false, amount_refunded: 1000 };
-    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: asStripe(() => cardSession(), partial) });
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: asStripe(() => cardSession(), partial) });
     try {
       const order = await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_test_bankdebit_1');
       assert.equal(order.paymentStatus, 'paid');
@@ -1228,7 +1334,7 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
     const { fulfillCheckoutSession } = stripeRouter.internalsForTest;
     try {
       // through the Stripe Product we stored
-      stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => cardSession({ id: 'cs_by_product', line_items: line(stripeProduct) }) });
+      stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async () => cardSession({ id: 'cs_by_product', line_items: line(stripeProduct) }) });
       const byProduct = await fulfillCheckoutSession('cs_by_product');
       assert.ok(byProduct, 'an order was made');
       assert.equal(String(byProduct.items[0].product), String(product._id));
@@ -1237,14 +1343,14 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
 
       // through the productId the sync wrote into the Stripe Product (our record of its ID was lost)
       await Product.updateOne({ _id: product._id }, { $unset: { stripeProductId: '' } });
-      stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => cardSession({ id: 'cs_by_metadata', payment_intent: { id: 'pi_by_metadata', status: 'succeeded', latest_charge: 'ch_by_metadata' }, line_items: line({ ...stripeProduct, id: 'prod_unknown' }) }) });
+      stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async () => cardSession({ id: 'cs_by_metadata', payment_intent: { id: 'pi_by_metadata', status: 'succeeded', latest_charge: 'ch_by_metadata' }, line_items: line({ ...stripeProduct, id: 'prod_unknown' }) }) });
       const byMetadata = await fulfillCheckoutSession('cs_by_metadata');
       assert.ok(byMetadata);
       assert.equal(String(byMetadata.items[0].product), String(product._id));
 
       // nothing matches at all: no order, and the owner hears about it once
       const nothing = { id: 'prod_gone', object: 'product', metadata: { slug: 'no-such-slug', productId: '64b7f0c2a1b2c3d4e5f60719' } };
-      stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => cardSession({ id: 'cs_nothing', currency: 'cad', payment_intent: { id: 'pi_nothing', status: 'succeeded', latest_charge: 'ch_nothing' }, line_items: line(nothing) }) });
+      stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async () => cardSession({ id: 'cs_nothing', currency: 'cad', payment_intent: { id: 'pi_nothing', status: 'succeeded', latest_charge: 'ch_nothing' }, line_items: line(nothing) }) });
       assert.equal(await fulfillCheckoutSession('cs_nothing'), null);
       assert.equal(await fulfillCheckoutSession('cs_nothing'), null);
       assert.equal(await Order.countDocuments({ stripeCheckoutSessionId: 'cs_nothing' }), 0);
@@ -1264,7 +1370,7 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
     }
     const lineFor = (n) => ({ id: `li_many_${n}`, price: { id: `price_many_${n}`, unit_amount: 13500, product: { id: `prod_many_${n}`, metadata: { slug: `ddr4-many-${n}` } } }, quantity: 1 });
     const pages = [];
-    stripeRouter.setCheckoutDependenciesForTest({
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail,
       retrieveSession: async () => cardSession({ id: 'cs_many', line_items: { object: 'list', data: [lineFor(1)], has_more: true } }),
       listLineItems: async (id, params) => {
         pages.push({ id, ...params });

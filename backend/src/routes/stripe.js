@@ -4,7 +4,8 @@ const Cart = require('../models/Cart');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const { optionalAuth } = require('../middleware/auth');
-const { sendOrderConfirmationEmail, sendPaymentNoticeEmail } = require('../utils/email');
+const { pendingCheckoutEmail, deliverCheckoutEmail } = require('../utils/checkoutEmails');
+const { sendPaymentNoticeEmail } = require('../utils/email');
 const {
   toStripeShippingOptions,
   resolveCartShippingPrice,
@@ -25,6 +26,7 @@ const { BANK_DEBIT, bankDebitEnabled, paymentMethodSettings, automaticTaxEnabled
 const { isDisposableEmail } = require('../utils/disposableEmail');
 const { isFullyRefundedCharge } = require('../utils/refunds');
 const { cancelReviewRequest } = require('../utils/reviewRequests');
+const { recordDisputeEvent } = require('../utils/disputes');
 const { estimateDeliveryDate } = require('../utils/deliveryEstimate');
 const { shippingChoiceNote } = require('../utils/shippingChoice');
 const { resolveCanadaDelivery, DeliveryChoiceError } = require('../utils/canadaDelivery');
@@ -57,6 +59,8 @@ let orderCanceller = cancelOrderAndRestoreStock;
 let stockHolder = holdStockForCheckout;
 let stockHoldReleaser = releaseCheckoutHold;
 let checkoutSessionExpirer = (sessionId) => stripe.checkout.sessions.expire(sessionId);
+let disputeRecorder = recordDisputeEvent;
+let checkoutEmailDeliverer = deliverCheckoutEmail;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CHECKOUT SESSIONS (primary checkout flow)
@@ -386,6 +390,18 @@ const ensureCriticalFulfillmentEffects = async (order) => {
   // They come after the stock is taken, never before (see releaseHoldsOf).
   if (order.postOrderPending) await finishPostOrderSteps(order);
 
+  // A recovery can race the original writer's refund check. Do the same charge
+  // check before making its receipt eligible for either the timer or this call.
+  if (order.checkoutEmail && !order.checkoutEmail.ready && order.paymentStatus !== 'refunded') {
+    const checkout = await checkoutSessionRetriever(order.stripeCheckoutSessionId, { expand: ['payment_intent.latest_charge'] });
+    const charge = checkout?.payment_intent?.latest_charge;
+    if (charge && typeof charge === 'object' && isFullyRefundedCharge(charge)) return order;
+    await Order.updateOne({ _id: order._id }, { $set: { 'checkoutEmail.ready': true } }, { timestamps: false });
+    order.checkoutEmail.ready = true;
+  }
+  await checkoutEmailDeliverer(order);
+  await checkoutEmailDeliverer(order, 'bankDebitClearedEmail');
+
   // Retry the GA4 purchase if an earlier attempt failed (no-op once reported).
   await reportPaidOrderToGa4(order, { currency: CURRENCY });
 
@@ -621,6 +637,7 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
       total,
       stripeCheckoutSessionId: session.id,
       postOrderPending: true,
+      checkoutEmail: refundedFirst ? undefined : pendingCheckoutEmail(customer.email, delayed ? 'bankDebitReceived' : 'confirmation'),
       stripePaymentIntentId: typeof pi === 'string' ? pi : pi?.id,
       stripeChargeId: charge?.id || (typeof latestCharge === 'string' ? latestCharge : undefined),
       analyticsClientId: gaIds.clientId,
@@ -741,34 +758,8 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
       .catch((err) => console.error(`Order ${order.orderNumber}: could not clear its unfinished mark (a retry will):`, err.message));
   }
 
-  // Confirmation email (non-blocking). A debit still clearing gets "received, processing" instead; the confirmation follows when it clears.
-  const emailAddress = customer.email;
-  if (emailAddress && delayed) {
-    try {
-      await sendPaymentNoticeEmail({ email: emailAddress, firstName: shippingAddress.firstName, order, kind: 'bankDebitReceived' });
-    } catch (emailErr) {
-      console.error('Bank debit received email failed:', emailErr.message);
-    }
-  } else if (emailAddress) {
-    try {
-      await sendOrderConfirmationEmail({
-        email: emailAddress,
-        firstName: shippingAddress.firstName,
-        order: {
-          orderNumber: order.orderNumber,
-          items: order.items,
-          subtotal: order.subtotal,
-          discount: order.discount,
-          shippingCost: order.shippingCost,
-          importDuties: order.importDuties,
-          tax: order.tax,
-          total: order.total,
-        },
-      });
-    } catch (emailErr) {
-      console.error('Confirmation email failed:', emailErr.message);
-    }
-  }
+  // Only now has the initial refund check completed. The marker itself was saved with the order.
+  await checkoutEmailDeliverer(order, 'checkoutEmail', { ready: true });
 
   // GA4 purchase (server-side, fail-open, runs after every critical effect above).
   await reportPaidOrderToGa4(order, { currency: CURRENCY });
@@ -814,6 +805,7 @@ const settleBankDebitPaid = async (checkoutSessionId) => {
         paymentStatus: 'paid',
         status: 'processing',
         paidAt: now,
+        bankDebitClearedEmail: session.customer_details?.email ? { ...pendingCheckoutEmail(session.customer_details.email, 'confirmation', now), ready: true } : undefined,
         // Counted from the day it cleared, with the same transit time the card and e-Transfer paths use for Faster shipping.
         estimatedDelivery: estimateDeliveryDate({
           placedAt: now,
@@ -843,21 +835,7 @@ const settleBankDebitPaid = async (checkoutSessionId) => {
     return current;
   }
 
-  const email = session.customer_details?.email;
-  if (email) {
-    try {
-      await sendOrderConfirmationEmail({
-        email,
-        firstName: paid.shippingAddress?.firstName,
-        order: {
-          orderNumber: paid.orderNumber, items: paid.items, subtotal: paid.subtotal, discount: paid.discount,
-          shippingCost: paid.shippingCost, importDuties: paid.importDuties, tax: paid.tax, total: paid.total,
-        },
-      });
-    } catch (emailErr) {
-      console.error('Confirmation email failed:', emailErr.message);
-    }
-  }
+  await checkoutEmailDeliverer(paid, 'bankDebitClearedEmail');
   await announceCleared(paid);
   await reportPaidOrderToGa4(paid, { currency: CURRENCY });
   console.log(`✅ Bank debit cleared for session ${checkoutSessionId} → order ${paid.orderNumber}`);
@@ -1044,6 +1022,14 @@ router.post('/webhook', async (req, res) => {
         break;
       }
 
+      // ── A buyer's bank disputed a payment (or asked about one): record it on the order and tell the owner ──
+      case 'charge.dispute.created':
+      case 'charge.dispute.updated':
+      case 'charge.dispute.closed': {
+        await disputeRecorder(event);
+        break;
+      }
+
       default:
         // Log unhandled events for debugging but don't error
         console.log(`Unhandled Stripe event: ${event.type}`);
@@ -1055,6 +1041,8 @@ router.post('/webhook', async (req, res) => {
     res.status(500).json({ error: 'Webhook processing failed' });
   }
 });
+
+router.recoverCheckoutEmail = fulfillCheckoutSession;
 
 if (process.env.NODE_ENV === 'test') {
   router.setCheckoutDependenciesForTest = ({
@@ -1069,6 +1057,8 @@ if (process.env.NODE_ENV === 'test') {
     holdStock = async () => ({ ok: true, held: false }),
     releaseHold = async () => 0,
     expireSession = async () => ({}),
+    recordDispute = recordDisputeEvent,
+    deliverEmail = async () => ({ status: 'unchanged' }),
   } = {}) => {
     checkoutPriceEnsurer = ensurePrice;
     bankDebitCouponEnsurer = ensureCoupon;
@@ -1080,6 +1070,8 @@ if (process.env.NODE_ENV === 'test') {
     stockHolder = holdStock;
     stockHoldReleaser = releaseHold;
     checkoutSessionExpirer = expireSession;
+    disputeRecorder = recordDispute;
+    checkoutEmailDeliverer = deliverEmail;
   };
   // The settlement steps are not routes of their own, so tests reach them here.
   router.internalsForTest = { fulfillCheckoutSession, settleBankDebitPaid, settleBankDebitFailed, isDelayedBankDebit, bankDebitInFlight };

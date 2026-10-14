@@ -1,5 +1,10 @@
 const mongoose = require('mongoose');
 
+const checkoutEmailSchema = new mongoose.Schema({
+  email: String, kind: String, status: { type: String, enum: ['pending', 'sending', 'sent', 'failed'] },
+  queuedAt: Date, claimedAt: Date, sentAt: Date, ready: Boolean,
+}, { _id: false });
+
 const orderItemSchema = new mongoose.Schema({
   product: {
     type: mongoose.Schema.Types.ObjectId,
@@ -100,6 +105,22 @@ const orderSchema = new mongoose.Schema({
   // (utils/stockHolds.js) and the cart that became this order emptied. A crash in between leaves it set, and the next retry of the
   // order (Stripe redelivers the event, the buyer reopens the success page) finishes the job.
   postOrderPending: { type: Boolean },
+  checkoutEmail: checkoutEmailSchema,
+  bankDebitClearedEmail: checkoutEmailSchema,
+  // A dispute (chargeback) or a bank inquiry on this order's payment, kept up to date from Stripe's charge.dispute.* events
+  // (utils/disputes.js). Only the owner sees it: the buyer's order shape (utils/customerOrders.js) is an explicit list without it.
+  dispute: {
+    id: { type: String },
+    status: { type: String },          // Stripe's: needs_response, under_review, won, lost, warning_needs_response, warning_closed ...
+    reason: { type: String },          // Stripe's reason code: fraudulent, product_not_received ...
+    reasonText: { type: String },      // the same in words, for the admin page and the alert
+    amount: { type: Number },          // dollars
+    currency: { type: String },
+    openedAt: { type: Date },
+    evidenceDueBy: { type: Date },     // the owner's deadline to send evidence in Stripe
+    closedAt: { type: Date },
+    eventAt: { type: Date },           // when the newest Stripe event applied here was made: an older one arriving late is ignored
+  },
   // Server-side GA4 purchase reporting (see utils/ga4.js, utils/purchaseAnalytics.js).
   // Client/session ids come from the buyer's browser at checkout; the sent-at stamp
   // is the exactly-once claim. select:false keeps them out of every default query.

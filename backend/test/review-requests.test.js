@@ -196,6 +196,7 @@ test('the review email links to the review page, can be scheduled, and escapes o
 const recordUpdates = (t, { claimWins = true } = {}) => {
   const updates = [];
   stub(t, Order, {
+    findOne: () => query(order()),
     updateOne: async (filter, update) => {
       updates.push({ filter, update });
       const isClaim = Object.hasOwn(filter, 'reviewRequest.claimedAt');
@@ -220,7 +221,7 @@ test('marking an order shipped schedules one review email ten days later with a 
   assert.deepEqual(verifyReviewToken(tokenFromUrl(reviewLink)), { orderId: ORDER_ID });
 
   // Claimed first (only when unclaimed), then the Resend id and date are kept for cancelling.
-  assert.deepEqual(updates[0].filter, { _id: ORDER_ID, 'reviewRequest.claimedAt': null });
+  assert.deepEqual(updates[0].filter, { _id: ORDER_ID, 'reviewRequest.claimedAt': null, $or: [{ 'dispute.id': { $exists: false } }, { 'dispute.status': 'won' }] });
   assert.equal(updates[0].update.$set['reviewRequest.claimedAt'], now);
   assert.deepEqual(updates[1].update.$set, {
     'reviewRequest.scheduledFor': result.scheduledFor,
@@ -461,6 +462,7 @@ test('the admin "send review email now" button sends once and explains a refusal
   stub(t, Order, { findById: () => query(order()) });
   let claimed = false;
   stub(t, Order, {
+    findOne: () => query(order()),
     updateOne: async (filter) => {
       const isClaim = Object.hasOwn(filter, 'reviewRequest.claimedAt');
       if (isClaim && claimed) return { modifiedCount: 0 };

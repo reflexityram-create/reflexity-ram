@@ -96,7 +96,7 @@ const sendPasswordResetEmail = async ({ email, firstName, token }) => {
 /**
  * Send order confirmation email
  */
-const sendOrderConfirmationEmail = async ({ email, firstName, order }) => {
+const sendOrderConfirmationEmail = async ({ email, firstName, order, idempotencyKey }) => {
   const orderUrl = orderAccessUrl(FRONTEND_URL, order, email);
 
   const itemsHtml = order.items.map(item => `
@@ -176,7 +176,7 @@ const sendOrderConfirmationEmail = async ({ email, firstName, order }) => {
       </body>
       </html>
     `,
-  });
+  }, idempotencyKey ? { idempotencyKey } : undefined);
 
   if (error) { console.error('Resend error detail:', JSON.stringify(error)); throw new Error(`Email send failed: ${error.message || JSON.stringify(error)}`); }
   return data;

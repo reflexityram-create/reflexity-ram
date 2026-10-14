@@ -330,6 +330,7 @@ function etransferHarness({ user = null, sessionId = 'sess_test_0123456789abcdef
   const seen = { options: null };
   const deps = {
     Cart: { findOne: async () => ({ _id: 'c1', updatedAt: NOW, items: [{ product: 'p1', qty: 1 }] }), updateOne: async () => ({ modifiedCount: 1 }) },
+    prepareCap: async () => async () => 1,
     Order: { countDocuments: async () => 0 },
     resolveLines: async () => [{ item: { qty: 1 }, product: { _id: 'p1', slug: 's', sku: 'S', name: 'N', price: 100, stockQuantity: 5, stock: 'in', images: [] } }],
     createOrder: async (data, options) => { seen.options = options; await options.beforeCommit({}); return { ...data, _id: 'o1', orderNumber: 'RFX-T-1' }; },

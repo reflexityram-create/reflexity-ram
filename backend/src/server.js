@@ -29,6 +29,7 @@ const { onlyWhenProvider, dailyLookupCap, photonDailyCap } = require('./utils/ad
 const { sweepEtransferOrdersThrottled } = require('./utils/etransfer');
 const { syncShippedOrdersThrottled } = require('./utils/trackingSync');
 const { retryUntrackedShipmentNoticesThrottled } = require('./utils/shippingNotifications');
+const { retryCheckoutEmails } = require('./utils/checkoutEmails');
 const { createErrorHandler } = require('./middleware/errorHandler');
 const { createAdminDevicesRouter } = require('./routes/adminDevices');
 const { createDeviceLimiter, createPairLimiter } = require('./middleware/phoneLimiters');
@@ -379,6 +380,7 @@ mongoose
         sweepEtransferOrdersThrottled().catch(() => {});
         syncShippedOrdersThrottled().catch(() => {});
         retryUntrackedShipmentNoticesThrottled().catch(() => {});
+        retryCheckoutEmails({ recover: stripeRoutes?.recoverCheckoutEmail }).catch(() => {});
       };
       setTimeout(backgroundJobs, 60 * 1000).unref();
       setInterval(backgroundJobs, 5 * 60 * 1000).unref();
