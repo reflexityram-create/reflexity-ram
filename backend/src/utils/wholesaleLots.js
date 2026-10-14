@@ -1,6 +1,10 @@
 const crypto = require('crypto');
 
 const WHOLESALE_IMAGE_PREFIX = 'reflexity-ram/wholesale/';
+
+// At most two decimal places, judged as people write prices: 19.99 * 100 is 1998.9999999999998 in floating point, so the exact
+// comparison used before refused ordinary prices (19.99, 4.35, 1.10). A tolerance far below a cent still refuses 19.999.
+const hasAtMostTwoDecimals = (value) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-6;
 const WHOLESALE_CLOUDINARY_CLOUD = 'fike';
 
 const LOT_FIELDS = Object.freeze([
@@ -121,7 +125,7 @@ function cleanWholesaleLotInput(input = {}) {
     if (field === 'unitPriceCad') {
       const number = Number(input[field]);
       if (!Number.isFinite(number) || number <= 0 || number > 1_000_000
-        || Math.round(number * 100) !== number * 100) {
+        || !hasAtMostTwoDecimals(number)) {
         errors.push('unitPriceCad must be a positive CAD amount with at most two decimal places.');
       } else {
         data.unitPriceCad = number;
@@ -227,6 +231,7 @@ module.exports = {
   adminWholesaleLot,
   cleanWholesaleImage,
   cleanWholesaleLotInput,
+  hasAtMostTwoDecimals,
   isPublicWholesaleLot,
   isWholesaleImage,
   makeLotCode,

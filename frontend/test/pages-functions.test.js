@@ -321,6 +321,24 @@ test("static edge rejects unknown routes while retaining restored client routes"
   assert.equal(await head.text(), "");
 });
 
+// The edge keeps its own list of client routes. /checkout/e-transfer and /admin/more were added to the app but not to that
+// list, so a reload of either (a phone brings the e-Transfer form back after the banking app) was answered 404 "Page not found".
+test("every route the app serves is a page the edge answers 200 for", async () => {
+  const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+  const routes = [...app.matchAll(/path="([^"]+)"/g)].map((match) => match[1])
+    .filter((path) => path !== "*" && !path.includes("-lab")); // the lab pages exist only in development builds
+  assert.ok(routes.includes("/checkout/e-transfer") && routes.includes("/admin/more"), "the route list was read");
+  const sample = (path) => (path === "/guides/:slug" ? "/guides/how-to-identify-ram" : path.replace(/:[^/]+/g, "sample-1"));
+  for (const route of routes) {
+    const response = await renderStaticPage({
+      request: new Request(`https://reflexityram.com${sample(route)}`),
+      next: async () => new Response(PRODUCT_SHELL, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }),
+    });
+    assert.equal(response.status, 200, route);
+    assert.notEqual(response.headers.get("x-reflexity-seo"), "static-not-found", route);
+  }
+});
+
 test("static unknown routes use a standalone 404 for malformed or oversized shells", async () => {
   for (const shell of [`${PRODUCT_SHELL}${"x".repeat(128 * 1024)}`, "<html><head><title>old</title></head><body>old</body></html>"]) {
     const response = await renderStaticPage({ request: new Request("https://reflexityram.com/no-such-page"), next: async () => new Response(shell, { headers: { "Content-Type": "text/html" } }) });

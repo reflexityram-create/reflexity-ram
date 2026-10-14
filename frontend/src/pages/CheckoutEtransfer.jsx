@@ -13,6 +13,7 @@ import { ETRANSFER, PROVINCES, discountFor, etransferSizeProblem, normalizePosta
 import { ecommerceItem, readGaIdentifiers, trackEvent } from '@/lib/analytics';
 import { SUPPORT_EMAIL } from '@/lib/contact';
 import AddressSuggest from '@/components/AddressSuggest';
+import CartLoadError from '@/components/CartLoadError';
 import { applyAddress, postalNotes, provinceToSelect } from '@/lib/addressSuggest';
 
 // Pay by Interac e-Transfer. Stripe cannot take one, so this is the shop's own order form: the buyer gives a Canadian
@@ -51,7 +52,7 @@ export default function CheckoutEtransfer() {
   const navigate = useNavigate();
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
-  const { items, subtotal, shipping, shippingFaster, itemCount, fetchCart, clearCartLocal, isLoading } = useCartStore();
+  const { items, subtotal, shipping, shippingFaster, itemCount, fetchCart, clearCartLocal, isLoading, loaded, loadFailed } = useCartStore();
   const [offer, setOffer] = useState(null);                  // the e-Transfer entry from the server, once known
   const [form, setForm] = useState(EMPTY);
   const [errors, setErrors] = useState({});
@@ -147,8 +148,11 @@ export default function CheckoutEtransfer() {
     }
   };
 
-  if (isLoading && items.length === 0) {
+  if (items.length === 0 && !loadFailed && (isLoading || !loaded)) {
     return (<><Header /><main className="container-tight pt-28 pb-20 min-h-screen"><div className="flex items-center gap-2 text-neutral-400 py-12"><Loader2 size={16} className="animate-spin" /> Loading your cart…</div></main><Footer /></>);
+  }
+  if (items.length === 0 && loadFailed) {
+    return (<><Header /><main className="container-tight pt-28 pb-20 min-h-screen"><CartLoadError onRetry={fetchCart} /></main><Footer /></>);
   }
   if (items.length === 0) {
     return (

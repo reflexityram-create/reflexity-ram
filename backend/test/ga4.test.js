@@ -59,7 +59,7 @@ test('the purchase payload carries the verified order values and joins the brows
     params: {
       transaction_id: 'RFX-MU6ZLMTV-78B757',
       currency: 'CAD',
-      value: 1094,
+      value: 1000,
       tax: 125.8,
       shipping: 14,
       items: [{ item_id: 'RFX-SK-HYNIX', item_name: 'SK hynix 64GB', price: 500, quantity: 2 }],

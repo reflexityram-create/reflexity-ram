@@ -21,6 +21,7 @@ import { DETAIL_IMAGE_WIDTHS, imageSrcSet, imageUrl } from "@/lib/imageUrl";
 import EmptyState from "@/components/EmptyState";
 import { useCart, useRecentlyViewed } from "@/lib/store";
 import useAuthStore from "@/lib/authStore";
+import { loadFailure } from "@/lib/loadFailure";
 import { useSEO } from "@/lib/seo";
 import { productsApi } from "@/lib/api";
 import { reviewsApi } from "@/lib/api";
@@ -58,6 +59,11 @@ export default function Product() {
   const [related, setRelated] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0); // "Try again" after a failed load reads the product again
+  // One add at a time: a double tap on a phone sent two adds and put twice the chosen quantity in the cart.
+  const addingRef = useRef(false);
+  const [adding, setAdding] = useState(false);
 
   const [qty, setQty] = useState(1);
   // The picker stops at the stock on hand (the product arrives with its count).
@@ -91,6 +97,7 @@ export default function Product() {
     let active = true;
     setLoading(true);
     setNotFound(false);
+    setLoadFailed(false);
     setP(null);
     setImgIdx(0);
     productsApi.getBySlug(slug, { signal: controller.signal })
@@ -109,10 +116,15 @@ export default function Product() {
           })
           .catch((error) => { if (active && error?.code !== 'ERR_CANCELED') return; });
       })
-      .catch((error) => { if (active && error?.code !== 'ERR_CANCELED') setNotFound(true); })
+      .catch((error) => {
+        const outcome = loadFailure(error);
+        if (!active || outcome === 'cancelled') return;
+        if (outcome === 'not-found') setNotFound(true);
+        else setLoadFailed(true);
+      })
       .finally(() => active && setLoading(false));
     return () => { active = false; controller.abort(); };
-  }, [slug]);
+  }, [slug, attempt]);
 
   useEffect(() => {
     if (!p?.slug) return;
@@ -194,6 +206,29 @@ export default function Product() {
     );
   }
 
+  if (loadFailed) {
+    return (
+      <>
+        <Header />
+        <main className="page" data-testid="product-load-failed">
+          <div className="container-tight pt-16">
+            <EmptyState
+              icon={AlertTriangle}
+              title="Could not load this product"
+              description="This is usually a slow connection or our server waking up. Try again in a moment."
+              ctaLabel="Try again"
+              onCta={() => setAttempt((n) => n + 1)}
+              secondaryLabel="Back to shop"
+              secondaryTo="/shop"
+              as="h1"
+            />
+          </div>
+        </main>
+        <Footer />
+      </>
+    );
+  }
+
   if (notFound || !p) {
     return (
       <>
@@ -217,10 +252,23 @@ export default function Product() {
     );
   }
 
+  // Runs one add at a time (see addingRef); the buttons are disabled while it is on its way.
+  const addOnce = async () => {
+    if (soldOut || addingRef.current) return null;
+    addingRef.current = true;
+    setAdding(true);
+    try {
+      return await addItem(p.slug, qty);
+    } finally {
+      addingRef.current = false;
+      setAdding(false);
+    }
+  };
+
   const addToCart = async () => {
-    if (soldOut) return;
-    const result = await addItem(p.slug, qty);
-    if (result && !result.success) {
+    const result = await addOnce();
+    if (!result) return;
+    if (!result.success) {
       toast.error(result.message || "Failed to add to cart");
       return;
     }
@@ -236,9 +284,9 @@ export default function Product() {
   };
 
   const buyNow = async () => {
-    if (soldOut) return;
-    const result = await addItem(p.slug, qty);
-    if (result && !result.success) {
+    const result = await addOnce();
+    if (!result) return;
+    if (!result.success) {
       toast.error(result.message || "Failed to add to cart");
       return;
     }
@@ -288,7 +336,9 @@ export default function Product() {
             <div>
               <button
                 className="block w-full glass rounded-2xl overflow-hidden aspect-[2/1] sm:aspect-[16/9] mb-3 cursor-zoom-in !bg-white p-4 sm:p-8"
+                type="button"
                 onClick={() => setModalOpen(true)}
+                aria-label={`Enlarge the photo of ${p.name}`}
                 data-testid="product-main-image-btn"
               >
                 {imageUrls[imgIdx] ? (
@@ -315,7 +365,10 @@ export default function Product() {
                   {imageUrls.map((src, i) => (
                     <button
                       key={i}
+                      type="button"
                       onClick={() => setImgIdx(i)}
+                      aria-label={`Show photo ${i + 1} of ${imageUrls.length}`}
+                      aria-pressed={i === imgIdx}
                       data-active={i === imgIdx}
                       className={`aspect-square rounded-lg overflow-hidden border ${
                         i === imgIdx ? "border-white/40" : "border-white/5 hover:border-white/20"
@@ -414,7 +467,7 @@ export default function Product() {
                 />
                 <button
                   onClick={addToCart}
-                  disabled={soldOut}
+                  disabled={soldOut || adding}
                   className="btn-primary flex-1 sm:flex-none min-w-[9.5rem] whitespace-nowrap"
                   data-testid="product-add-to-cart-btn"
                 >
@@ -422,7 +475,7 @@ export default function Product() {
                 </button>
                 <button
                   onClick={buyNow}
-                  disabled={soldOut}
+                  disabled={soldOut || adding}
                   className="btn-secondary flex-1 sm:flex-none min-w-[7rem] whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                   data-testid="product-buy-now-btn"
                 >
@@ -612,7 +665,7 @@ export default function Product() {
           />
           <button
             onClick={addToCart}
-            disabled={soldOut}
+            disabled={soldOut || adding}
             className="btn-primary shrink-0 py-2.5 px-4 text-[13px]"
             data-testid="mobile-add-to-cart"
           >
@@ -735,8 +788,8 @@ function ReviewsSection({ product, data, onUpdated, embedded = false }) {
                   </button>
                 ))}
               </div>
-              <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Review title (optional)" maxLength={120} />
-              <textarea className="input min-h-28 resize-y" value={body} onChange={(e) => setBody(e.target.value)} placeholder="How did it work for your system?" minLength={10} maxLength={2000} required />
+              <input className="input" aria-label="Review title (optional)" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Review title (optional)" maxLength={120} />
+              <textarea className="input min-h-28 resize-y" aria-label="Your review" value={body} onChange={(e) => setBody(e.target.value)} placeholder="How did it work for your system?" minLength={10} maxLength={2000} required />
               <button className="btn-primary w-full" disabled={submitting}>{submitting ? "Publishing..." : "Publish verified review"}</button>
               <p className="text-[11px] text-neutral-500">Only paid orders that have shipped can review. Low ratings are published too.</p>
             </form>

@@ -225,9 +225,9 @@ export default function Account() {
               {tab === 'security' && user.hasPassword !== false && (
                 <form onSubmit={handlePasswordChange} className="glass rounded-2xl p-6 max-w-xl flex flex-col gap-4" data-testid="account-security-form">
                   <h3 className="font-semibold tracking-tight text-[15px]">Change password</h3>
-                  <input type="password" placeholder="Current password" className="input" value={pwForm.currentPassword} onChange={(e) => setPwForm(f => ({ ...f, currentPassword: e.target.value }))} required />
-                  <input type="password" placeholder="New password (min 8 chars, 1 uppercase, 1 number)" className="input" value={pwForm.newPassword} onChange={(e) => setPwForm(f => ({ ...f, newPassword: e.target.value }))} required minLength={8} />
-                  <input type="password" placeholder="Confirm new password" className="input" value={pwForm.confirmPassword} onChange={(e) => setPwForm(f => ({ ...f, confirmPassword: e.target.value }))} required />
+                  <input type="password" aria-label="Current password" autoComplete="current-password" placeholder="Current password" className="input" value={pwForm.currentPassword} onChange={(e) => setPwForm(f => ({ ...f, currentPassword: e.target.value }))} required />
+                  <input type="password" aria-label="New password" autoComplete="new-password" placeholder="New password (min 8 chars, 1 uppercase, 1 number)" className="input" value={pwForm.newPassword} onChange={(e) => setPwForm(f => ({ ...f, newPassword: e.target.value }))} required minLength={8} />
+                  <input type="password" aria-label="Confirm new password" autoComplete="new-password" placeholder="Confirm new password" className="input" value={pwForm.confirmPassword} onChange={(e) => setPwForm(f => ({ ...f, confirmPassword: e.target.value }))} required />
                   <button type="submit" disabled={saving} className="btn-primary self-start flex items-center gap-2">
                     {saving && <Loader2 size={14} className="animate-spin" />}
                     Save changes
@@ -239,10 +239,10 @@ export default function Account() {
                 <form onSubmit={handleProfileSave} className="glass rounded-2xl p-6 max-w-xl flex flex-col gap-4" data-testid="account-settings-form">
                   <h3 className="font-semibold tracking-tight text-[15px]">Profile settings</h3>
                   <div className="grid grid-cols-2 gap-3">
-                    <input placeholder="First name" className="input" value={profileForm.firstName} onChange={(e) => setProfileForm(f => ({ ...f, firstName: e.target.value }))} />
-                    <input placeholder="Last name" className="input" value={profileForm.lastName} onChange={(e) => setProfileForm(f => ({ ...f, lastName: e.target.value }))} />
+                    <input aria-label="First name" autoComplete="given-name" placeholder="First name" className="input" value={profileForm.firstName} onChange={(e) => setProfileForm(f => ({ ...f, firstName: e.target.value }))} />
+                    <input aria-label="Last name" autoComplete="family-name" placeholder="Last name" className="input" value={profileForm.lastName} onChange={(e) => setProfileForm(f => ({ ...f, lastName: e.target.value }))} />
                   </div>
-                  <input type="email" placeholder="Email" className="input" value={user?.email || ''} disabled />
+                  <input type="email" aria-label="Email" placeholder="Email" className="input" value={user?.email || ''} disabled />
                   <button type="submit" disabled={saving} className="btn-primary self-start flex items-center gap-2">
                     {saving && <Loader2 size={14} className="animate-spin" />}
                     Save changes

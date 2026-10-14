@@ -75,3 +75,15 @@ test('no other file in backend/src sends email: a new sender elsewhere would byp
   // email.js: every customer email (guarded above). leads.js: the shop's OWN alert about a wholesale lead, whose Reply-To is the lead's address.
   assert.deepEqual(found.sort(), ['utils/email.js', 'utils/leads.js'], 'a new file that sends email must either go through utils/email.js or be added here on purpose, with its Reply-To decided');
 });
+
+// The one-time token rides in the fragment, which the browser never sends to a server: in the query string it reached the
+// Cloudflare edge (and its logs) on every click. The pages read both forms, so links already in inboxes keep working.
+test('password-reset and verification links carry their token in the fragment, not the query string', async () => {
+  for (const [send, path] of [[email.sendPasswordResetEmail, '/reset-password'], [email.sendVerificationEmail, '/verify-email']]) {
+    sent.length = 0;
+    await send({ ...to, token: 'a1b2c3' });
+    const html = String(sent[0].html);
+    assert.ok(html.includes(`https://reflexityram.com${path}#token=a1b2c3`), `${path} link uses #token=`);
+    assert.ok(!html.includes(`${path}?token=`), `${path} link has no ?token=`);
+  }
+});

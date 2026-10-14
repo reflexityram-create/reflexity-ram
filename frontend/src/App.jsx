@@ -7,6 +7,8 @@ import ScrollToTop from "@/components/ScrollToTop";
 import AdminTabBar from "@/components/AdminTabBar";
 import { useApplyTheme, useTheme } from "@/lib/theme";
 import useAuthStore from "@/lib/authStore";
+import useCartStore from "@/lib/cartStore";
+import { CART_SESSION_KEY } from "@/lib/api";
 import { AUTH_TOKEN_KEY } from "@/lib/authSession";
 import {
   markAnalyticsOwner,
@@ -73,6 +75,18 @@ export default function App() {
   // Initialize auth state on app load
   useEffect(() => {
     initialize();
+  }, []);
+
+  // The cart lives on the server and only the cart pages read it, so a returning buyer's header showed no count until they
+  // opened the cart. Read it once at start for anyone who has a cart session or is signed in (a first visit has no cart).
+  useEffect(() => {
+    let returning = false;
+    try {
+      returning = Boolean(localStorage.getItem(CART_SESSION_KEY) || localStorage.getItem(AUTH_TOKEN_KEY));
+    } catch {
+      /* storage blocked: the cart pages still read the cart */
+    }
+    if (returning) useCartStore.getState().fetchCart();
   }, []);
 
   // Listen for token expiry events

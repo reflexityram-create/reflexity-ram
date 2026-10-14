@@ -384,6 +384,21 @@ test('wholesale unit price accepts normal CAD amounts and rejects invalid precis
   assert.match(cleanWholesaleLotInput({ unitPriceCad: 0 }).errors[0], /positive CAD amount/i);
 });
 
+// Review of 2026-10-14: 19.99 * 100 is 1998.9999999999998 in floating point, so the exact check refused ordinary prices, in
+// the input check and again in the model (265.99 above happens to be exact, which is why nothing caught it).
+test('two-decimal prices that are not exact in floating point are accepted; three decimals are still refused', () => {
+  for (const price of [19.99, 4.35, 1.1, 0.29, 999999.99]) {
+    const cleaned = cleanWholesaleLotInput({ unitPriceCad: price });
+    assert.deepEqual(cleaned.errors, [], String(price));
+    assert.equal(cleaned.data.unitPriceCad, price);
+    assert.equal(new WholesaleLot({ lotCode: 'WS-2026-PRICE001', unitPriceCad: price }).validateSync()?.errors?.unitPriceCad, undefined, `model accepts ${price}`);
+  }
+  for (const price of [19.999, 1.005, 0.001]) {
+    assert.match(cleanWholesaleLotInput({ unitPriceCad: price }).errors[0] || '', /two decimal places/i, String(price));
+    assert.ok(new WholesaleLot({ lotCode: 'WS-2026-PRICE002', unitPriceCad: price }).validateSync()?.errors?.unitPriceCad, `model refuses ${price}`);
+  }
+});
+
 test('the model rejects an incomplete document marked published even outside the route transition', async () => {
   const lot = new WholesaleLot({
     lotCode: 'WS-2026-INVALID1',

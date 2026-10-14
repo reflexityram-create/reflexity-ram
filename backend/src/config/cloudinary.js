@@ -9,10 +9,14 @@ cloudinary.config({
   secure: true,
 });
 
+// Text parts are held in memory too, and Busboy allows any number of them unless told otherwise: the forms send none, so a
+// handful of small ones is plenty (a request with thousands of fields used to be read in full before it was refused).
+const TEXT_PART_LIMITS = { fields: 5, fieldSize: 8 * 1024 };
+
 // Multer upload for product images (max 5 images, 10MB each)
 const uploadProductImages = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024, files: 5 },
+  limits: { fileSize: 10 * 1024 * 1024, files: 5, ...TEXT_PART_LIMITS, parts: 5 + TEXT_PART_LIMITS.fields },
   fileFilter: (req, file, cb) => {
     const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/avif'];
     if (allowed.includes(file.mimetype)) {
@@ -27,7 +31,7 @@ const uploadProductImages = multer({
 // namespace with retail product assets.
 const uploadWholesaleImageFile = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  limits: { fileSize: 10 * 1024 * 1024, files: 1, ...TEXT_PART_LIMITS, parts: 1 + TEXT_PART_LIMITS.fields },
   fileFilter: (req, file, cb) => {
     const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/avif'];
     if (allowed.includes(file.mimetype)) cb(null, true);

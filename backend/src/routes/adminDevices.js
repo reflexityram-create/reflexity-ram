@@ -41,7 +41,9 @@ function createAdminDevicesRouter({
       if (await PairingModel.countDocuments(openFilter) >= MAX_OPEN_CODES) return tooMany();
       const code = newPairingCode();
       const expiresAt = new Date(at.getTime() + PAIRING_MINUTES * 60 * 1000);
-      const made = await PairingModel.create({ user: req.user._id, codeHash: hashPairingCode(normalizePairingCode(code)), expiresAt });
+      const made = await PairingModel.create({
+        user: req.user._id, codeHash: hashPairingCode(normalizePairingCode(code)), expiresAt, authVersion: Number(req.user.authVersion || 0),
+      });
       // Count again after the insert: several requests at once could all have passed the check above.
       if (await PairingModel.countDocuments(openFilter) > MAX_OPEN_CODES) {
         await PairingModel.updateOne({ _id: made._id }, { $set: { usedAt: at } });

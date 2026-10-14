@@ -23,7 +23,8 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
  * Send email verification
  */
 const sendVerificationEmail = async ({ email, firstName, token }) => {
-  const verifyUrl = `${FRONTEND_URL}/verify-email?token=${token}`;
+  // The token rides in the fragment: a browser never sends that part to a server, the edge, or its logs (the page reads both forms).
+  const verifyUrl = `${FRONTEND_URL}/verify-email#token=${token}`;
 
   const { data, error } = await getResend().emails.send({
     from: FROM_EMAIL,
@@ -60,7 +61,7 @@ const sendVerificationEmail = async ({ email, firstName, token }) => {
  * Send password reset email
  */
 const sendPasswordResetEmail = async ({ email, firstName, token }) => {
-  const resetUrl = `${FRONTEND_URL}/reset-password?token=${token}`;
+  const resetUrl = `${FRONTEND_URL}/reset-password#token=${token}`;
 
   const { data, error } = await getResend().emails.send({
     from: FROM_EMAIL,

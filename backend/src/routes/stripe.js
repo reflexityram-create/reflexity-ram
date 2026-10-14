@@ -28,6 +28,7 @@ const { estimateDeliveryDate } = require('../utils/deliveryEstimate');
 const { shippingChoiceNote } = require('../utils/shippingChoice');
 const { resolveCanadaDelivery, DeliveryChoiceError } = require('../utils/canadaDelivery');
 const { recordAdminEvent, describeOrder } = require('../utils/adminEvents');
+const { isValidObjectId } = require('mongoose');
 const { removeNoteLines } = require('../utils/orderNotes');
 
 const { validGuestSessionId } = require('../utils/guestSession');
@@ -49,6 +50,7 @@ let checkoutPriceEnsurer = ensureStripePrice;
 let bankDebitCouponEnsurer = ensureBankDebitCoupon;
 let checkoutSessionCreator = (payload) => stripe.checkout.sessions.create(payload);
 let checkoutSessionRetriever = (sessionId, options) => stripe.checkout.sessions.retrieve(sessionId, options);
+let checkoutLineItemsLister = (sessionId, params) => stripe.checkout.sessions.listLineItems(sessionId, params);
 let stockDecrementer = decrementStockForOrder;
 let orderCanceller = cancelOrderAndRestoreStock;
 
@@ -382,6 +384,42 @@ const NO_DEBIT_UNDER_WAY = new Set(['requires_payment_method', 'requires_action'
 const bankDebitInFlight = (session) => !NO_DEBIT_UNDER_WAY.has(session?.payment_intent?.status);
 const AWAITING_BANK_DEBIT_NOTE = 'AWAITING bank debit: do not ship until this order shows as paid (the bank takes up to 5 business days).';
 
+// The product a paid line item is for. By the Price ID stored at sync first. A price changed while the buyer was in checkout
+// (the sync made a new Price) is found through its Stripe Product: our stored stripeProductId, then the productId and slug
+// the sync wrote into that Product's metadata. The slug alone failed when the slug had changed too, and the order was lost.
+const productForLineItem = async (li) => {
+  const byPrice = await Product.findOne({ stripePriceId: li.price.id });
+  if (byPrice) return byPrice;
+  const stripeProduct = li.price.product;
+  const stripeProductId = typeof stripeProduct === 'string' ? stripeProduct : stripeProduct?.id;
+  if (typeof stripeProductId === 'string' && stripeProductId) {
+    const byStripeProduct = await Product.findOne({ stripeProductId });
+    if (byStripeProduct) return byStripeProduct;
+  }
+  const metadata = (stripeProduct && typeof stripeProduct === 'object' && stripeProduct.metadata) || {};
+  if (typeof metadata.productId === 'string' && isValidObjectId(metadata.productId)) {
+    const byId = await Product.findById(metadata.productId);
+    if (byId) return byId;
+  }
+  return typeof metadata.slug === 'string' && metadata.slug ? Product.findOne({ slug: metadata.slug }) : null;
+};
+
+// Every paid line of a session. The expanded `line_items` is only the first page (with has_more when the cart had more
+// lines): reading just that page made an order without the other lines, and took stock for the first page only.
+const allLineItems = async (session) => {
+  const items = [...(session.line_items?.data || [])];
+  let hasMore = Boolean(session.line_items?.has_more);
+  while (hasMore && items.length) {
+    const page = await checkoutLineItemsLister(session.id, {
+      limit: 100, starting_after: items[items.length - 1].id, expand: ['data.price.product'],
+    });
+    const lines = page?.data || [];
+    items.push(...lines);
+    hasMore = Boolean(page?.has_more) && lines.length > 0;
+  }
+  return items;
+};
+
 const fulfillCheckoutSession = async (checkoutSessionId) => {
   // Fast path: order already exists. Still verify critical side effects so a
   // retry can recover if the first process crashed after Order.create().
@@ -390,7 +428,7 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
 
   // shipping_cost.shipping_rate is only an ID unless it is expanded; without it every order read "Standard Shipping" (the label below).
   const session = await checkoutSessionRetriever(checkoutSessionId, {
-    expand: ['line_items.data.price.product', 'payment_intent', 'shipping_cost.shipping_rate'],
+    expand: ['line_items.data.price.product', 'payment_intent', 'payment_intent.latest_charge', 'shipping_cost.shipping_rate'],
   });
 
   // Paid sessions become paid orders. A bank debit that is really clearing (its PaymentIntent is `processing`) becomes a
@@ -404,21 +442,11 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
   // ── Map Stripe line items back to our products via stored Price IDs ────────
   const orderItems = [];
   const unmappedPrices = [];   // paid line items no product could be found for: the buyer was charged, so the order must say so
-  for (const li of session.line_items.data) {
-    const product = await Product.findOne({ stripePriceId: li.price.id });
+  for (const li of await allLineItems(session)) {
+    const product = await productForLineItem(li);
     if (!product) {
-      // Fallback: match by metadata slug set during sync
-      const slug = li.price.product?.metadata?.slug;
-      const bySlug = slug ? await Product.findOne({ slug }) : null;
-      if (!bySlug) {
-        console.error(`Fulfillment: no product for Stripe price ${li.price.id}`);
-        unmappedPrices.push(li.price.id);
-        continue;
-      }
-      orderItems.push({
-        product: bySlug._id, slug: bySlug.slug, sku: bySlug.sku, name: bySlug.name,
-        price: li.price.unit_amount / 100, image: bySlug.images?.[0]?.url || '', qty: li.quantity,
-      });
+      console.error(`Fulfillment: no product for Stripe price ${li.price.id}`);
+      unmappedPrices.push(li.price.id);
       continue;
     }
     orderItems.push({
@@ -428,7 +456,16 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
   }
 
   if (orderItems.length === 0) {
+    // The buyer paid and not one line matches a product, so there can be no order. That used to end here in silence (the
+    // webhook still answered 200): the owner must hear about it, to make the order by hand or refund.
     console.error(`Fulfillment: session ${checkoutSessionId} produced no order items`);
+    const paid = `${((session.amount_total || 0) / 100).toFixed(2)} ${String(session.currency || '').toUpperCase()}`.trim();
+    await recordAdminEvent({
+      type: 'payment.unmatched', title: 'Paid, but no order was made: needs you', priority: 'high', path: '/admin/orders',
+      // Lock-screen text: the amount and the Stripe checkout ID (the buyer is found from it in Stripe), never the buyer's email.
+      body: `Paid ${paid}, Stripe checkout ${checkoutSessionId}: none of its ${unmappedPrices.length} line item(s) matches a product.`,
+      dedupeKey: `payment.unmatched:${checkoutSessionId}`,
+    });
     return null;
   }
 
@@ -462,6 +499,13 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
   const usDuties = usDutiesFrom(session.metadata, shippingCost);
 
   const pi = session.payment_intent;
+  // The charge comes expanded so a refund made BEFORE this order existed is seen. Stripe's charge.refunded found no order to
+  // mark then (a webhook that kept failing, the owner refunding a payment the shop had not recorded yet), and the order made
+  // afterwards came out paid and shippable. Fully refunded first: the order is born refunded, with no stock taken.
+  const latestCharge = pi && typeof pi === 'object' ? pi.latest_charge : null;
+  const charge = latestCharge && typeof latestCharge === 'object' ? latestCharge : null;
+  const refundedFirst = Boolean(charge && isFullyRefundedCharge(charge));
+  const partlyRefundedFirst = Boolean(charge && !refundedFirst && Number(charge.amount_refunded) > 0);
   const userId = session.metadata?.userId !== 'guest' ? session.metadata?.userId : undefined;
   const gaIds = sanitizeAnalyticsIds({
     clientId: session.metadata?.gaClientId,
@@ -485,11 +529,11 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
       total,
       stripeCheckoutSessionId: session.id,
       stripePaymentIntentId: typeof pi === 'string' ? pi : pi?.id,
-      stripeChargeId: typeof pi === 'object' ? pi?.latest_charge || undefined : undefined,
+      stripeChargeId: charge?.id || (typeof latestCharge === 'string' ? latestCharge : undefined),
       analyticsClientId: gaIds.clientId,
       analyticsSessionId: gaIds.sessionId,
-      paymentStatus: delayed ? 'pending' : 'paid',
-      status: delayed ? 'pending' : 'processing',
+      paymentStatus: refundedFirst ? 'refunded' : delayed ? 'pending' : 'paid',
+      status: refundedFirst ? 'refunded' : delayed ? 'pending' : 'processing',
       paymentMethod: isBankDebit ? BANK_DEBIT : 'stripe',
       ...(Number.isFinite(discountPct) && discountPct > 0 ? { paymentDiscountPct: discountPct } : {}),
       // Google Customer Reviews sends its survey after this date, so it is the late end of what we promise. A debit that
@@ -503,6 +547,8 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
       // Guest emails aren't seen until Stripe hands them back post-payment, so a
       // disposable address can't be blocked upfront — flag it for manual review.
       adminNotes: [
+        refundedFirst ? 'REFUNDED in Stripe before this order was recorded: do NOT ship.' : null,
+        partlyRefundedFirst ? `REVIEW: part of this payment (${charge.amount_refunded} minor currency units) was refunded in Stripe before this order was recorded.` : null,
         delayed ? AWAITING_BANK_DEBIT_NOTE : null,
         isDisposableEmail(customer.email)
           ? 'REVIEW: disposable email detected after Stripe Checkout. Confirm before fulfillment.'
@@ -513,9 +559,11 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
           ? `REVIEW: ${unmappedPrices.length} paid line item${unmappedPrices.length === 1 ? '' : 's'} could not be matched to a product and ${unmappedPrices.length === 1 ? 'is' : 'are'} NOT on this order (Stripe price ${unmappedPrices.join(', ')}). Check the Stripe payment before shipping.`
           : null,
       ].filter(Boolean).join('\n') || undefined,
-      statusHistory: [delayed
-        ? { status: 'pending', note: 'Order placed; bank debit submitted, waiting for the bank (up to 5 business days)' }
-        : { status: 'processing', note: 'Payment confirmed via Stripe Checkout' }],
+      statusHistory: [refundedFirst
+        ? { status: 'refunded', note: 'Paid, then fully refunded in Stripe before this order was recorded; no stock taken' }
+        : delayed
+          ? { status: 'pending', note: 'Order placed; bank debit submitted, waiting for the bank (up to 5 business days)' }
+          : { status: 'processing', note: 'Payment confirmed via Stripe Checkout' }],
     });
   } catch (createErr) {
     if (createErr.code === 11000) {
@@ -526,6 +574,47 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
       return ensureCriticalFulfillmentEffects(existingAfterRace);
     }
     throw createErr;
+  }
+
+  // A refund made while this order was being written (after the session above was read) found no order to mark and was
+  // acknowledged. Now that the order exists, read the charge once more: a refund before this read is seen here, one after it
+  // finds the order. A failed read leaves the order as it is (it is paid, as far as anything here knows).
+  let refunded = refundedFirst;
+  if (!refunded && !delayed && order.stripeChargeId) {
+    try {
+      const again = await checkoutSessionRetriever(session.id, { expand: ['payment_intent.latest_charge'] });
+      const nowCharge = again?.payment_intent?.latest_charge;
+      if (nowCharge && typeof nowCharge === 'object' && isFullyRefundedCharge(nowCharge)) {
+        // The money went back: this is not a sale to confirm, whatever the database says next.
+        refunded = true;
+        // Not conditional on the stock: the buyer's success page can take it for this order meanwhile, and a known refund
+        // must still win. Stock already taken stays taken (as for any refund) and the owner's alert says so.
+        try {
+          const marked = await Order.findOneAndUpdate(
+            { _id: order._id, paymentStatus: 'paid' },
+            {
+              $set: { paymentStatus: 'refunded', status: 'refunded', adminNotes: ['REFUNDED in Stripe while this order was being recorded: do NOT ship.', order.adminNotes].filter(Boolean).join('\n') },
+              $push: { statusHistory: { status: 'refunded', note: 'Refunded in Stripe while this order was being recorded', timestamp: new Date() } },
+            },
+            { returnDocument: 'after' },
+          );
+          // Not matched: something changed it first (Stripe's refund event, say). Read it back for the owner's alert.
+          const current = marked || await Order.findById(order._id);
+          if (current) order = current;
+        } catch (markErr) {
+          console.error(`🚨 Order ${order.orderNumber} was refunded in Stripe but could not be marked refunded:`, markErr.message);
+        }
+      }
+    } catch (recheckErr) {
+      console.error(`Refund re-check failed for checkout session ${session.id}:`, recheckErr.message);
+    }
+  }
+
+  if (refunded) {
+    // Nothing to take from stock, confirm to the buyer or report as a sale; the owner is told what happened.
+    await recordAdminEvent({ type: 'order.refunded', title: 'Refunded before the order was recorded', body: `${describeOrder(order)} · do not ship${order.stockDecremented ? ' · its stock was taken: put it back' : ''}`, priority: 'high', order, dedupeKey: `order.refunded:${order._id}` });
+    console.log(`💸 Checkout session ${session.id} was refunded before its order existed → order ${order.orderNumber} recorded as refunded`);
+    return order;
   }
 
   await announceNewOrder(order, { created: true });
@@ -862,6 +951,7 @@ if (process.env.NODE_ENV === 'test') {
     ensureCoupon = ensureBankDebitCoupon,
     createSession,
     retrieveSession,
+    listLineItems,
     decrementStock = decrementStockForOrder,
     cancelAndRestore = cancelOrderAndRestoreStock,
   } = {}) => {
@@ -870,6 +960,7 @@ if (process.env.NODE_ENV === 'test') {
     orderCanceller = cancelAndRestore;
     checkoutSessionCreator = createSession || ((payload) => stripe.checkout.sessions.create(payload));
     checkoutSessionRetriever = retrieveSession || ((sessionId, options) => stripe.checkout.sessions.retrieve(sessionId, options));
+    checkoutLineItemsLister = listLineItems || ((sessionId, params) => stripe.checkout.sessions.listLineItems(sessionId, params));
     stockDecrementer = decrementStock;
   };
   // The settlement steps are not routes of their own, so tests reach them here.
