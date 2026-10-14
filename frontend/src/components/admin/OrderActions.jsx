@@ -35,6 +35,21 @@ export default function OrderActions({ order, step, onChanged }) {
     }
   };
 
+  // A shipped order whose "tracking number" is not one (a word typed because there was none): take it off, mark the order sent
+  // without tracking. Nobody is emailed. The server answers with a plain order, so the caller reads the order again.
+  const removeTracking = async () => {
+    setBusy('untrack');
+    try {
+      const { data } = await adminApi.markOrderUntracked(order._id);
+      await onChanged(data.order);
+      toast.success('Tracking number removed. This order is now marked as sent without tracking.');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'The tracking number could not be removed');
+    } finally {
+      setBusy('');
+    }
+  };
+
   const cancelButton = canCancel(order) && (
     <ConfirmButton
       variant="danger"
@@ -71,6 +86,18 @@ export default function OrderActions({ order, step, onChanged }) {
               <a className="ml-2 inline-flex items-center gap-1 underline underline-offset-4" href={order.trackingUrl} target="_blank" rel="noopener noreferrer">Track <ExternalLink size={12} /></a>
             )}
             {order.trackingLatest?.description && <div className="mt-1 text-neutral-400">{order.trackingLatest.description}</div>}
+            <div className="mt-3">
+              <ConfirmButton
+                variant="secondary"
+                label="It had no tracking number"
+                confirmLabel="Yes, remove the number"
+                message={`Take "${order.trackingNumber}" off ${order.orderNumber} and mark it sent without tracking? ${BUYER_EMAIL.untrack}`}
+                busy={busy === 'untrack'}
+                onConfirm={removeTracking}
+                className="w-full sm:w-auto"
+                testId="order-untrack"
+              />
+            </div>
           </div>
         ) : (
           <div className="text-neutral-300">{order.untracked ? 'Sent without a tracking number.' : 'No tracking number was saved.'}</div>

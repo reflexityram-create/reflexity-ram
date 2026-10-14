@@ -468,6 +468,31 @@ router.patch('/orders/:id/tracking', [
   } catch { res.status(500).json({ error: 'Failed to save tracking' }); }
 });
 
+// A parcel that already went out can carry a tracking number that is not one: the word "error" was typed on 2026-10-09 because
+// there was no number and the ship form had no "No tracking number" tick-box yet. Take the number off and mark the order sent
+// without tracking, the same state that tick-box gives. The buyer is NOT emailed (they already have the shipped email), and the
+// tracking sync stops asking Canada Post about it, because it only follows orders that carry a number.
+router.post('/orders/:id/sent-without-tracking', [
+  param('id').custom((v) => isValidObjectId(v)).withMessage('Invalid order ID'),
+], validate, async (req, res) => {
+  try {
+    const current = await Order.findById(req.params.id).select('status trackingNumber');
+    if (!current) return res.status(404).json({ error: 'Order not found' });
+    if (current.status !== 'shipped') {
+      return res.status(409).json({ error: 'Only an order that is marked shipped can be changed to sent without tracking' });
+    }
+    const was = typeof current.trackingNumber === 'string' ? current.trackingNumber.trim() : '';
+    if (!was) return res.status(409).json({ error: 'This order has no tracking number to remove' });
+    const order = await Order.findOneAndUpdate({ _id: req.params.id, status: 'shipped', trackingNumber: current.trackingNumber }, {
+      $set: { untracked: true },
+      $unset: { trackingNumber: '', trackingUrl: '', trackingLatest: '' },
+      $push: { statusHistory: { status: 'shipped', note: `Tracking number removed (it was "${was}"): sent without tracking`, timestamp: new Date() } },
+    }, { returnDocument: 'after' }).populate('user', 'firstName lastName email');
+    if (!order) return res.status(409).json({ error: 'Order changed while this was being saved' });
+    res.json({ order });
+  } catch { res.status(500).json({ error: 'Failed to remove the tracking number' }); }
+});
+
 // PATCH /api/admin/orders/:id/status
 router.patch(
   '/orders/:id/status',

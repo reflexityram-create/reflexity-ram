@@ -32,7 +32,7 @@ What to do next, by state, and what the **buyer** is emailed:
 | --- | --- | --- |
 | e-Transfer, money not seen yet | type the amount, "I received this e-Transfer" | yes: payment confirmation (the order becomes paid) |
 | paid, not shipped | tracking number (or "No tracking number"), "Mark as shipped" | **yes, right away**: with the tracking link, or saying it went without tracking; or save the number and the site marks it shipped (and emails) at Canada Post's first scan |
-| shipped | "Mark as delivered" | no |
+| shipped | "Mark as delivered"; and, when the order carries a tracking number that is not one, "It had no tracking number" | no |
 | unpaid (any method) | "Cancel this order" (stock goes back) | no |
 
 Every button asks once, in the page, and says what the buyer gets. (A browser confirm box does not appear inside the phone app's web view
@@ -54,6 +54,13 @@ The Terms let the shop choose the service, including none with tracking. Ticking
 was sent without a tracking number, so there is nothing to follow online" (reply-to is the shop's address), and the buyer's order page says
 the same. A number typed in always wins over the tick. Without either, the server still answers 422. The Canada Post tracking sync ignores
 an order that has no number, so mark it delivered by hand.
+
+An order that was already shipped with a placeholder in the tracking box (the word "error" went out on 2026-10-09, before the tick-box existed) can be
+corrected: **It had no tracking number** on a shipped order calls `POST /api/admin/orders/:id/sent-without-tracking`. The number, the saved
+Canada Post link and the last scan are removed, the order is marked `untracked` and keeps its Shipped status, and a history line records the
+number that was removed. **Nobody is emailed** (the buyer already has the shipped email; their order page now says it went without tracking), and
+the sync stops asking Canada Post about it. Only a shipped order that carries a number is accepted (409 otherwise); changing a wrong number to a
+right one is not built.
 
 ## On a phone
 

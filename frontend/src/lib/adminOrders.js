@@ -44,6 +44,7 @@ export const BUYER_EMAIL = Object.freeze({
   shipUntracked: 'The buyer is emailed right away, saying it went without tracking.',
   deliver: 'No email is sent.',
   cancel: 'No email is sent.',
+  untrack: 'No email is sent. Their order page will say it went without tracking.',
   received: 'The buyer is emailed a payment confirmation.',
 });
 
