@@ -1,5 +1,6 @@
-// The shop's contact address (footer, support page). It is a mailbox for questions. It is NOT where Interac e-Transfers go:
-// that is a different address, shown only inside the buyer's own order, and a buyer about to send money is told so plainly.
+// The shop's contact address (footer, support page). It is a mailbox for questions. Interac e-Transfers go to the address in Render's
+// ETRANSFER_RECIPIENT_EMAIL: until 2026-10-13 a different one, since then this one too. While they differ the page tells a buyer about to
+// send money which is which; while they are the same that sentence would be false, so it is left out.
 export const SUPPORT_EMAIL = 'reflexityram@gmail.com';
 
 export const sameAddress = (a, b) => String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();

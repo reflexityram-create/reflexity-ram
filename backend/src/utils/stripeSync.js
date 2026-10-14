@@ -6,8 +6,9 @@
 // Stripe Prices are immutable: when the product's price changes, we create a
 // new Price, point the product at it, and archive the old one.
 //
-// tax_behavior 'exclusive': listed prices are pre-tax; Stripe Tax adds the
-// destination tax (e.g. Ontario HST 13%) on top at checkout.
+// tax_behavior 'exclusive': listed prices are pre-tax. The shop charges no tax today (the session sends no automatic_tax, see
+// routes/stripe.js), so this only matters the day STRIPE_AUTOMATIC_TAX is switched on: Stripe Tax then adds the destination tax
+// (e.g. Ontario HST 13%) on top at checkout.
 
 const { CURRENCY } = require('../config/shipping');
 

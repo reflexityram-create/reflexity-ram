@@ -49,8 +49,11 @@ in the account, and put it in `ADDRESSCOMPLETE_KEY`. Leave the key unrestricted 
 ## Checked, and not yet checked
 
 - Checked: every rule above with a faked provider (`backend/test/address-lookup.test.js`, `frontend/test/address-suggest.test.js`) and in a real
-  browser against a stand-in for the service (`e2e/walk-address-suggest.cjs`: suggestions while typing, click and keyboard picks, a building opening
-  into its units, one lookup per finished address, "checked" removed by editing, soft failure and an order still placed by typing).
+  browser against a stand-in for the service (`walk-address-suggest.cjs` and `walk-review-followups.cjs`, kept in the owner's project notes, not in
+  this repository: suggestions while typing, click and keyboard picks, a building opening into its units, one lookup per finished address,
+  "checked" removed by editing, a slow answer after tabbing away not reopening the list, a pick surviving the tap on the next field, a failing
+  pick showing the manual-entry note, soft failure and an order still placed by typing). The unit tests cannot see the component's inner
+  behaviour (a mutation run left five such edits unnoticed), so re-run those walks after touching `AddressSuggest.jsx`.
 - Checked against the real service on 2026-10-13 WITHOUT a key (the documentation's sample key `AA11-AA11-AA11-AA11`): `Find/v2.10/json3.ws` and
   `Retrieve/v2.11/json3.ws` exist and answer HTTP 200 JSON, and an error is exactly `{"Items":[{"Error":"2","Description":"Unknown key",...}]}`,
   the shape `utils/addressLookup.js` reads (`provider_2`).

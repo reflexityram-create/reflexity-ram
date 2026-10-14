@@ -1,9 +1,11 @@
 // Address suggestions on the e-Transfer form (owner's ask, 2026-10-13). The box itself is proved in a real browser
-// (e2e/walk-address-suggest.cjs against a stand-in for Canada Post); these are its rules and the way it is wired in.
+// (walk-address-suggest.cjs and walk-review-followups.cjs against a stand-in for Canada Post, kept in the owner's project notes, NOT in
+// this repository: docs/testing-notes.md); these are its rules and the way it is wired in. The component's inner behaviour (that a list
+// opens, that a pick fills the form) is only proved by those browser walks: the unit tests here cannot see it.
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { DEBOUNCE_MS, MIN_CHARS, QUIET_AFTER_PROBLEM_MS, applyAddress, nextActive, resultsAnnouncement, worthSearching } from '../src/lib/addressSuggest.js';
+import { DEBOUNCE_MS, MIN_CHARS, QUIET_AFTER_PROBLEM_MS, applyAddress, dropsOnDismiss, nextActive, resultsAnnouncement, worthSearching } from '../src/lib/addressSuggest.js';
 import { ETRANSFER, offeredMethods } from '../src/lib/paymentMethods.js';
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
@@ -27,6 +29,13 @@ test('the highlighted suggestion moves with Down and Up, wraps around, and is no
   assert.equal(nextActive(2, 'ArrowUp', 3), 1);
   assert.equal(nextActive(1, 'a', 3), 1, 'another key changes nothing');
   for (const count of [0, -1, NaN, undefined]) assert.equal(nextActive(0, 'ArrowDown', count), -1);
+});
+
+test('leaving the field drops a search that is still on its way, and never a pick', () => {
+  assert.equal(dropsOnDismiss('find'), true, 'a slow search must not reopen the list over the next field');
+  assert.equal(dropsOnDismiss('pick'), false, 'the address the buyer just chose must still arrive');
+  assert.equal(dropsOnDismiss(null), false);
+  assert.equal(dropsOnDismiss(undefined), false);
 });
 
 test('a picked address fills the address fields and keeps the buyer\'s own apartment only when it brings none', () => {
@@ -72,6 +81,11 @@ test('the box is an accessible combobox, only opens a list for real results, and
   assert.match(box, /await addressApi\.suggest\(text, lastId, controller\.current\.signal\);\s*if \(request !== latest\.current\) return;/, 'a late list never overwrites a newer search');
   assert.match(box, /await addressApi\.retrieve\(suggestion\.id, controller\.current\.signal\);\s*if \(request !== latest\.current\) return;/, 'a late pick never overwrites a newer one');
   assert.match(box, /\{\.\.\.inputProps\}/, 'the page keeps its own test ids and autocomplete');
+  assert.match(box, /const dismiss = \(\) => \{\s*if \(dropsOnDismiss\(inflight\.current\)\) \{ latest\.current \+= 1; controller\.current\?\.abort\(\); inflight\.current = null; setBusy\(false\); \}\s*close\(\);\s*\};/);
+  assert.match(box, /onBlur=\{\(\) => window\.setTimeout\(dismiss, 150\)\}/, 'a tap elsewhere');
+  assert.match(box, /event\.key === 'Escape'[^\n]*dismiss\(\)[\s\S]*?event\.key === 'Tab'[^\n]*dismiss\(\)|\(event\.key === 'Escape' \|\| event\.key === 'Tab'\) dismiss\(\)/, 'Escape and Tab');
+  assert.match(box, /inflight\.current = 'find';/);
+  assert.match(box, /inflight\.current = 'pick';/);
 });
 
 test('the e-Transfer page uses the box only when the server says so, marks "checked" only after a pick, and removes the mark on any edit', async () => {

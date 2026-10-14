@@ -9,7 +9,7 @@ of the saving on as a discount **on the goods only** (never shipping):
 | Bank debit (`bank_debit`, Stripe pre-authorized debit) | 1% + 40¢ (5.00 cap) + 1.00 per instant verification | 1% | up to 5 business days | Stripe webhook |
 | Interac e-Transfer (`etransfer`) | none from the shop | 2% | when the owner sees the deposit | the owner, by hand |
 
-Everything is **off by default** and switched by environment variables on the host (`backend/render.yaml` lists them):
+Everything is **off by default** and switched by environment variables on the host (set in Render's Environment tab; `backend/render.yaml` does not list them):
 
 | Variable | Meaning |
 | --- | --- |
@@ -18,13 +18,14 @@ Everything is **off by default** and switched by environment variables on the ho
 | `ETRANSFER_ENABLED=true` | offer e-Transfer (also needs the address below) |
 | `ETRANSFER_RECIPIENT_EMAIL` | the address that receives the transfers (auto-deposit on). Never guessed: without it e-Transfer is not offered |
 | `ETRANSFER_DISCOUNT_PCT` | default 2 (0 to 5) |
+| `STRIPE_AUTOMATIC_TAX=true` | OFF by default: card and bank-debit sessions carry no tax calculation, so Stripe's page shows no "Tax" line. Set it the day a GST/HST registration is added in Stripe, and make e-Transfer charge the tax too (see "Tax" below); forgetting it after registering would silently under-collect |
 | `ETRANSFER_HOLD_HOURS` | how long an unpaid order keeps its stock, default 48 (6 to 168). The checkout pages and emails follow it; the Terms page says "48 hours" in plain text, so change both together |
 | `ETRANSFER_REMINDER_HOURS` | when the "not received yet" email goes out, default 24 |
 | `ETRANSFER_MAX_UNITS` | most items one e-Transfer order may hold, default 16 (1 to 200) |
 | `ETRANSFER_MAX_TOTAL_CAD` | most one e-Transfer order may come to, default 3000 (50 to 20000). An unpaid order holds real stock for the whole hold and most banks cap a single transfer; a bigger order pays by card (no hold, no cap) or by arrangement. The checkout page greys the option out with the reason |
 
-`GET /api/payments/methods` tells the checkout page which are on. The e-Transfer address is never in that answer; a buyer sees it
-only inside their own order.
+`GET /api/payments/methods` tells the checkout page which are on. The e-Transfer address is never NAMED in that answer (it only says
+whether it differs from the contact address); a buyer is shown it inside their own order.
 
 ## Bank debit (Stripe)
 

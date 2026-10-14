@@ -326,8 +326,9 @@ const torontoTime = (value) => new Date(value).toLocaleString('en-CA', { timeZon
 const cad = (value) => `$${Number(value || 0).toFixed(2)} ${DISPLAY_CURRENCY}`;
 const mono = (text) => `<span style="font-family:monospace;color:#f5f5f7;">${escapeHtml(text)}</span>`;
 
-// "Not our contact email": the e-Transfer address is a different mailbox from the one printed in the footer and at the foot of
-// every email, and a buyer who is about to send money should not have to guess which is which. Only said when it is true.
+// "Not our contact email": WHEN the e-Transfer address is a different mailbox from the one printed in the footer and at the foot of
+// every email, a buyer who is about to send money should not have to guess which is which. Only said when it is true (since
+// 2026-10-13 the owner receives e-Transfers at the contact address itself, so today this adds nothing).
 const etransferAddressNote = (order) => (etransferAddressDiffersFromContact(order.etransfer?.recipientEmail)
   ? [`Send the e-Transfer only to ${mono(order.etransfer.recipientEmail)}. Our contact email, ${escapeHtml(SUPPORT_EMAIL)}, is for questions only: please do not send the e-Transfer there.`]
   : []);

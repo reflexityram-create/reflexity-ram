@@ -139,8 +139,8 @@ const SHIP_FROM_POSTAL_CODE = (process.env.CANADA_POST_ORIGIN_POSTAL_CODE || 'M5
 
 // Build Stripe Checkout `shipping_options` from the same table the rest of
 // the app uses, so display prices and charged prices can never diverge.
-// tax_behavior 'exclusive': Stripe Tax adds tax on top of shipping where the
-// destination province taxes shipping (most Canadian provinces do).
+// tax_behavior 'exclusive': if STRIPE_AUTOMATIC_TAX is ever switched on, Stripe Tax adds tax on top of shipping where the
+// destination province taxes shipping (most Canadian provinces do). With it off (today) nothing is added.
 // `price` is the cart's rate from resolveCartShippingPrice; omit it for the
 // standard rate.
 // No `delivery_estimate`: the label already states the delivery time, and

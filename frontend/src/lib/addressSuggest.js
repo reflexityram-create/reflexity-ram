@@ -16,6 +16,10 @@ export function nextActive(current, key, count) {
   return current;
 }
 
+// Leaving the field (Tab, Escape, a tap elsewhere) drops a SEARCH that is still on its way, never a PICK: the address the buyer
+// just chose must still arrive even if they have already tapped the next field.
+export const dropsOnDismiss = (inflight) => inflight === 'find';
+
 // A picked, finished address replaces the address fields of the form. The buyer's own apartment or suite stays when the address
 // brings none of its own (a unit chosen from the list arrives inside the street line, "5-100 Queen St W").
 export const applyAddress = (form, address) => ({
