@@ -475,9 +475,10 @@ const releaseHoldsOf = async (userId, cartSessionId, checkoutSessionId) => {
   }
 };
 
-// The cart a paid session came from is emptied only if nobody has touched it since the buyer started that checkout (plus a minute of
-// slack for clocks): items added to the cart afterwards were not paid for, and the buyer may already be shopping again.
-const CART_SLACK_MS = 60 * 1000;
+// The cart a paid session came from is emptied only if nobody has touched it since the buyer started that checkout (plus a few seconds
+// of slack for clocks): items added to the cart afterwards were not paid for, and the buyer may already be shopping again. (Reading
+// the cart page can also touch it, when a price or name has changed: then it is left, and the buyer sees what is still in it.)
+const CART_SLACK_MS = 5 * 1000;
 const cartUnchangedSince = (session, fallback) => {
   const created = Number(session?.created);
   if (Number.isFinite(created) && created > 0) return { updatedAt: { $lte: new Date(created * 1000 + CART_SLACK_MS) } };

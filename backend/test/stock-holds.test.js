@@ -78,81 +78,67 @@ function recordingModel(results) {
   const calls = [];
   return {
     calls,
-    // `results` are the documents the update reads back as they were BEFORE it ({ stockHolds } or null when the product was refused)
+    // a transaction: the callback runs, an error raised inside it is passed up (the real driver aborts and rolls back first)
+    startSession: async () => ({ withTransaction: async (work) => { calls.push({ op: 'begin' }); await work(); calls.push({ op: 'commit' }); }, endSession: async () => { calls.push({ op: 'end' }); } }),
+    // `results` are what each product's update answers: a document when it was written, null when the product was refused
     findOneAndUpdate: async (filter, update, options) => { calls.push({ op: 'hold', filter, update, options }); return results.shift(); },
-    updateOne: async (filter, update, options) => { calls.push({ op: 'restore', filter, update, options }); return { modifiedCount: 1 }; },
     updateMany: async (filter, update, options) => { calls.push({ op: 'release', filter, update, options }); return { modifiedCount: 1 }; },
     findById: () => ({ select: () => ({ lean: async () => ({ name: 'Hynix 64GB', stockQuantity: 1, stockHolds: [{ owner: 's:other', qty: 1, expiresAt: new Date(NOW.getTime() + 5 * MINUTE) }] }) }) }),
   };
 }
 
-test('the hold is ONE conditional pipeline update that does not touch updatedAt, and Mongoose is told it is a pipeline', async () => {
-  const ProductModel = recordingModel([{ stockHolds: [] }]);
+test('the hold is ONE conditional pipeline update per product, inside one transaction, that does not touch updatedAt', async () => {
+  const ProductModel = recordingModel([{ _id: 'p1' }]);
   const result = await holds.holdStockForCheckout({ owner: 's:me', sessionId: 'cs_page_1', lines: [{ product: 'p1', name: 'X', qty: 2 }], minutes: 30, now: NOW, ProductModel });
   assert.deepEqual(result, { ok: true, held: true, expiresAt: new Date(NOW.getTime() + 30 * MINUTE) });
-  const [call, cleanup] = ProductModel.calls;
+  assert.deepEqual(ProductModel.calls.map((c) => c.op), ['begin', 'hold', 'release', 'commit', 'end'], 'the cleanup of stale holds is inside the transaction too');
+  const [, call, cleanup] = ProductModel.calls;
   assert.equal(call.filter._id, 'p1');
   assert.ok(call.filter.$expr, 'the "is enough left" test is part of the same update, not a separate read');
   assert.ok(Array.isArray(call.update), 'a pipeline update');
   assert.equal(call.options.updatePipeline, true, 'Mongoose refuses an array update without this');
   assert.equal(call.options.timestamps, false, 'a checkout attempt is not a product change (the sitemap lastmod reads updatedAt)');
-  assert.equal(call.options.returnDocument, 'before', 'what this buyer held before is read back in the same step, to be put back on a refusal');
+  assert.ok(call.options.session, 'inside the transaction');
   assert.deepEqual(call.update[0].$set.stockHolds.$concatArrays[1], [{ owner: 's:me', sessionId: 'cs_page_1', qty: 2, expiresAt: new Date(NOW.getTime() + 30 * MINUTE) }], 'the hold remembers its Stripe page');
-  assert.equal(cleanup.op, 'release', 'then what the buyer held on products no longer in this cart is given up');
   assert.deepEqual(cleanup.filter, { 'stockHolds.owner': 's:me', _id: { $nin: ['p1'] } });
+  assert.ok(cleanup.options.session, 'the cleanup is part of the same transaction');
 });
 
 test('a product named twice in one cart is held once, with the quantities added', async () => {
-  const ProductModel = recordingModel([{ stockHolds: [] }]);
+  const ProductModel = recordingModel([{ _id: 'p1' }]);
   await holds.holdStockForCheckout({ owner: 's:me', lines: [{ product: 'p1', name: 'X', qty: 1 }, { product: 'p1', name: 'X', qty: 2 }], now: NOW, ProductModel });
-  assert.equal(ProductModel.calls.filter((call) => call.op === 'hold').length, 1);
-  assert.equal(ProductModel.calls[0].update[0].$set.stockHolds.$concatArrays[1][0].qty, 3);
+  const holdCalls = ProductModel.calls.filter((call) => call.op === 'hold');
+  assert.equal(holdCalls.length, 1);
+  assert.equal(holdCalls[0].update[0].$set.stockHolds.$concatArrays[1][0].qty, 3);
 });
 
-test('when a line cannot be had, the lines taken in this call go back exactly as they were, and nothing else is touched', async () => {
-  const earlier = { owner: 's:me', sessionId: 'cs_earlier_page', qty: 2, expiresAt: new Date(NOW.getTime() + 20 * MINUTE) };
-  const ProductModel = recordingModel([{ stockHolds: [earlier] }, null]);
+test('products are always taken in the same order (by id), so two carts never wait on each other in opposite orders', async () => {
+  const ProductModel = recordingModel([{ _id: 'a' }, { _id: 'b' }, { _id: 'c' }]);
+  await holds.holdStockForCheckout({ owner: 's:me', lines: [{ product: 'c', name: 'C', qty: 1 }, { product: 'a', name: 'A', qty: 1 }, { product: 'b', name: 'B', qty: 1 }], now: NOW, ProductModel });
+  assert.deepEqual(ProductModel.calls.filter((call) => call.op === 'hold').map((call) => call.filter._id), ['a', 'b', 'c']);
+});
+
+test('when a line cannot be had the transaction is rolled back (by raising inside it), nothing is "put back" by hand, and the buyer gets the sentence', async () => {
+  const ProductModel = recordingModel([{ _id: 'p1' }, null]);
   const result = await holds.holdStockForCheckout({ owner: 's:me', sessionId: 'cs_new_page', lines: [{ product: 'p1', name: 'A', qty: 3 }, { product: 'p2', name: 'B', qty: 1 }], now: NOW, ProductModel });
   assert.equal(result.ok, false);
   assert.equal(result.status, 409);
   assert.match(result.message, /^"Hynix 64GB" is being checked out by another buyer right now\./);
-  const restore = ProductModel.calls.find((call) => call.op === 'restore');
-  assert.ok(restore, 'the first product was put back');
-  assert.deepEqual(restore.filter, { _id: 'p1' });
-  assert.deepEqual(restore.update[0].$set.stockHolds.$concatArrays[1], [earlier], 'the earlier page keeps its own hold, session and all');
-  assert.equal(restore.options.updatePipeline, true);
-  assert.equal(ProductModel.calls.some((call) => call.op === 'release'), false, 'no owner-wide release: the earlier page is still payable');
+  const ops = ProductModel.calls.map((c) => c.op);
+  assert.deepEqual(ops, ['begin', 'hold', 'hold', 'end'], 'no commit, no cleanup: the work stops where it was refused and the driver rolls the first line back');
+  assert.equal(ops.includes('release'), false, 'the earlier page of this buyer keeps its hold: nothing owner-wide was released');
 });
 
-test('a product the buyer had no hold on before goes back to none', async () => {
-  const ProductModel = recordingModel([{ stockHolds: [{ owner: 's:other', qty: 1, expiresAt: new Date(NOW.getTime() + 5 * MINUTE) }] }, null]);
-  await holds.holdStockForCheckout({ owner: 's:me', lines: [{ product: 'p1', name: 'A', qty: 1 }, { product: 'p2', name: 'B', qty: 1 }], now: NOW, ProductModel });
-  const restore = ProductModel.calls.find((call) => call.op === 'restore');
-  assert.deepEqual(restore.update[0].$set.stockHolds.$concatArrays[1], [], 'nothing of the buyer\'s is left on it, and the other buyer\'s hold is untouched');
-});
-
-test('a hold of the same buyer that had already lapsed is not "put back"', async () => {
-  const lapsed = { owner: 's:me', sessionId: 'cs_old', qty: 1, expiresAt: new Date(NOW.getTime() - MINUTE) };
-  const ProductModel = recordingModel([{ stockHolds: [lapsed] }, null]);
-  await holds.holdStockForCheckout({ owner: 's:me', lines: [{ product: 'p1', name: 'A', qty: 1 }, { product: 'p2', name: 'B', qty: 1 }], now: NOW, ProductModel });
-  assert.deepEqual(ProductModel.calls.find((call) => call.op === 'restore').update[0].$set.stockHolds.$concatArrays[1], []);
-});
-
-test('a write that throws part-way puts the lines already taken back before the error is raised', async () => {
+test('a write that throws part-way ends the session and raises the error (the driver rolls the transaction back)', async () => {
   const calls = [];
-  let n = 0;
   const ProductModel = {
-    findOneAndUpdate: async () => { n += 1; if (n === 2) throw new Error('connection lost'); return { stockHolds: [] }; },
-    updateOne: async (filter, update, options) => { calls.push({ filter, update, options }); return { modifiedCount: 1 }; },
-    updateMany: async () => { throw new Error('must not release everything'); },
-    findById: () => ({ select: () => ({ lean: async () => null }) }),
+    startSession: async () => ({ withTransaction: async (work) => work(), endSession: async () => { calls.push('end'); } }),
+    findOneAndUpdate: async () => { throw new Error('connection lost'); },
+    updateMany: async () => { calls.push('release'); },
+    findById: () => { throw new Error('not reached'); },
   };
-  await assert.rejects(
-    () => holds.holdStockForCheckout({ owner: 's:me', lines: [{ product: 'p1', name: 'A', qty: 1 }, { product: 'p2', name: 'B', qty: 1 }], now: NOW, ProductModel }),
-    /connection lost/,
-  );
-  assert.equal(calls.length, 1, 'the first line was put back');
-  assert.deepEqual(calls[0].filter, { _id: 'p1' });
+  await assert.rejects(() => holds.holdStockForCheckout({ owner: 's:me', lines: [{ product: 'p1', name: 'A', qty: 1 }], now: NOW, ProductModel }), /connection lost/);
+  assert.deepEqual(calls, ['end']);
 });
 
 test('no owner (no account and no cart session) means no hold, and nothing is touched', async () => {
@@ -403,12 +389,12 @@ test('if the retry cannot reach Stripe it says so and returns the order unchange
   assert.match(lines.join('\n'), /Finishing the steps after order RFX-RECOVER failed \(a retry will try again\): Stripe is down/);
 });
 
-test('the cart is emptied only if it is unchanged since the buyer STARTED the checkout (Stripe\'s own clock, with a minute of slack), not since the order', async (t) => {
+test('the cart is emptied only if it is unchanged since the buyer STARTED the checkout (Stripe\'s own clock, with a few seconds of slack), not since the order', async (t) => {
   const created = Math.floor(Date.parse('2026-10-14T11:00:00Z') / 1000);
   const { calls } = recoveryHarness(t, { session: { created, metadata: { userId: 'guest', cartSessionId: 'session_0123456789' } } });
   await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_recover');
   const cart = calls.find(([name]) => name === 'cart.updateOne');
-  assert.deepEqual(cart[1], { sessionId: 'session_0123456789', updatedAt: { $lte: new Date((created + 60) * 1000) } }, 'items added after the checkout started were never paid for: they stay');
+  assert.deepEqual(cart[1], { sessionId: 'session_0123456789', updatedAt: { $lte: new Date((created + 5) * 1000) } }, 'items added after the checkout started were never paid for: they stay');
 });
 
 test('if the hold cannot be given back in the retry, nothing is marked finished: the cart is left and the mark stays for the next retry', async (t) => {
@@ -474,7 +460,7 @@ test('a new order\'s hold is released for the page that was paid, and its cart i
   const { calls } = creationHarness(t);
   await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_new');
   assert.deepEqual(calls.find(([name]) => name === 'release'), ['release', 's:session_0123456789', { sessionId: 'cs_new' }]);
-  assert.deepEqual(calls.find(([name]) => name === 'cart')[1], { sessionId: 'session_0123456789', updatedAt: { $lte: new Date((1_792_000_000 + 60) * 1000) } });
+  assert.deepEqual(calls.find(([name]) => name === 'cart')[1], { sessionId: 'session_0123456789', updatedAt: { $lte: new Date((1_792_000_000 + 5) * 1000) } });
 });
 
 test('if the hold cannot be given back the order stands but stays marked unfinished (a retry gives it back)', async (t) => {

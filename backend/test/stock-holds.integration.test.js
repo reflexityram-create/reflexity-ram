@@ -192,6 +192,36 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
     assert.deepEqual((await holdsOf(kept)).map((h) => h.sessionId), ['cs_page_2']);
   });
 
+  await root.test('one buyer making two checkout attempts at the same moment with different carts: neither hold is lost, and the last one standing is never "none"', async () => {
+    for (let round = 0; round < 15; round += 1) {
+      await reset();
+      const first = await seedProduct({ stockQuantity: 2 });
+      const second = await seedProduct({ stockQuantity: 2 });
+      const [a, b] = await Promise.all([
+        holdStockForCheckout({ owner: 's:me', sessionId: 'cs_cart_a', lines: want(first) }),
+        holdStockForCheckout({ owner: 's:me', sessionId: 'cs_cart_b', lines: want(second) }),
+      ]);
+      assert.equal(a.ok && b.ok, true);
+      const held = (await holdsOf(first)).length + (await holdsOf(second)).length;
+      assert.ok(held >= 1, `round ${round}: both attempts reported success but nothing is held (each cleanup removed the other's hold)`);
+    }
+  });
+
+  await root.test('a refused try of a two-product cart leaves both products exactly as they were, even while others take holds around it', async () => {
+    await reset();
+    const first = await seedProduct({ stockQuantity: 5 });
+    const second = await seedProduct({ stockQuantity: 1 });
+    await holdStockForCheckout({ owner: 's:me', sessionId: 'cs_page_1', lines: want(first, 2) });
+    await holdStockForCheckout({ owner: 's:other', sessionId: 'cs_other', lines: want(second) });
+    const [refused, other] = await Promise.all([
+      holdStockForCheckout({ owner: 's:me', sessionId: 'cs_page_2', lines: [...want(first, 3), ...want(second)] }),
+      holdStockForCheckout({ owner: 's:third', sessionId: 'cs_third', lines: want(first, 1) }),
+    ]);
+    assert.equal(refused.ok, false);
+    assert.equal(other.ok, true);
+    assert.deepEqual((await holdsOf(first)).map((h) => [h.owner, h.sessionId, h.qty]).sort(), [['s:me', 'cs_page_1', 2], ['s:third', 'cs_third', 1]]);
+  });
+
   await root.test('holds are never shown: not by a normal read, not by the public product projection, and a hold does not touch updatedAt', async () => {
     await reset();
     const product = await seedProduct({ stockQuantity: 2 });
