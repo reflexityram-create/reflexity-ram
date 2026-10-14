@@ -1,7 +1,7 @@
 // The admin's bottom tab bar (components/AdminTabBar.jsx): four places, the same on every page, the store included. Plain data, so the
 // "which tab is lit" rule can be tested without a browser. Exactly one tab is lit on any page that has the bar.
 const startsWith = (path, prefix) => path === prefix || path.startsWith(`${prefix}/`);
-const MORE_PATHS = ['/admin/more', '/admin/users', '/admin/security', '/account'];
+const MORE_PATHS = ['/admin/more', '/admin/users', '/admin/visitors', '/admin/security', '/account'];
 
 export const ADMIN_TAB_DEFS = Object.freeze([
   { key: 'orders', to: '/admin/orders', label: 'Orders', isActive: (path) => startsWith(path, '/admin/orders') },

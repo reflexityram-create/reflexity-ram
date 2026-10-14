@@ -171,6 +171,88 @@ export function trackPageEngagement({ pathname, engagedMs = 0 } = {}) {
   });
 }
 
+// ─── The first-party visit log (docs/visit-log.md) ────────────────────────────────────────────────────────
+// Besides GA4, each public page view is reported to our own collector (the `site-visits` Cloudflare Worker), which adds what only the
+// server can see: the visitor's IP address, Cloudflare's guess at their place and network, and the user agent. It follows exactly the
+// same gate as GA4 (shouldTrackLocation: production host only, not the owner after visiting /admin, not ?analytics=off, not a QA
+// session, not an admin / account / review path) plus Do Not Track and Global Privacy Control, and it does not need GA to have loaded,
+// so an ad blocker that stops gtag.js does not stop it. No cookie, no device id: only a random id for this browser tab session.
+const VISIT_URL = "https://visits.reflexityram.com/v";
+const VISIT_SESSION_KEY = "reflexity_visit_sid";
+let visitReferrerSent = false;
+
+function visitSessionId() {
+  try {
+    let id = globalThis.sessionStorage?.getItem(VISIT_SESSION_KEY) || "";
+    if (!id) {
+      id = `${Math.random().toString(36).slice(2, 12)}${Date.now().toString(36)}`;
+      globalThis.sessionStorage?.setItem(VISIT_SESSION_KEY, id);
+    }
+    return id;
+  } catch { return ""; }
+}
+
+// The storefront pages whose address is worth recording. A visitor can arrive on any other address (a mistyped or shared link may hold a
+// name, an e-mail address or a token), and that is recorded as "/other" rather than as typed. frontend/test/visit-log.test.js reads App.jsx and
+// fails if a new public route is not listed here.
+const VISIT_PATHS = [
+  /^\/$/,
+  /^\/(?:business-info|cart|categories|checkout|faq|guides|international|liquidators|privacy|returns|shipping|shop|support|terms|warranty|wholesale)$/,
+  /^\/checkout\/e-transfer$/,
+  /^\/order\/success$/,
+  /^\/(?:shop|guides)\/[a-z0-9][a-z0-9-]{0,120}$/,
+];
+
+export function visitPath(pathname = "/") {
+  const path = canonicalPath(pathname);
+  if (/^\/wholesale\/[^/]+$/.test(path)) return "/wholesale/lot";
+  return VISIT_PATHS.some((pattern) => pattern.test(path)) ? path : "/other";
+}
+
+export function visitPayload(pathname = globalThis.location?.pathname || "/") {
+  const safePath = visitPath(pathname);
+  const params = new URLSearchParams(globalThis.location?.search || "");
+  const utm = {};
+  for (const key of ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"]) {
+    const value = validCampaignValue(params.get(key));
+    if (value) utm[key] = value;
+  }
+  const screen = globalThis.screen;
+  let timeZone = "";
+  try { timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { /* no Intl */ }
+  return {
+    s: "reflexityram.com",
+    p: safePath,
+    t: safePath === "/other" ? "Other page — Reflexity RAM" : safePageTitle(safePath),
+    // the referring website's origin, and only on the first report of this page load (the later ones are our own pages)
+    r: visitReferrerSent ? "" : safeReferrer() || "",
+    u: utm,
+    l: String(globalThis.navigator?.language || "").slice(0, 20),
+    w: screen?.width && screen?.height ? `${screen.width}x${screen.height}` : "",
+    z: timeZone,
+    i: visitSessionId(),
+  };
+}
+
+export function trackVisit(pathname = globalThis.location?.pathname || "/") {
+  if (!shouldTrackLocation(globalThis.location)) return false;
+  const nav = globalThis.navigator;
+  if (nav?.doNotTrack === "1" || globalThis.doNotTrack === "1" || nav?.globalPrivacyControl === true) return false;
+  const body = JSON.stringify(visitPayload(pathname));
+  let sent = false;
+  try {
+    sent = typeof nav?.sendBeacon === "function" && nav.sendBeacon(VISIT_URL, new Blob([body], { type: "text/plain" }));
+  } catch { sent = false; }
+  if (!sent) {
+    try {
+      globalThis.fetch?.(VISIT_URL, { method: "POST", body, keepalive: true, mode: "no-cors", headers: { "Content-Type": "text/plain" } })?.catch?.(() => {});
+      sent = true;
+    } catch { sent = false; }
+  }
+  if (sent) visitReferrerSent = true;
+  return sent;
+}
+
 export function trackEvent(eventName, parameters = {}) {
   if (!/^[a-z][a-z0-9_]{0,39}$/.test(eventName)) return false;
   if (!shouldTrackLocation(globalThis.location) || typeof globalThis.gtag !== "function") return false;

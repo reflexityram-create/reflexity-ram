@@ -209,6 +209,10 @@ export const adminApi = {
   revokeDevice: (id) => api.delete(`/admin/devices/${id}`),
   sendTestAlert: () => api.post('/admin/devices/test-event'),
 
+  // Visitors (the visit log: docs/visit-log.md)
+  listVisits: (params) => api.get('/admin/visits', { params }),
+  visitsSummary: (params) => api.get('/admin/visits/summary', { params }),
+
   // Users
   listUsers: (params) => api.get('/admin/users', { params }),
   updateUser: (id, data) => api.patch(`/admin/users/${id}`, data),

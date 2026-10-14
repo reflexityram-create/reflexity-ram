@@ -32,6 +32,7 @@ const { retryUntrackedShipmentNoticesThrottled } = require('./utils/shippingNoti
 const { retryCheckoutEmails } = require('./utils/checkoutEmails');
 const { createErrorHandler } = require('./middleware/errorHandler');
 const { createAdminDevicesRouter } = require('./routes/adminDevices');
+const { createAdminVisitsRouter } = require('./routes/adminVisits');
 const { createDeviceLimiter, createPairLimiter } = require('./middleware/phoneLimiters');
 const { fixMerchantProductData } = require('./migrations/fixMerchantProductData');
 const { ensureCartOwnershipIndexes } = require('./migrations/ensureCartOwnershipIndexes');
@@ -252,6 +253,7 @@ app.use('/api/payments', createPaymentsRouter());
 app.use('/api/orders', orderRoutes);
 app.use('/api/admin/wholesale', adminWholesaleRoutes);
 app.use('/api/admin/devices', createAdminDevicesRouter());
+app.use('/api/admin/visits', createAdminVisitsRouter());
 app.use('/api/admin', adminRoutes);
 app.use('/api/wholesale', wholesaleRoutes);
 app.use('/api/upload', uploadRoutes);
