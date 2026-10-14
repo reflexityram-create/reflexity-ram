@@ -56,6 +56,7 @@ let stockDecrementer = decrementStockForOrder;
 let orderCanceller = cancelOrderAndRestoreStock;
 let stockHolder = holdStockForCheckout;
 let stockHoldReleaser = releaseCheckoutHold;
+let checkoutSessionExpirer = (sessionId) => stripe.checkout.sessions.expire(sessionId);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CHECKOUT SESSIONS (primary checkout flow)
@@ -68,8 +69,6 @@ let stockHoldReleaser = releaseCheckoutHold;
 
 // ─── POST /api/stripe/create-checkout-session ──────────────────────────────────
 router.post('/create-checkout-session', optionalAuth, async (req, res) => {
-  // Set when this request has put stock aside for the buyer (below); given back if the session cannot be made after all.
-  let heldBy = null;
   try {
     // Validated like cart.js and auth.js do: cookie-parser turns a `j:{...}` cookie into an OBJECT, which would reach the query below as operators.
     const sessionId = validGuestSessionId(req.headers['x-session-id'] || req.cookies?.cartSessionId);
@@ -224,23 +223,6 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
     const bankDebitPct = bankDebit ? paymentMethodSettings()[BANK_DEBIT].discountPct : 0;
     const bankDebitCoupon = bankDebit && bankDebitPct > 0 ? await bankDebitCouponEnsurer(bankDebitPct) : null;
 
-    // Set what the buyer is about to pay for aside (utils/stockHolds.js), so a second buyer cannot start paying for the same last unit.
-    // This never blocks a sale by failing: if the hold cannot be written, checkout goes ahead as it always did.
-    const holdOwner = ownerKey({ userId, sessionId });
-    if (holdOwner) {
-      try {
-        const hold = await stockHolder({
-          owner: holdOwner,
-          lines: eligibleItems.map(({ item, product }) => ({ product: product._id, name: product.name, qty: item.qty })),
-          minutes: holdMinutes({ bankDebit }),
-        });
-        if (!hold.ok) return res.status(hold.status || 409).json({ error: hold.message });
-        if (hold.held) heldBy = holdOwner;
-      } catch (holdErr) {
-        console.error('Stock hold failed; checkout continues without it:', holdErr.message);
-      }
-    }
-
     const session = await checkoutSessionCreator({
       mode: 'payment',
       line_items: lineItems,
@@ -325,10 +307,29 @@ router.post('/create-checkout-session', optionalAuth, async (req, res) => {
       // aside for a short time (utils/stockHolds.js, above), not for 24 hours.
     });
 
+    // Set what the buyer is about to pay for aside (utils/stockHolds.js), so a second buyer cannot start paying for the same last
+    // unit. It comes AFTER the Stripe page exists, not before: a Stripe failure then never touches a hold (an earlier page of this
+    // buyer's, still open, keeps its own), and a refusal costs only a page nobody was given the link to (closed below, as tidiness).
+    // It never blocks a sale by failing: if the hold cannot be written, checkout goes ahead as it always did.
+    const holdOwner = ownerKey({ userId, sessionId });
+    if (holdOwner) {
+      try {
+        const hold = await stockHolder({
+          owner: holdOwner,
+          lines: eligibleItems.map(({ item, product }) => ({ product: product._id, name: product.name, qty: item.qty })),
+          minutes: holdMinutes({ bankDebit }),
+        });
+        if (!hold.ok) {
+          Promise.resolve(checkoutSessionExpirer(session.id)).catch(() => {});
+          return res.status(hold.status || 409).json({ error: hold.message });
+        }
+      } catch (holdErr) {
+        console.error('Stock hold failed; checkout continues without it:', holdErr.message);
+      }
+    }
+
     res.json({ url: session.url, sessionId: session.id });
   } catch (err) {
-    // No Stripe page to pay on, so nothing to keep set aside.
-    if (heldBy) await Promise.resolve(stockHoldReleaser(heldBy)).catch(() => {});
     console.error('Checkout session error:', err);
     res.status(500).json({ error: 'Failed to start checkout' });
   }
@@ -377,6 +378,10 @@ const ensureCriticalFulfillmentEffects = async (order) => {
   if (shouldDecrementStockForFulfillment(order)) {
     await decrementStockForOrder(order);
   }
+
+  // The steps after the order was saved (the stock hold given back, the cart emptied), if the first attempt stopped before them.
+  // They come after the stock is taken, never before (see releaseHoldsOf).
+  if (order.postOrderPending) await finishPostOrderSteps(order);
 
   // Retry the GA4 purchase if an earlier attempt failed (no-op once reported).
   await reportPaidOrderToGa4(order, { currency: CURRENCY });
@@ -463,6 +468,27 @@ const releaseHoldsOf = async (userId, cartSessionId) => {
     await stockHoldReleaser(owner);
   } catch (err) {
     console.error('Releasing the stock hold failed:', err.message);
+  }
+};
+
+// A retry of an order whose first attempt stopped before its last steps: give the buyer's hold back and empty the cart that became this
+// order. The buyer is found from the Stripe session's metadata (the order itself keeps no cart session id). The cart is emptied only
+// if nobody has touched it since the order was saved: the buyer may already be shopping again. Never throws (the next retry tries again).
+const finishPostOrderSteps = async (order) => {
+  try {
+    const checkout = await checkoutSessionRetriever(order.stripeCheckoutSessionId);
+    const userId = checkout?.metadata?.userId && checkout.metadata.userId !== 'guest' ? checkout.metadata.userId : undefined;
+    const cartSessionId = checkout?.metadata?.cartSessionId || undefined;
+    await releaseHoldsOf(userId, cartSessionId);
+    if (userId || cartSessionId) {
+      await Cart.updateOne(
+        { ...(userId ? { user: userId } : { sessionId: cartSessionId }), updatedAt: { $lte: order.createdAt } },
+        { $set: { items: [], discount: 0 }, $unset: { couponCode: '' } },
+      );
+    }
+    await Order.updateOne({ _id: order._id }, { $unset: { postOrderPending: '' } });
+  } catch (err) {
+    console.error(`Finishing the steps after order ${order.orderNumber} failed (a retry will try again):`, err.message);
   }
 };
 
@@ -575,6 +601,7 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
       discount,
       total,
       stripeCheckoutSessionId: session.id,
+      postOrderPending: true,
       stripePaymentIntentId: typeof pi === 'string' ? pi : pi?.id,
       stripeChargeId: charge?.id || (typeof latestCharge === 'string' ? latestCharge : undefined),
       analyticsClientId: gaIds.clientId,
@@ -669,6 +696,7 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
     await recordAdminEvent({ type: 'order.refunded', title: 'Refunded before the order was recorded', body: `${describeOrder(order)} · do not ship${order.stockDecremented ? ' · its stock was taken: put it back' : ''}`, priority: 'high', order, dedupeKey: `order.refunded:${order._id}` });
     console.log(`💸 Checkout session ${session.id} was refunded before its order existed → order ${order.orderNumber} recorded as refunded`);
     await releaseHoldsOf(userId, session.metadata?.cartSessionId);   // no stock was taken: nothing to keep set aside
+    await Order.updateOne({ _id: order._id }, { $unset: { postOrderPending: '' } }).catch(() => {});
     return order;
   }
 
@@ -687,6 +715,8 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
   if (userId || session.metadata?.cartSessionId) {
     await Cart.findOneAndUpdate(cartFilter, { items: [], discount: 0, couponCode: undefined });
   }
+  // Everything that follows the order is done: a retry has nothing left to finish.
+  await Order.updateOne({ _id: order._id }, { $unset: { postOrderPending: '' } });
 
   // Confirmation email (non-blocking). A debit still clearing gets "received, processing" instead; the confirmation follows when it clears.
   const emailAddress = customer.email;
@@ -1015,6 +1045,7 @@ if (process.env.NODE_ENV === 'test') {
     // Off unless a test asks for the real thing: almost every checkout test runs without a database.
     holdStock = async () => ({ ok: true, held: false }),
     releaseHold = async () => 0,
+    expireSession = async () => ({}),
   } = {}) => {
     checkoutPriceEnsurer = ensurePrice;
     bankDebitCouponEnsurer = ensureCoupon;
@@ -1025,6 +1056,7 @@ if (process.env.NODE_ENV === 'test') {
     stockDecrementer = decrementStock;
     stockHolder = holdStock;
     stockHoldReleaser = releaseHold;
+    checkoutSessionExpirer = expireSession;
   };
   // The settlement steps are not routes of their own, so tests reach them here.
   router.internalsForTest = { fulfillCheckoutSession, settleBankDebitPaid, settleBankDebitFailed, isDelayedBankDebit, bankDebitInFlight };

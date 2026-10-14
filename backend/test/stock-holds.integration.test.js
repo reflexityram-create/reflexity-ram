@@ -198,6 +198,7 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
 
   // ── the card checkout route, with Stripe faked and the holds real ────────────────────────────────────────────
   const sessions = [];
+  const expired = [];
   const cardApp = (extra = {}) => {
     stripeRouter.setCheckoutDependenciesForTest({
       ensurePrice: async (p) => p.stripePriceId,
@@ -205,6 +206,7 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
       createSession: async (payload) => { const id = `cs_test_${sessions.length + 1}`; sessions.push({ id, payload }); return { id, url: `https://stripe.test/${id}` }; },
       holdStock: holdStockForCheckout,
       releaseHold: releaseCheckoutHold,
+      expireSession: async (id) => { expired.push(id); return {}; },
       ...extra,
     });
     const app = express();
@@ -221,18 +223,19 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
     } finally { server.closeAllConnections?.(); await new Promise((resolve) => server.close(resolve)); }
   };
 
-  await root.test('the second buyer of the last unit is turned away BEFORE Stripe: no session is made, and they are told when to retry', async () => {
-    await reset(); sessions.length = 0;
+  await root.test('the second buyer of the last unit gets a 409 and NO link to pay, is told when to retry, and the unused page is closed', async () => {
+    await reset(); sessions.length = 0; expired.length = 0;
     const product = await seedProduct({ stockQuantity: 1 });
     await seedCart(product, 1, A); await seedCart(product, 1, B);
     const app = cardApp();
     const first = await post(app, { 'x-session-id': A });
     assert.equal(first.status, 200, JSON.stringify(first.body));
-    assert.equal(sessions.length, 1);
+    assert.equal(first.body.url, 'https://stripe.test/cs_test_1');
     const second = await post(app, { 'x-session-id': B });
     assert.equal(second.status, 409, JSON.stringify(second.body));
     assert.match(second.body.error, /is being checked out by another buyer right now\. It frees up within \d+ minutes? if they do not finish\. Try again then\./);
-    assert.equal(sessions.length, 1, 'no second Stripe session was created');
+    assert.equal('url' in second.body, false, 'no page to pay on is handed out');
+    assert.deepEqual(expired, ['cs_test_2'], 'the page nobody was given is closed');
     const [hold] = await holdsOf(product);
     assert.equal(hold.owner, `s:${A}`);
     assert.ok(Math.abs(hold.expiresAt - Date.now() - holdMinutes() * MINUTE) < 30_000, 'a card checkout is held for the standard time');
@@ -240,15 +243,17 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
     assert.equal((await post(app, { 'x-session-id': A })).status, 200);
   });
 
-  await root.test('simultaneous checkouts of the last unit from different carts: one 200, the rest 409, and only one Stripe session', async () => {
-    await reset(); sessions.length = 0;
+  await root.test('simultaneous checkouts of the last unit from different carts: exactly one is sent to pay, the others are refused and their pages closed', async () => {
+    await reset(); sessions.length = 0; expired.length = 0;
     const product = await seedProduct({ stockQuantity: 1 });
     const ids = Array.from({ length: 6 }, (_, n) => `session_race_${n}_0123456789abc`);
     for (const id of ids) await seedCart(product, 1, id);
     const app = cardApp();
     const results = await Promise.all(ids.map((id) => post(app, { 'x-session-id': id })));
     assert.deepEqual(results.map((r) => r.status).sort(), [200, 409, 409, 409, 409, 409]);
-    assert.equal(sessions.length, 1);
+    assert.equal(results.filter((r) => r.body.url).length, 1, 'only one buyer was given a page to pay on');
+    assert.equal(expired.length, 5);
+    assert.equal((await holdsOf(product)).length, 1);
   });
 
   await root.test('a signed-in buyer\'s hold is theirs across devices, a bank-debit checkout is held for an hour', async () => {
@@ -265,17 +270,21 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
     assert.ok(Math.abs(hold.expiresAt - Date.now() - 60 * MINUTE) < 30_000, 'a bank debit is held for an hour');
   });
 
-  await root.test('if Stripe cannot make the session, the unit is given straight back', async () => {
-    await reset(); sessions.length = 0;
+  await root.test('a Stripe failure never touches a hold: the buyer\'s earlier page keeps its unit, and a failed first try holds nothing', async () => {
+    await reset(); sessions.length = 0; expired.length = 0;
     const product = await seedProduct({ stockQuantity: 1 });
     await seedCart(product, 1, A); await seedCart(product, 1, B);
     const quiet = console.error; console.error = () => {};
     try {
-      const failing = cardApp({ createSession: async () => { throw new Error('Stripe is down'); } });
-      assert.equal((await post(failing, { 'x-session-id': A })).status, 500);
+      // (the router's dependencies are shared, so the failing Stripe is set up again right before each failing request)
+      const failing = () => cardApp({ createSession: async () => { throw new Error('Stripe is down'); } });
+      assert.equal((await post(failing(), { 'x-session-id': A })).status, 500);
+      assert.deepEqual(await holdsOf(product), [], 'a failed first try holds nothing, so the next buyer is not locked out by a page that never existed');
+      assert.equal((await post(cardApp(), { 'x-session-id': A })).status, 200, 'A tries again and gets a page and a hold');
+      assert.equal((await post(failing(), { 'x-session-id': A })).status, 500, 'a second try that fails at Stripe...');
     } finally { console.error = quiet; }
-    assert.deepEqual(await holdsOf(product), []);
-    assert.equal((await post(cardApp(), { 'x-session-id': B })).status, 200, 'the next buyer is not locked out by a session that never existed');
+    assert.deepEqual((await holdsOf(product)).map((h) => h.owner), [`s:${A}`], '...leaves the first page\'s hold alone');
+    assert.equal((await post(cardApp(), { 'x-session-id': B })).status, 409);
   });
 
   await root.test('a hold that cannot be written never stops a sale (fail open), and says so in the log', async () => {
@@ -350,6 +359,67 @@ test('stock holds on a real MongoDB replica set', { skip }, async (root) => {
     assert.equal(order.paymentStatus, 'refunded');
     assert.equal(await stockOf(product), 1, 'no stock was taken for a refunded payment');
     assert.deepEqual(await holdsOf(product), []);
+  });
+
+  // ── an order that was saved but whose first attempt stopped before the end ────────────────────────────────────────
+  await root.test('a crash right after the order is saved: the retry takes the stock, gives the hold back and empties the cart (and only once)', async () => {
+    await reset();
+    const product = await seedProduct({ stockQuantity: 3 });
+    await seedCart(product, 2, A);
+    await holdStockForCheckout({ owner: `s:${A}`, lines: want(product, 2) });
+    const realCartUpdate = Cart.findOneAndUpdate;
+    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => paid({ line_items: lineFor(product, 2) }), releaseHold: releaseCheckoutHold });
+    // the server "stops" while emptying the cart: the order is saved, the stock taken, the hold released, the cart still full
+    Cart.findOneAndUpdate = async () => { throw new Error('process stopped'); };
+    const quiet = console.error; console.error = () => {};
+    try {
+      await assert.rejects(() => stripeRouter.internalsForTest.fulfillCheckoutSession('cs_paid_1'), /process stopped/);
+    } finally { Cart.findOneAndUpdate = realCartUpdate; console.error = quiet; }
+    const saved = await Order.findOne({ stripeCheckoutSessionId: 'cs_paid_1' });
+    assert.equal(saved.postOrderPending, true, 'the order says its last steps are not done');
+    assert.equal((await Cart.findOne({ sessionId: A })).items.length, 1, 'the cart is still full');
+
+    // Stripe delivers the event again
+    const again = await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_paid_1');
+    assert.equal(String(again._id), String(saved._id));
+    assert.equal(await Order.countDocuments(), 1);
+    assert.equal(await stockOf(product), 1, 'the stock was taken once');
+    assert.equal((await Cart.findOne({ sessionId: A })).items.length, 0, 'the cart is empty now');
+    assert.deepEqual(await holdsOf(product), []);
+    assert.equal((await Order.findById(saved._id).lean()).postOrderPending, undefined, 'finished: nothing left to do');
+  });
+
+  await root.test('the retry leaves a cart alone that the buyer has started filling again since the order', async () => {
+    await reset();
+    const product = await seedProduct({ stockQuantity: 3 });
+    const other = await seedProduct({ stockQuantity: 3 });
+    await seedCart(product, 1, A);
+    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => paid({ line_items: lineFor(product) }), releaseHold: releaseCheckoutHold });
+    const realCartUpdate = Cart.findOneAndUpdate;
+    Cart.findOneAndUpdate = async () => { throw new Error('process stopped'); };
+    const quiet = console.error; console.error = () => {};
+    try { await assert.rejects(() => stripeRouter.internalsForTest.fulfillCheckoutSession('cs_paid_1')); } finally { Cart.findOneAndUpdate = realCartUpdate; console.error = quiet; }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    // the buyer is shopping again: a different stick goes into the same cart session
+    await Cart.updateOne({ sessionId: A }, { $set: { items: [{ product: other._id, slug: other.slug, sku: other.sku, name: other.name, price: 135, qty: 1 }] } });
+    await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_paid_1');
+    const cart = await Cart.findOne({ sessionId: A });
+    assert.deepEqual(cart.items.map((i) => i.slug), [other.slug], 'their new cart is not emptied');
+    assert.equal((await Order.findOne({ stripeCheckoutSessionId: 'cs_paid_1' }).lean()).postOrderPending, undefined);
+  });
+
+  await root.test('a guest who signs in with a checkout started: the hold under the guest session is given back, so the account is not blocked by it', async () => {
+    await reset();
+    const product = await seedProduct({ stockQuantity: 1 });
+    const account = await User.create({ email: 'member@example.com', firstName: 'Mia', lastName: 'Member', isEmailVerified: true });
+    await seedCart(product, 1, A);
+    assert.equal((await holdStockForCheckout({ owner: `s:${A}`, lines: want(product) })).ok, true);
+    // as the account, the guest's own hold would count against them...
+    assert.equal((await holdStockForCheckout({ owner: `u:${account._id}`, lines: want(product) })).ok, false);
+    await require('../src/utils/guestCartMerge').mergeGuestCartForUser(account._id, A);
+    assert.deepEqual(await holdsOf(product), [], 'the guest hold is gone');
+    assert.equal((await holdStockForCheckout({ owner: `u:${account._id}`, lines: want(product) })).ok, true);
+    assert.equal((await Cart.findOne({ user: account._id })).items.length, 1, 'and the cart is theirs');
   });
 
   // ── the safety net under the holds: a payment that still finds the stock gone ─────────────────────────────────

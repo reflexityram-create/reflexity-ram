@@ -48,7 +48,7 @@ test('a paid order records when Google should survey the buyer', async () => {
   const Order = require('../src/models/Order');
   const Product = require('../src/models/Product');
   const stripeRouter = require('../src/routes/stripe');
-  const originals = [Product.findOne, Order.findOne, Order.create, Cart.findOneAndUpdate];
+  const originals = [Product.findOne, Order.findOne, Order.create, Cart.findOneAndUpdate, Order.updateOne];
   const created = [];
   const session = (id, metadata, country) => ({
     id,
@@ -67,6 +67,7 @@ test('a paid order records when Google should survey the buyer', async () => {
     Order.findOne = async () => null;
     Order.create = async (values) => { created.push(values); return { ...values, _id: 'order-id', orderNumber: `RFX-${created.length}`, stockDecremented: true }; };
     Cart.findOneAndUpdate = async () => undefined;
+    Order.updateOne = async () => ({ modifiedCount: 1 });   // clears the order's "last steps pending" mark
     const sessions = {
       cs_ca: session('cs_ca', {}, 'CA'),
       cs_gb: session('cs_gb', { shippingCountry: 'GB', canadaPostService: 'INT.TP', canadaPostTransitDays: '7' }, 'GB'),
@@ -91,6 +92,6 @@ test('a paid order records when Google should survey the buyer', async () => {
     assert.ok(daysAway(created[1]) >= 16 && daysAway(created[1]) <= 19, `GB: ${daysAway(created[1])} days`); // 13 business days
   } finally {
     stripeRouter.setCheckoutDependenciesForTest();
-    [Product.findOne, Order.findOne, Order.create, Cart.findOneAndUpdate] = originals;
+    [Product.findOne, Order.findOne, Order.create, Cart.findOneAndUpdate, Order.updateOne] = originals;
   }
 });

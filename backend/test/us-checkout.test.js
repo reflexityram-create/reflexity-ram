@@ -482,11 +482,12 @@ const stripeSession = (over = {}) => ({
 async function fulfil(t, session) {
   quiet(t);
   const created = [];
-  const originals = { productFindOne: Product.findOne, orderFindOne: Order.findOne, orderCreate: Order.create, cart: Cart.findOneAndUpdate };
+  const originals = { productFindOne: Product.findOne, orderFindOne: Order.findOne, orderCreate: Order.create, cart: Cart.findOneAndUpdate, orderUpdateOne: Order.updateOne };
   Product.findOne = async (q) => (q.stripePriceId === 'price_known' ? { _id: 'p1', slug: 'ddr4-16gb', sku: 'RFX-DDR4-16GB', name: 'Known stick', images: [] } : null);
   Order.findOne = async () => null;
   Order.create = async (values) => { created.push(values); return { ...values, _id: 'o1', orderNumber: 'RFX-9', stockDecremented: true }; };
   Cart.findOneAndUpdate = async () => undefined;
+  Order.updateOne = async () => ({ modifiedCount: 1 });   // clears the order's "last steps pending" mark
   stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => session, decrementStock: async () => true });
   const server = http.createServer(app());
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -496,7 +497,7 @@ async function fulfil(t, session) {
   } finally {
     await new Promise((resolve) => server.close(resolve));
     stripeRouter.setCheckoutDependenciesForTest();
-    Product.findOne = originals.productFindOne; Order.findOne = originals.orderFindOne; Order.create = originals.orderCreate; Cart.findOneAndUpdate = originals.cart;
+    Product.findOne = originals.productFindOne; Order.findOne = originals.orderFindOne; Order.create = originals.orderCreate; Cart.findOneAndUpdate = originals.cart; Order.updateOne = originals.orderUpdateOne;
   }
   assert.equal(created.length, 1);
   return created[0];

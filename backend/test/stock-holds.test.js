@@ -117,6 +117,22 @@ test('when a line cannot be had, what was held is given back and the buyer gets 
   assert.equal(release.options.timestamps, false);
 });
 
+test('a write that throws part-way leaves nothing held: the lines already held are given back before the error is raised', async () => {
+  const calls = [];
+  let n = 0;
+  const ProductModel = {
+    findOneAndUpdate: async () => { n += 1; if (n === 2) throw new Error('connection lost'); return { _id: `p${n}` }; },
+    updateMany: async (filter, update, options) => { calls.push({ filter, update, options }); return { modifiedCount: 1 }; },
+    findById: () => ({ select: () => ({ lean: async () => null }) }),
+  };
+  await assert.rejects(
+    () => holds.holdStockForCheckout({ owner: 's:me', lines: [{ product: 'p1', name: 'A', qty: 1 }, { product: 'p2', name: 'B', qty: 1 }], now: NOW, ProductModel }),
+    /connection lost/,
+  );
+  assert.equal(calls.length, 1, 'the first line was released again');
+  assert.deepEqual(calls[0].filter, { 'stockHolds.owner': 's:me' });
+});
+
 test('no owner (no account and no cart session) means no hold, and nothing is touched', async () => {
   const ProductModel = recordingModel([]);
   assert.deepEqual(await holds.holdStockForCheckout({ owner: null, lines: [{ product: 'p1', name: 'A', qty: 1 }], ProductModel }), { ok: true, held: false });
@@ -165,13 +181,14 @@ function routeHarness(t, deps = {}, { qty = 2 } = {}) {
   t.after(() => { Product.find = originals.find; Cart.findOne = originals.cartFindOne; stripeRouter.setCheckoutDependenciesForTest(); });
   Product.find = () => productQuery([{ _id: 'product-id', slug: 'ddr4-16gb', name: '16GB DDR4', price: 135, stock: 'in', stockQuantity: 10, isActive: true, line: 'Server' }]);
   Cart.findOne = async () => ({ items: [{ product: 'product-id', slug: 'ddr4-16gb', qty }] });
-  const seen = { sessions: 0, holds: [], releases: [] };
+  const seen = { sessions: 0, holds: [], releases: [], expired: [], order: [] };
   stripeRouter.setCheckoutDependenciesForTest({
     ensurePrice: async () => 'price_ddr4_16gb',
     ensureCoupon: async () => 'coupon_test',
-    createSession: async () => { seen.sessions += 1; return { id: 'cs_hold', url: 'https://stripe.test/hold' }; },
-    holdStock: async (request) => { seen.holds.push(request); return { ok: true, held: true }; },
+    createSession: async () => { seen.sessions += 1; seen.order.push('session'); return { id: 'cs_hold', url: 'https://stripe.test/hold' }; },
+    holdStock: async (request) => { seen.order.push('hold'); seen.holds.push(request); return { ok: true, held: true }; },
     releaseHold: async (owner) => { seen.releases.push(owner); return 1; },
+    expireSession: async (id) => { seen.expired.push(id); return {}; },
     ...deps,
   });
   const app = express();
@@ -180,13 +197,16 @@ function routeHarness(t, deps = {}, { qty = 2 } = {}) {
   return { app, seen };
 }
 
-test('checkout sets the cart aside before it sends the buyer to Stripe, for the standard time, under the guest\'s cart session', async (t) => {
+test('checkout sets the cart aside once the Stripe page exists, for the standard time, under the guest\'s cart session', async (t) => {
   const { app, seen } = routeHarness(t);
   const response = await checkout(app);
   assert.equal(response.status, 200);
+  assert.deepEqual(response.body, { url: 'https://stripe.test/hold', sessionId: 'cs_hold' });
   assert.equal(seen.sessions, 1);
+  assert.deepEqual(seen.order, ['session', 'hold'], 'the page is made first, so a Stripe failure can never touch a hold');
   assert.deepEqual(seen.holds, [{ owner: 's:session_0123456789', lines: [{ product: 'product-id', name: '16GB DDR4', qty: 2 }], minutes: 30 }]);
-  assert.deepEqual(seen.releases, [], 'nothing is given back when the session was made');
+  assert.deepEqual(seen.releases, []);
+  assert.deepEqual(seen.expired, []);
 });
 
 test('a bank debit is held for an hour', async (t) => {
@@ -197,43 +217,57 @@ test('a bank debit is held for an hour', async (t) => {
   assert.equal(seen.holds[0].minutes, 60);
 });
 
-test('when the unit is held for someone else the buyer gets a 409 with the sentence, and Stripe is never called', async (t) => {
+test('when the unit is held for someone else the buyer gets a 409 with the sentence and NO link to pay, and the unused page is closed', async (t) => {
   const { app, seen } = routeHarness(t, { holdStock: async () => ({ ok: false, status: 409, message: '"16GB DDR4" is being checked out by another buyer right now. It frees up within 12 minutes if they do not finish. Try again then.' }) });
   const response = await checkout(app);
   assert.equal(response.status, 409);
   assert.match(response.body.error, /is being checked out by another buyer right now/);
-  assert.equal(seen.sessions, 0, 'no Stripe session was made');
+  assert.equal('url' in response.body, false, 'the buyer is not given a page to pay on');
+  assert.deepEqual(seen.expired, ['cs_hold'], 'the page nobody was given is closed (tidiness: nobody could have reached it)');
 });
 
-test('if the session cannot be made after the hold, the hold is given back and the buyer sees the ordinary error', async (t) => {
+test('closing the unused page can fail without changing what the buyer sees', async (t) => {
+  const { app } = routeHarness(t, {
+    holdStock: async () => ({ ok: false, status: 409, message: 'held' }),
+    expireSession: async () => { throw new Error('Stripe is slow'); },
+  });
+  const response = await checkout(app);
+  assert.equal(response.status, 409);
+  assert.equal(response.body.error, 'held');
+});
+
+test('a Stripe failure never touches a hold: nothing is held yet, so an earlier page of the same buyer keeps its own', async (t) => {
   const quiet = console.error; console.error = () => {}; t.after(() => { console.error = quiet; });
   const { app, seen } = routeHarness(t, { createSession: async () => { throw new Error('Stripe is down'); } });
   const response = await checkout(app);
   assert.equal(response.status, 500);
   assert.equal(response.body.error, 'Failed to start checkout');
-  assert.deepEqual(seen.releases, ['s:session_0123456789']);
+  assert.deepEqual(seen.holds, [], 'no hold was asked for');
+  assert.deepEqual(seen.releases, [], 'and none was given back');
 });
 
-test('a hold that fails never stops the sale: the checkout goes ahead and the failure is logged', async (t) => {
+test('a hold that fails never stops the sale: the buyer is sent to pay and the failure is logged', async (t) => {
   const lines = [];
   const original = console.error; console.error = (...args) => lines.push(args.join(' ')); t.after(() => { console.error = original; });
   const { app, seen } = routeHarness(t, { holdStock: async () => { throw new Error('database blip'); } });
   const response = await checkout(app);
   assert.equal(response.status, 200);
+  assert.equal(response.body.url, 'https://stripe.test/hold');
   assert.equal(seen.sessions, 1);
-  assert.deepEqual(seen.releases, [], 'no hold exists, so none is given back');
+  assert.deepEqual(seen.expired, [], 'the page is kept: the buyer is on it');
   assert.match(lines.join('\n'), /Stock hold failed; checkout continues without it: database blip/);
 });
 
-test('a checkout that fails validation before the hold (bad payment method) never holds anything', async (t) => {
+test('a checkout that fails validation (bad payment method) makes no page and holds nothing', async (t) => {
   const { app, seen } = routeHarness(t);
   const response = await checkout(app, { 'x-session-id': 'session_0123456789' }, { paymentMethod: 'bitcoin' });
   assert.equal(response.status, 400);
   assert.deepEqual(seen.holds, []);
+  assert.equal(seen.sessions, 0);
 });
 
 test('the test hook leaves holds OFF by default, so the many checkout tests that have no database do not wait on one', async (t) => {
-  const { app } = routeHarness(t, { holdStock: undefined, releaseHold: undefined });
+  const { app } = routeHarness(t, { holdStock: undefined, releaseHold: undefined, expireSession: undefined });
   assert.equal((await checkout(app)).status, 200);
 });
 
@@ -277,4 +311,100 @@ test('after the order is made and the stock taken the hold is released, in that 
   const release = source.indexOf("await releaseHoldsOf(userId, session.metadata?.cartSessionId);", decrement);
   assert.ok(decrement > 0 && release > decrement, 'the release comes after the stock is taken');
   assert.match(source, /await releaseHoldsOf\(userId, session\.metadata\?\.cartSessionId\);   \/\/ no stock was taken/);
+});
+
+// ── what follows the order: the hold given back and the cart emptied, even when the first attempt stopped before them ───────────────
+function recoveryHarness(t, { order = {}, session = { metadata: { userId: 'guest', cartSessionId: 'session_0123456789' } }, retrieveFails = false } = {}) {
+  const calls = [];
+  const original = { findOne: Order.findOne, orderUpdateOne: Order.updateOne, cartUpdateOne: Cart.updateOne };
+  t.after(() => { Order.findOne = original.findOne; Order.updateOne = original.orderUpdateOne; Cart.updateOne = original.cartUpdateOne; stripeRouter.setCheckoutDependenciesForTest(); });
+  const existing = {
+    _id: 'o1', orderNumber: 'RFX-RECOVER', stripeCheckoutSessionId: 'cs_recover', paymentStatus: 'paid', status: 'processing',
+    stockDecremented: true, postOrderPending: true, createdAt: new Date('2026-10-14T12:00:00Z'), ...order,
+  };
+  Order.findOne = async () => existing;
+  Order.updateOne = async (filter, update) => { calls.push(['order.updateOne', filter, update]); return { modifiedCount: 1 }; };
+  Cart.updateOne = async (filter, update) => { calls.push(['cart.updateOne', filter, update]); return { modifiedCount: 1 }; };
+  stripeRouter.setCheckoutDependenciesForTest({
+    retrieveSession: async (id) => { calls.push(['retrieve', id]); if (retrieveFails) throw new Error('Stripe is down'); return session; },
+    releaseHold: async (owner) => { calls.push(['release', owner]); return 1; },
+  });
+  return { calls, existing };
+}
+
+test('a retry of an order that was saved but never finished gives the guest\'s hold back and empties their untouched cart, then clears the mark', async (t) => {
+  const { calls, existing } = recoveryHarness(t);
+  const result = await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_recover');
+  assert.equal(result, existing);
+  assert.deepEqual(calls, [
+    ['retrieve', 'cs_recover'],
+    ['release', 's:session_0123456789'],
+    ['cart.updateOne', { sessionId: 'session_0123456789', updatedAt: { $lte: existing.createdAt } }, { $set: { items: [], discount: 0 }, $unset: { couponCode: '' } }],
+    ['order.updateOne', { _id: 'o1' }, { $unset: { postOrderPending: '' } }],
+  ], 'only a cart nobody touched since the order is emptied (the buyer may already be shopping again)');
+});
+
+test('in a retry the stock is taken first and the hold given back after, as in the first attempt', async (t) => {
+  const { calls } = recoveryHarness(t, { order: { stockDecremented: false } });
+  const original = require('../src/utils/stock');
+  stripeRouter.setCheckoutDependenciesForTest({
+    retrieveSession: async () => ({ metadata: { userId: 'guest', cartSessionId: 'session_0123456789' } }),
+    releaseHold: async (owner) => { calls.push(['release', owner]); return 1; },
+    decrementStock: async () => { calls.push(['decrement']); return true; },
+  });
+  // ensureCriticalFulfillmentEffects calls the stock helper it imported (not the injected one), so check through the order of effects it makes
+  assert.ok(original.shouldDecrementStockForFulfillment({ stockDecremented: false, status: 'processing' }));
+  const source = fs.readFileSync(path.join(__dirname, '../src/routes/stripe.js'), 'utf8');
+  const recovery = source.slice(source.indexOf('const ensureCriticalFulfillmentEffects'), source.indexOf('// A session that is paid, or that needed no payment'));
+  assert.ok(recovery.indexOf('await decrementStockForOrder(order)') > 0 && recovery.indexOf('await decrementStockForOrder(order)') < recovery.indexOf('await finishPostOrderSteps(order)'), 'decrement, then the hold is given back');
+});
+
+test('the same for a signed-in buyer: their account\'s hold and cart', async (t) => {
+  const { calls } = recoveryHarness(t, { session: { metadata: { userId: '64b7f0c2a1b2c3d4e5f60719', cartSessionId: '' } } });
+  await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_recover');
+  assert.deepEqual(calls.filter(([name]) => name === 'release'), [['release', 'u:64b7f0c2a1b2c3d4e5f60719']]);
+  assert.deepEqual(calls.find(([name]) => name === 'cart.updateOne')[1].user, '64b7f0c2a1b2c3d4e5f60719');
+});
+
+test('an order that is already finished is left alone: no Stripe call, no cart touched', async (t) => {
+  const { calls } = recoveryHarness(t, { order: { postOrderPending: undefined } });
+  await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_recover');
+  assert.deepEqual(calls, []);
+});
+
+test('if the retry cannot reach Stripe it says so and returns the order unchanged, leaving the mark for the next retry', async (t) => {
+  const lines = [];
+  const original = console.error; console.error = (...args) => lines.push(args.join(' ')); t.after(() => { console.error = original; });
+  const { calls, existing } = recoveryHarness(t, { retrieveFails: true });
+  assert.equal(await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_recover'), existing);
+  assert.deepEqual(calls.map(([name]) => name), ['retrieve'], 'nothing was released or emptied, and the mark stays');
+  assert.match(lines.join('\n'), /Finishing the steps after order RFX-RECOVER failed \(a retry will try again\): Stripe is down/);
+});
+
+test('a new order is saved marked as unfinished, and the mark is cleared only after the stock is taken, the hold released and the cart emptied', async (t) => {
+  const calls = [];
+  const original = { pFindOne: Product.findOne, oFindOne: Order.findOne, create: Order.create, cart: Cart.findOneAndUpdate, updateOne: Order.updateOne };
+  t.after(() => { Product.findOne = original.pFindOne; Order.findOne = original.oFindOne; Order.create = original.create; Cart.findOneAndUpdate = original.cart; Order.updateOne = original.updateOne; stripeRouter.setCheckoutDependenciesForTest(); });
+  Product.findOne = async () => ({ _id: 'product-id', slug: 'ddr4-64gb', sku: 'DDR4-64', name: '64GB DDR4', images: [] });
+  Order.findOne = async () => null;
+  Order.create = async (values) => { calls.push(['create', values.postOrderPending]); return { ...values, _id: 'o9', orderNumber: 'RFX-NEW' }; };
+  Cart.findOneAndUpdate = async () => { calls.push(['cart']); };
+  Order.updateOne = async (filter, update) => { calls.push(['unmark', update]); return { modifiedCount: 1 }; };
+  stripeRouter.setCheckoutDependenciesForTest({
+    retrieveSession: async () => ({
+      id: 'cs_new', status: 'complete', payment_status: 'paid', metadata: { userId: 'guest', cartSessionId: 'session_0123456789' },
+      line_items: { data: [{ price: { id: 'price_x', unit_amount: 50000 }, quantity: 1 }] }, amount_subtotal: 50000, amount_total: 51400,
+      total_details: { amount_discount: 0, amount_shipping: 1400, amount_tax: 0 },
+      customer_details: { email: 'buyer@example.com', name: 'Buyer Test', address: { line1: '1 Main St', city: 'Toronto', state: 'ON', postal_code: 'M5V 1E3', country: 'CA' } },
+      payment_intent: 'pi_new',
+    }),
+    decrementStock: async () => { calls.push(['decrement']); return true; },
+    releaseHold: async (owner) => { calls.push(['release', owner]); return 1; },
+  });
+  const quiet = console.log; console.log = () => {}; t.after(() => { console.log = quiet; });
+  await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_new');
+  const names = calls.map(([name]) => name);
+  assert.deepEqual(names.slice(0, 5), ['create', 'decrement', 'release', 'cart', 'unmark']);
+  assert.equal(calls[0][1], true, 'saved marked as unfinished');
+  assert.deepEqual(calls.find(([name]) => name === 'unmark')[1], { $unset: { postOrderPending: '' } });
 });

@@ -66,6 +66,7 @@ test('fulfillment persists the Stripe promotion discount in dollars', async () =
   const originalOrderFindOne = Order.findOne;
   const originalOrderCreate = Order.create;
   const originalCartFindOneAndUpdate = Cart.findOneAndUpdate;
+  const originalOrderUpdateOne = Order.updateOne;
   try {
     Product.findOne = async () => ({
       _id: 'product-id', slug: 'ddr4-64gb', sku: 'DDR4-64', name: '64GB DDR4', images: [],
@@ -77,6 +78,7 @@ test('fulfillment persists the Stripe promotion discount in dollars', async () =
       return { ...values, _id: 'order-id', orderNumber: 'RFX-PROMO', stockDecremented: true };
     };
     Cart.findOneAndUpdate = async () => undefined;
+    Order.updateOne = async () => ({ modifiedCount: 1 });   // clears the order's "last steps pending" mark
     stripeRouter.setCheckoutDependenciesForTest({
       retrieveSession: async () => ({
         id: 'cs_discount', payment_status: 'paid', metadata: { userId: 'guest', cartSessionId: 'session_0123456789' },
@@ -99,5 +101,6 @@ test('fulfillment persists the Stripe promotion discount in dollars', async () =
     Order.findOne = originalOrderFindOne;
     Order.create = originalOrderCreate;
     Cart.findOneAndUpdate = originalCartFindOneAndUpdate;
+    Order.updateOne = originalOrderUpdateOne;
   }
 });

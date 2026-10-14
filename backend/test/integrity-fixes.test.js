@@ -215,7 +215,7 @@ async function fulfil(t, session) {
   quiet(t);
   const created = [];
   stub(t, Product, { findOne: async (q) => (q.stripePriceId === 'price_known' ? { _id: 'p1', slug: 'known', sku: 'RAM-1', name: 'Known stick', images: [] } : null) });
-  stub(t, Order, { findOne: async () => null, create: async (values) => { created.push(values); return { ...values, _id: 'o1', orderNumber: 'RFX-9', stockDecremented: true }; } });
+  stub(t, Order, { findOne: async () => null, create: async (values) => { created.push(values); return { ...values, _id: 'o1', orderNumber: 'RFX-9', stockDecremented: true }; }, updateOne: async () => ({ modifiedCount: 1 }) });
   stub(t, Cart, { findOneAndUpdate: async () => undefined });
   stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => session, decrementStock: async () => true });
   t.after(() => stripeRouter.setCheckoutDependenciesForTest());

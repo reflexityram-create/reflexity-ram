@@ -77,18 +77,25 @@ async function holdStockForCheckout({ owner, lines, minutes = holdMinutes(), now
     wanted.set(key, { product: line.product, name: line.name, qty: (current?.qty || 0) + qty });
   }
   const expiresAt = new Date(now.getTime() + minutes * 60000);
-  for (const line of wanted.values()) {
-    const updated = await ProductModel.findOneAndUpdate(
-      { _id: line.product, $expr: freeForExpr(now, owner, line.qty) },
-      // The new array is: the live holds of everyone else (this also drops expired ones) plus this owner's, replacing their old one.
-      [{ $set: { stockHolds: { $concatArrays: [liveHoldsOfOthers(now, owner), [{ owner, qty: line.qty, expiresAt }]] } } }],
-      { returnDocument: 'after', timestamps: false, updatePipeline: true, projection: { _id: 1 } },
-    );
-    if (updated) continue;
-    await releaseCheckoutHold(owner, { ProductModel });
-    const current = await ProductModel.findById(line.product).select('+stockHolds stockQuantity name').lean();
-    if (!current) return { ok: false, status: 409, message: `"${line.name}" is no longer available.` };
-    return { ok: false, status: 409, message: shortageMessage({ name: current.name || line.name, qty: line.qty }, availabilityOf(current, owner, now), now) };
+  try {
+    for (const line of wanted.values()) {
+      const updated = await ProductModel.findOneAndUpdate(
+        { _id: line.product, $expr: freeForExpr(now, owner, line.qty) },
+        // The new array is: the live holds of everyone else (this also drops expired ones) plus this owner's, replacing their old one.
+        [{ $set: { stockHolds: { $concatArrays: [liveHoldsOfOthers(now, owner), [{ owner, qty: line.qty, expiresAt }]] } } }],
+        { returnDocument: 'after', timestamps: false, updatePipeline: true, projection: { _id: 1 } },
+      );
+      if (updated) continue;
+      await releaseCheckoutHold(owner, { ProductModel });
+      const current = await ProductModel.findById(line.product).select('+stockHolds stockQuantity name').lean();
+      if (!current) return { ok: false, status: 409, message: `"${line.name}" is no longer available.` };
+      return { ok: false, status: 409, message: shortageMessage({ name: current.name || line.name, qty: line.qty }, availabilityOf(current, owner, now), now) };
+    }
+  } catch (err) {
+    // A write that threw part-way (the database dropped for a moment): do not leave the lines already held locked for a checkout
+    // that will go ahead without a hold (the caller fails open).
+    await releaseCheckoutHold(owner, { ProductModel }).catch(() => {});
+    throw err;
   }
   return { ok: true, held: true, expiresAt };
 }

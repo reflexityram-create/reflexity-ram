@@ -2,6 +2,7 @@ const Cart = require('../models/Cart');
 const Product = require('../models/Product');
 const { validGuestSessionId } = require('./guestSession');
 const { lineProductId } = require('./cartLines');
+const { ownerKey, releaseCheckoutHold } = require('./stockHolds');
 
 const MAX_CART_ITEM_QTY = 99;
 
@@ -107,12 +108,23 @@ const mergeCartItems = (existingItems = [], guestItems = [], products = []) => {
   return merged;
 };
 
-const mergeGuestCartForUser = async (userId, sessionId) => {
+// `releaseHold` is injectable so the cart tests need no database.
+const mergeGuestCartForUser = async (userId, sessionId, { releaseHold = releaseCheckoutHold } = {}) => {
   sessionId = validGuestSessionId(sessionId);
   if (!sessionId) return;
 
   const guestCart = await Cart.findOne({ sessionId });
   if (!guestCart) return;
+
+  // The guest's cart is now the account's, and so is any checkout they had started: what was set aside for it under the guest's cart
+  // session (utils/stockHolds.js) is given back, or their retry as the account would find it held by "another buyer" until it ran out.
+  const giveBackGuestHold = async () => {
+    try {
+      await releaseHold(ownerKey({ sessionId }));
+    } catch (err) {
+      console.error('Releasing the guest checkout hold failed:', err.message);
+    }
+  };
 
   const userCart = await Cart.findOne({ user: userId });
   const allItems = [...(userCart?.items || []), ...guestCart.items];
@@ -127,6 +139,7 @@ const mergeGuestCartForUser = async (userId, sessionId) => {
     userCart.items = mergeCartItems(userCart.items, guestCart.items, products);
     await userCart.save();
     await Cart.deleteOne({ _id: guestCart._id });
+    await giveBackGuestHold();
     return;
   }
 
@@ -134,6 +147,7 @@ const mergeGuestCartForUser = async (userId, sessionId) => {
   guestCart.user = userId;
   guestCart.sessionId = undefined;
   await guestCart.save();
+  await giveBackGuestHold();
 };
 
 module.exports = {

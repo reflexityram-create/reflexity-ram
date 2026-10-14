@@ -172,14 +172,32 @@ test('logging in merges the guest cart by product id: the lookup asks for ids, o
   const original = { find: Product.find, findOne: Cart.findOne, deleteOne: Cart.deleteOne };
   const filters = [];
   let deleted;
+  const released = [];
   Product.find = (filter) => { filters.push(filter); return catalog([HYNIX])(filter); };
   Cart.findOne = async (filter) => (filter.sessionId ? guestCart : userCart);
   Cart.deleteOne = async (filter) => { deleted = filter; };
   try {
-    await mergeGuestCartForUser('user-1', 'session_0123456789');
+    await mergeGuestCartForUser('user-1', 'session_0123456789', { releaseHold: async (owner) => { released.push(owner); return 0; } });
   } finally { Product.find = original.find; Cart.findOne = original.findOne; Cart.deleteOne = original.deleteOne; }
   assert.deepEqual(userCart.items.map((l) => [l.slug, l.qty]), [[HYNIX.slug, 3]]);
   assert.equal(userCart.saved, 1);
   assert.deepEqual(deleted, { _id: 'g1' });
+  assert.deepEqual(released, ['s:session_0123456789'], 'the checkout hold the guest had is given back, or their retry as the account would be blocked by it');
   assert.deepEqual(filters.map((f) => [f.$or, f.isActive]), [[[{ _id: { $in: [HYNIX._id] } }], true]], 'products are asked for by id, not by the slugs that may be stale');
+});
+
+test('logging in with no account cart yet: the guest cart becomes the account\'s and the guest\'s checkout hold is given back; a failure to give it back never fails the login', async () => {
+  const guestCart = { _id: 'g2', saved: 0, async save() { this.saved += 1; }, items: [{ product: HYNIX._id, slug: HYNIX.slug, qty: 1 }] };
+  const original = { find: Product.find, findOne: Cart.findOne };
+  Product.find = catalog([HYNIX]);
+  Cart.findOne = async (filter) => (filter.sessionId ? guestCart : null);
+  const quiet = console.error; console.error = () => {};
+  const released = [];
+  try {
+    await mergeGuestCartForUser('user-2', 'session_0123456789', { releaseHold: async (owner) => { released.push(owner); throw new Error('database blip'); } });
+  } finally { Product.find = original.find; Cart.findOne = original.findOne; console.error = quiet; }
+  assert.equal(guestCart.user, 'user-2');
+  assert.equal(guestCart.sessionId, undefined);
+  assert.equal(guestCart.saved, 1);
+  assert.deepEqual(released, ['s:session_0123456789']);
 });
