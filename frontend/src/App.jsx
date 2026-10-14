@@ -16,6 +16,7 @@ import {
   trackPageEngagement,
   trackPageExit,
   trackPageView,
+  trackVisit,
 } from "@/lib/analytics";
 
 // Public pages
@@ -65,6 +66,7 @@ const AdminProducts = lazy(() => import("@/pages/admin/Products"));
 const AdminOrders = lazy(() => import("@/pages/admin/Orders"));
 const AdminUsers = lazy(() => import("@/pages/admin/Users"));
 const AdminSecurity = lazy(() => import("@/pages/admin/Security"));
+const AdminVisitors = lazy(() => import("@/pages/admin/Visitors"));
 const AdminMore = lazy(() => import("@/pages/admin/More"));
 
 export default function App() {
@@ -187,6 +189,7 @@ export default function App() {
           <Route path="/admin/wholesale" element={<Navigate to="/admin/products#wholesale" replace />} />
           <Route path="/admin/orders" element={<AdminOrders />} />
           <Route path="/admin/users" element={<AdminUsers />} />
+          <Route path="/admin/visitors" element={<AdminVisitors />} />
           <Route path="/admin/security" element={<AdminSecurity />} />
           <Route path="/admin/more" element={<AdminMore />} />
 
@@ -225,8 +228,11 @@ function AnalyticsTracker() {
     // Safe location remains query-free; the
     // helper deliberately omits search and hash values.
     if (/^\/admin(?:\/|$)/.test(safePath)) markAnalyticsOwner();
+    // Our own visit log (IP address, place, device: see lib/analytics.js); it does not depend on GA4 having loaded. After a tick, like the
+    // GA page view below, so the page has set its title by then.
+    const visitTimer = window.setTimeout(() => trackVisit(safePath), 0);
     if (!shouldTrackLocation(window.location) || typeof window.gtag !== "function") {
-      return undefined;
+      return () => window.clearTimeout(visitTimer);
     }
 
     let engagedMs = 0;
@@ -283,6 +289,7 @@ function AnalyticsTracker() {
       if (!exited) trackPageView(safePath);
     }, 0);
     return () => {
+      window.clearTimeout(visitTimer);
       window.clearTimeout(viewTimer);
       window.clearInterval(engagementTimer);
       document.removeEventListener("visibilitychange", onVisibility);

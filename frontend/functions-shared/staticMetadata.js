@@ -278,7 +278,7 @@ const CLIENT_ROUTE_PATTERNS = [
   /^\/shop\/[^/]+$/, /^\/wholesale\/[^/]+$/,
   /^\/(?:cart|checkout|checkout\/e-transfer|order\/success|account|reset-password|verify-email|auth\/callback|review)$/, /^\/order\/[^/]+$/,
   /^\/(?:shipping|returns|warranty|privacy|terms|support|faq|international|business-info)$/,
-  /^\/admin(?:\/(?:products|wholesale|orders|users|security|more))?$/,
+  /^\/admin(?:\/(?:products|wholesale|orders|users|visitors|security|more))?$/,
 ];
 
 function isKnownClientRoute(pathname) {

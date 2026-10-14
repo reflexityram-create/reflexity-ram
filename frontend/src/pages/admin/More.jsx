@@ -1,4 +1,4 @@
-import { ChevronRight, LogOut, Settings, Shield, Store, Users } from 'lucide-react';
+import { ChevronRight, Eye, LogOut, Settings, Shield, Store, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import AppLayout from '@/components/AppLayout';
@@ -8,6 +8,7 @@ import { appVersion, isAdminApp } from '@/lib/appBridge';
 
 const ROWS = [
   { to: '/admin/users', icon: Users, title: 'Users', text: 'Customers and admins' },
+  { to: '/admin/visitors', icon: Eye, title: 'Visitors', text: 'Who is looking at the sites: IP address, place, device, pages' },
   { to: '/admin/security', icon: Shield, title: 'Security and phone app', text: 'Your password, pair a phone, the phones that get alerts' },
   { to: '/account?tab=settings', icon: Settings, title: 'Account settings', text: 'Your name' },
   { to: '/', icon: Store, title: 'View the store', text: 'The website the way customers see it' },

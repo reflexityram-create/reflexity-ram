@@ -1,5 +1,5 @@
 import { Link, useLocation, Navigate } from 'react-router-dom';
-import { User, ShoppingBag, Shield, Settings as SettingsIcon, Package, Users, LogOut, ChevronRight, Cpu } from 'lucide-react';
+import { User, ShoppingBag, Shield, Settings as SettingsIcon, Package, Users, LogOut, ChevronRight, Cpu, Eye } from 'lucide-react';
 import useAuthStore from '@/lib/authStore';
 import { toast } from 'sonner';
 
@@ -26,6 +26,7 @@ const ADMIN_ITEMS = [
   { to: '/admin/products', label: 'Products', icon: Package },
   { to: '/admin/orders', label: 'Orders', icon: ShoppingBag },
   { to: '/admin/users', label: 'Users', icon: Users },
+  { to: '/admin/visitors', label: 'Visitors', icon: Eye },
   { to: '/admin/security', label: 'Security', icon: Shield },
 ];
 

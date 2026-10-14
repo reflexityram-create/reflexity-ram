@@ -16,8 +16,16 @@ export default function Privacy() {
               "Name, shipping address, email, and phone number for fulfilment",
               "Order details and billing zip for payment processing",
               "Store analytics: pages viewed, product and cart interactions, checkout steps, technical error categories, and time spent on a page — no personal profiling, session recordings, or form-field contents",
+              "Visit log: your IP address, the country, region, city, time zone, and network (your internet provider or company) that Cloudflare works out from it, your browser, device type, language, time zone, and screen size, the pages you open, the website that sent you, any campaign tags (utm_) in the link you used, and the time. See \"Visit log\" below",
               "Reviews you choose to post: your star rating, title, review text, and first name",
             ] },
+          ],
+        },
+        {
+          heading: "Visit log",
+          body: [
+            "To keep the store secure, spot fraud and abuse, and see which products interest visitors, our own server records each page you open on this site: the details listed above, plus a random number that ties together the pages of one visit. It sets no cookie and no lasting identifier on your device. We keep it for 180 days, then delete it. We do not sell it, share it for advertising, or use it to build a profile of you, and it never includes your name, email address, order details, or what you type into a form.",
+            "To opt out, add ?analytics=off to the end of any page address once (this browser then stops sending it), or turn on Do Not Track or Global Privacy Control in your browser (that stops the visit log; adding ?analytics=off also switches off our Google Analytics measurement). You can ask us to delete the log entries for your IP address using the email address below.",
           ],
         },
         {
@@ -59,7 +67,7 @@ export default function Privacy() {
               "Google Analytics — measures site traffic and shopping steps so we can find where visits end or checkout fails. A hidden tab or the last recorded step does not tell us why someone left. We do not send names, email addresses, shipping addresses, or payment details in these events.",
               "Google Customer Reviews and its store rating badge — as described above.",
               "Canada Post's AddressComplete or Photon (Komoot, on OpenStreetMap data) — suggest addresses as you type on the Interac e-Transfer page, when suggestions are on. They receive only the text you typed.",
-              "Cloudflare, Render, and MongoDB Atlas — host the website and store order records.",
+              "Cloudflare, Render, and MongoDB Atlas — host the website and store order records. Cloudflare also stores the visit log.",
             ] },
             "We do not run cross-site behavioral advertising.",
           ],
@@ -67,7 +75,7 @@ export default function Privacy() {
         {
           heading: "Cookies",
           body: [
-            "Essential cookies for the cart and session. Analytics cookies for understanding catalog traffic. No third-party ad cookies.",
+            "Essential cookies for the cart and session. Analytics cookies for understanding catalog traffic. No third-party ad cookies. The visit log sets no cookie.",
           ],
         },
         {
