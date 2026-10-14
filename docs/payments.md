@@ -202,8 +202,10 @@ An independent review of this change fixed what could be fixed cheaply (everythi
   So anyone can make the shop email "send $X" to an address that is not theirs, and can hold up to the size limit of stock for the hold.
   Mitigations in place: the size limits, 3 open orders per address, 8 orders an hour per IP, an alert on the owner's phone for every
   order (cancel one by hand in a tap), the instructions say "if you did not place this order, ignore this email", and the Payment panel
-  tells the owner whose name the transfer should come from (check it before shipping). The open-order cap is checked before the order
-  is written, so a burst of requests from *different* carts with one address can exceed it by a few; the size limits still hold.
+  tells the owner whose name the transfer should come from (check it before shipping). The open-order cap is checked early for a clear
+  error and again inside the stock/order/cart transaction. A shared hashed buyer-lock row serializes different carts and products for
+  the same identity, so simultaneous requests cannot exceed three pending orders. A refused transaction leaves its cart and stock intact.
+  This remains a courtesy cap per guest email (or signed-in user), not verified ownership: using another address is still possible.
 - **One transfer per order.** Most Canadian banks cap a single Interac transfer, which is why an order is limited to
   `ETRANSFER_MAX_TOTAL_CAD`. A buyer who does send two transfers can be accepted with "accept a different amount" and a note; there is
   no split-payment record.

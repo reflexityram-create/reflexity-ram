@@ -27,6 +27,7 @@ const { ETRANSFER, BANK_DEBIT, paymentMethodSettings, discountCents } = require(
 const { sendPaymentNoticeEmail, sendOrderConfirmationEmail } = require('./email');
 const { recordAdminEvent, describeOrder } = require('./adminEvents');
 const { ownerKey } = require('./stockHolds');
+const { prepareEtransferCap } = require('./etransferCap');
 const { estimateDeliveryDate } = require('./deliveryEstimate');
 const { reportPaidOrderToGa4 } = require('./purchaseAnalytics');
 const { cancelReviewRequest } = require('./reviewRequests');
@@ -64,7 +65,7 @@ const withoutAwaitingNote = (adminNotes) => removeNoteLines(adminNotes, 'AWAITIN
 // `buyer` is the already-validated form: { firstName, lastName, email, phone }, `address` { line1, line2, city, state, zip }.
 async function placeEtransferOrder({ user, sessionId, buyer, address, shipping, analytics, now = new Date() }, deps = {}) {
   const d = {
-    Cart, Order, resolveLines: resolveCartLines, createOrder: createOrderWithReservation,
+    Cart, Order, prepareCap: prepareEtransferCap, resolveLines: resolveCartLines, createOrder: createOrderWithReservation,
     sendNotice: sendPaymentNoticeEmail, record: recordAdminEvent, settings: paymentMethodSettings(), ...deps,
   };
   const settings = d.settings[ETRANSFER];
@@ -125,7 +126,12 @@ async function placeEtransferOrder({ user, sessionId, buyer, address, shipping, 
   // The cart is emptied INSIDE the transaction that creates the order, and only if it still holds what was priced above.
   // A second request for the same cart (a double click in two tabs, a retry, a script) finds it already empty and is turned
   // away instead of becoming a second order that holds a second lot of stock and sends a second set of instructions.
+  const countLocked = await d.prepareCap({ userId: user?._id, email });
   const consumeCart = async (session) => {
+    const openWithThisOrder = await countLocked(session);
+    if (openWithThisOrder > MAX_OPEN_ORDERS_PER_BUYER) {
+      throw new EtransferError(429, 'You already have 3 orders waiting for an e-Transfer. Send those payments first, or email us.', 'OPEN_ORDER_LIMIT');
+    }
     const used = await d.Cart.updateOne(
       { _id: cart._id, 'items.0': { $exists: true }, ...(cart.updatedAt ? { updatedAt: cart.updatedAt } : {}) },
       { $set: { items: [], discount: 0 }, $unset: { couponCode: '' } },
