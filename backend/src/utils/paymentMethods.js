@@ -19,6 +19,7 @@
 //                                      orders pay by card (not held, no cap) or by arrangement.
 
 const { etransferAddressDiffersFromContact } = require('./contact');
+const { addressLookupEnabled } = require('./addressConfig');
 
 const BANK_DEBIT = 'bank_debit';
 const ETRANSFER = 'etransfer';
@@ -75,7 +76,9 @@ function publicPaymentMethods(env = process.env) {
     ...(settings[BANK_DEBIT].enabled ? [{ id: BANK_DEBIT, label: 'Bank debit', discountPct: settings[BANK_DEBIT].discountPct }] : []),
     ...(settings[ETRANSFER].enabled ? [{ id: ETRANSFER, label: 'Interac e-Transfer', discountPct: settings[ETRANSFER].discountPct, holdHours: settings[ETRANSFER].holdHours, maxUnits: settings[ETRANSFER].maxUnits, maxTotal: settings[ETRANSFER].maxTotal,
       // Whether the page may say "not our contact email" (true) without naming the address itself, which stays private until ordering.
-      contactDiffers: etransferAddressDiffersFromContact(settings[ETRANSFER].recipientEmail) }] : []),
+      contactDiffers: etransferAddressDiffersFromContact(settings[ETRANSFER].recipientEmail),
+      // Whether the e-Transfer form may offer address suggestions (a key is set, utils/addressConfig.js); the buyer can always type instead.
+      addressSuggest: addressLookupEnabled(env) }] : []),
   ];
 }
 

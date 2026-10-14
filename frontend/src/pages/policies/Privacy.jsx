@@ -21,6 +21,12 @@ export default function Privacy() {
           ],
         },
         {
+          heading: "Address suggestions",
+          body: [
+            "When address suggestions are on, what you type in the street address box on the Interac e-Transfer page is sent through our server to Canada Post's AddressComplete service, which suggests and checks Canadian addresses. We do not keep those searches, and Canada Post already receives your address from us when we ship your order. You can ignore the suggestions and type your address yourself.",
+          ],
+        },
+        {
           heading: "Emails we send",
           body: [
             "We email you about your order: a confirmation, a shipping notice, and, about 10 days after it ships, one email asking how the order went, with a link to review what you bought. The review link works without an account.",

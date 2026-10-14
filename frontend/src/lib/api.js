@@ -160,6 +160,14 @@ export const paymentsApi = {
   createEtransferOrder: (payload) => api.post('/payments/etransfer/orders', payload),
 };
 
+// ─── Address suggestions (e-Transfer form) ────────────────────────────────────
+// Answered by our own server from Canada Post's address data; { unavailable: true } means "type it yourself". A search the page
+// has moved on from is cancelled with its AbortSignal.
+export const addressApi = {
+  suggest: (q, lastId, signal) => publicApi.get('/address/suggest', { params: { q, ...(lastId ? { lastId } : {}) }, signal }),
+  retrieve: (id, signal) => publicApi.get('/address/retrieve', { params: { id }, signal }),
+};
+
 // ─── Admin API ────────────────────────────────────────────────────────────────
 export const adminApi = {
   stats: () => api.get('/admin/stats'),
