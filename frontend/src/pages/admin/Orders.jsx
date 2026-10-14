@@ -10,7 +10,9 @@ import { adminApi } from '@/lib/api';
 import { imageUrl } from '@/lib/imageUrl';
 import ShippingPreparationPanel from '@/components/admin/ShippingPreparationPanel';
 import PaymentPanel from '@/components/admin/PaymentPanel';
-import { TONE_CLASS, paymentState, showPaymentLabel } from '@/lib/orderPayment';
+import DisputeBox from '@/components/admin/DisputeBox';
+import DisputePill from '@/components/admin/DisputePill';
+import { TONE_CLASS, disputeState, paymentState, showPaymentLabel } from '@/lib/orderPayment';
 import { ORDER_VIEWS, ageLabel, countFor, customerName, isViewKey, nextStep, orderMoney } from '@/lib/adminOrders';
 
 const STATUS_PILLS = {
@@ -178,6 +180,7 @@ function OrderSheet({ orderId, onClose, onChanged }) {
         <>
           <span className={`pill ${STATUS_PILLS[order.status] || ''} text-[10px] py-0.5`}>{order.status}</span>
           {showPaymentLabel(order) && <span className={`pill ${TONE_CLASS[paymentState(order).tone]} text-[10px] py-0.5`} data-testid="sheet-payment-label">{paymentState(order).label}</span>}
+          <DisputePill order={order} />
         </>
       )}
     >
@@ -188,6 +191,9 @@ function OrderSheet({ orderId, onClose, onChanged }) {
         </div>
       ) : order && (
         <div className="space-y-4">
+          {/* A dispute or bank inquiry on the payment: first, because it has a deadline and it changes what to do with the parcel */}
+          <DisputeBox order={order} />
+
           {/* Notes the system left on the order: which Canada Post service to buy, an oversold item, an email or payment that needs a look */}
           {order.adminNotes && (
             <div className="rounded-xl p-4 text-[13px] border border-amber-500/30 bg-amber-500/5" role="note" data-testid="order-admin-notes">
@@ -290,6 +296,9 @@ function OrderSheet({ orderId, onClose, onChanged }) {
 function OrderCard({ order, onOpen }) {
   const payment = paymentState(order);
   const waitingOnYou = nextStep(order).key === 'collect' || nextStep(order).key === 'ship';
+  // While the bank is disputing or asking about the payment, or once the dispute is lost (the money is gone), the card does not
+  // suggest shipping: the order is the owner's call.
+  const underDispute = ['open', 'inquiry', 'lost'].includes(disputeState(order)?.key);
   return (
     <li>
       <button type="button" onClick={() => onOpen(order._id)} className={`admin-card ${waitingOnYou ? 'needs-you' : ''}`} data-testid="order-card" aria-label={`Manage order ${order.orderNumber}`}>
@@ -306,7 +315,8 @@ function OrderCard({ order, onOpen }) {
         <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
           <span className={`pill ${STATUS_PILLS[order.status] || ''} text-[10px] py-0.5`}>{order.status}</span>
           {showPaymentLabel(order) && <span className={`pill ${TONE_CLASS[payment.tone]} text-[10px] py-0.5`} data-testid="order-card-payment-label">{payment.label}</span>}
-          {nextStep(order).key === 'ship' && <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">Ready to ship</span>}
+          <DisputePill order={order} />
+          {nextStep(order).key === 'ship' && !underDispute && <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">Ready to ship</span>}
           <ChevronRight size={16} className="ml-auto text-neutral-500" aria-hidden="true" />
         </div>
       </button>
@@ -444,6 +454,7 @@ export default function AdminOrders() {
                           {showPaymentLabel(o) && (
                             <span className={`pill ${TONE_CLASS[paymentState(o).tone]} text-[10px] py-0.5 ml-1.5`} data-testid="order-payment-label">{paymentState(o).label}</span>
                           )}
+                          <DisputePill order={o} className="ml-1.5" />
                         </td>
                         <td className="p-4 text-right mono">${o.total?.toFixed(2)}</td>
                         <td className="p-4 text-right text-neutral-500">

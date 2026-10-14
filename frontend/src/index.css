@@ -405,6 +405,16 @@ html:not(.light) .pill-amber {
 html.dark .pill-blue {
     color: #a0c4ff;
 }
+.pill-red {
+    border-color: rgba(200, 60, 55, 0.4);
+    background: rgba(220, 70, 65, 0.08);
+    color: #b3261e;
+}
+html.dark .pill-red {
+    border-color: rgba(255, 130, 120, 0.4);
+    background: rgba(255, 110, 100, 0.1);
+    color: #ff9c94;
+}
 
 /* Buttons */
 .btn-primary {
