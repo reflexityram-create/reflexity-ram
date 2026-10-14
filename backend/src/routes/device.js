@@ -85,6 +85,8 @@ function createDeviceRouter({
 
       const user = await UserModel.findById(pairing.user).select('-password');
       if (!user || !user.isActive || user.role !== 'admin') return refused();
+      // A code made before the admin's password changed (or made before codes recorded it) does not pair a phone.
+      if (typeof pairing.authVersion !== 'number' || pairing.authVersion !== Number(user.authVersion || 0)) return refused();
 
       const tooMany = () => res.status(409).json({ error: `${MAX_ACTIVE_DEVICES} phones are already paired. Remove one on the Security page first.` });
       if (await DeviceModel.countDocuments({ user: user._id, revokedAt: null }) >= MAX_ACTIVE_DEVICES) return tooMany();

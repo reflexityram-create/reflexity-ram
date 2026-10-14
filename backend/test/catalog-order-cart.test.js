@@ -648,3 +648,40 @@ test('orders accept addresses abroad without a province or postal code', async (
   await order(address({ country: 'GB' })).validate(['shippingAddress']);
   await assert.rejects(order(address({ country: 'CA' })).validate(['shippingAddress']));
 });
+
+// Review of 2026-10-14: the add/update validators checked the shape of the input but kept it as sent. A quantity sent as
+// the text "2" was added to the 1 already in the cart as text ("12"), and a slug sent as an object reached Product.findOne
+// as a query operator ({"$regex": ".*"} matched whatever product came first).
+test('cart quantities are whole numbers and the slug is a plain string', async () => {
+  const originalProductFindOne = Product.findOne;
+  const originalProductFind = Product.find;
+  const originalCartFindOne = Cart.findOne;
+  const stick = new Product(product({ _id: undefined, slug: 'many-left', stockQuantity: 20, price: 100 }));
+  const lookups = [];
+  Product.findOne = async (filter) => { lookups.push(filter); return stick; };
+  Product.find = () => productQuery([stick]);
+  const cart = { items: [{ slug: 'many-left', sku: 'MANY', name: 'Many left', price: 100, qty: 1, product: stick._id }], save: async () => undefined };
+  Cart.findOne = async () => cart;
+  const app = express();
+  app.use(express.json());
+  app.use('/api/cart', cartRouter);
+  try {
+    const added = await jsonRequest(app, '/api/cart/add', { slug: 'many-left', qty: '2' });
+    assert.equal(added.status, 200);
+    assert.equal(added.body.cart.items[0].qty, 3, 'one in the cart plus "2" is 3, not "12"');
+    for (const body of [{ slug: { $regex: '.*' }, qty: 1 }, { slug: ['many-left'], qty: 1 }, { slug: 'many-left', qty: [2] }, { slug: 'many-left', qty: '1.5' }]) {
+      const refused = await jsonRequest(app, '/api/cart/add', body);
+      assert.equal(refused.status, 400, JSON.stringify(body));
+    }
+    const operator = await jsonRequest(app, '/api/cart/update', { slug: { $ne: null }, qty: 1 }, 'PATCH');
+    assert.equal(operator.status, 400);
+    assert.ok(lookups.every((filter) => typeof filter.slug === 'string' || filter._id), `no operator reached the database: ${JSON.stringify(lookups)}`);
+    const removed = await jsonRequest(app, '/api/cart/update', { slug: 'many-left', qty: '0' }, 'PATCH');
+    assert.equal(removed.status, 200);
+    assert.deepEqual(removed.body.cart.items, [], 'a quantity of "0" removes the line, as 0 does');
+  } finally {
+    Product.findOne = originalProductFindOne;
+    Product.find = originalProductFind;
+    Cart.findOne = originalCartFindOne;
+  }
+});

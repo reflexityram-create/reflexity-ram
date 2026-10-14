@@ -28,6 +28,8 @@ const { createAddressRouter } = require('./routes/address');
 const { onlyWhenProvider, dailyLookupCap, photonDailyCap } = require('./utils/addressConfig');
 const { sweepEtransferOrdersThrottled } = require('./utils/etransfer');
 const { syncShippedOrdersThrottled } = require('./utils/trackingSync');
+const { retryUntrackedShipmentNoticesThrottled } = require('./utils/shippingNotifications');
+const { createErrorHandler } = require('./middleware/errorHandler');
 const { createAdminDevicesRouter } = require('./routes/adminDevices');
 const { createDeviceLimiter, createPairLimiter } = require('./middleware/phoneLimiters');
 const { fixMerchantProductData } = require('./migrations/fixMerchantProductData');
@@ -282,14 +284,7 @@ app.use((req, res) => {
 });
 
 // ─── Error Handler ─────────────────────────────────────────────────────────────
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  const status = err.status || 500;
-  res.status(status).json({
-    error: err.publicMessage
-      || (process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message),
-  });
-});
+app.use(createErrorHandler());
 
 // ─── Database & Server Start ───────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
@@ -371,13 +366,15 @@ mongoose
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`   Stripe: ${STRIPE_ENABLED ? 'enabled' : 'disabled'}`);
     });
-    // The jobs that must not depend on GitHub's thinned-out schedule: expire/remind unpaid e-Transfer orders and follow tracked parcels
-    // (mark shipped on Canada Post's first scan, mark delivered, email the buyer). Each throttles itself to its own interval and never
+    // The jobs that must not depend on GitHub's thinned-out schedule: expire/remind unpaid e-Transfer orders, follow tracked parcels
+    // (mark shipped on Canada Post's first scan, mark delivered, email the buyer) and resend a failed "shipped" email for a parcel
+    // sent without tracking. Each throttles itself to its own interval and never
     // throws; they run a minute after a start (a deploy restarts the server) and then every five minutes while the server is awake.
     if (process.env.NODE_ENV !== 'test') {
       const backgroundJobs = () => {
         sweepEtransferOrdersThrottled().catch(() => {});
         syncShippedOrdersThrottled().catch(() => {});
+        retryUntrackedShipmentNoticesThrottled().catch(() => {});
       };
       setTimeout(backgroundJobs, 60 * 1000).unref();
       setInterval(backgroundJobs, 5 * 60 * 1000).unref();

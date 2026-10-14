@@ -7,6 +7,9 @@ const devicePairingSchema = new mongoose.Schema({
   codeHash: { type: String, required: true, unique: true },
   expiresAt: { type: Date, required: true },
   usedAt: { type: Date },
+  // The admin's authVersion when the code was made. A password change or reset bumps it, and a code made before that must not
+  // pair a phone afterwards: someone who had the old session could otherwise turn its code into a lasting device credential.
+  authVersion: { type: Number },
 }, {
   collection: 'device_pairings',
   timestamps: true,

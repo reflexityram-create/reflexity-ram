@@ -62,7 +62,7 @@ function world({ latencyMs = 0, users = [ADMIN], now = Date.now, record } = {}) 
   return { app, UserModel, DeviceModel, PairingModel, EventModel, bus, recorded };
 }
 const seedCode = (w, code, extra = {}) => w.PairingModel.create({
-  user: ADMIN._id, codeHash: hashPairingCode(normalizePairingCode(code)), expiresAt: new Date(Date.now() + 600000), ...extra,
+  user: ADMIN._id, codeHash: hashPairingCode(normalizePairingCode(code)), expiresAt: new Date(Date.now() + 600000), authVersion: ADMIN.authVersion, ...extra,
 });
 const pair = (w, code, label = 'Pixel') => call(w.app, 'POST', '/api/device/pair', { body: { code, label } });
 
@@ -84,6 +84,20 @@ test('the five-phone limit holds even when several codes are redeemed at the sam
   await Promise.all([0, 1, 2, 3].map((i) => pair(w, `CAPS-000${i + 2}`)));
   const active = w.DeviceModel.docs.filter((d) => !d.revokedAt).length;
   assert.ok(active <= MAX_ACTIVE_DEVICES, `${active} phones are active`);
+});
+
+// Review of 2026-10-14: a code made before the admin's password changed still paired a phone afterwards, and that phone took
+// the NEW authVersion, so it kept working: someone who had the old session could turn its code into a lasting credential.
+test('a pairing code made before a password change, or one that does not say when, pairs nothing', async () => {
+  const w = world();
+  await seedCode(w, 'OLDV-2345');                          // made while the admin was at authVersion 3
+  w.UserModel.docs[0].authVersion = 4;                     // then the password was changed or reset
+  assert.equal((await pair(w, 'OLDV-2345')).status, 400);
+  await seedCode(w, 'NEWV-2345', { authVersion: 4 });      // a code made after the change works
+  assert.equal((await pair(w, 'NEWV-2345')).status, 201);
+  await seedCode(w, 'LEGA-2345', { authVersion: undefined });
+  assert.equal((await pair(w, 'LEGA-2345')).status, 400);
+  assert.equal(w.DeviceModel.docs.length, 1, 'only the code made after the change became a phone');
 });
 
 test('a deactivated admin cannot pair, and a deactivated admin\'s phone stops working', async () => {
@@ -243,6 +257,7 @@ test('the real guard on /api/admin/devices: no token 401, a customer 403, the co
     assert.equal((await call(g.app, 'POST', '/api/admin/devices/pairing', { headers: bearer(login(g.customer)) })).status, 403);
     assert.equal((await call(g.app, 'POST', '/api/admin/devices/pairing', { headers: { cookie: `accessToken=${login(ADMIN)}` } })).status, 401, 'an ambient cookie is not enough to mint a credential');
     assert.equal((await call(g.app, 'POST', '/api/admin/devices/pairing', { headers: bearer(login(ADMIN)) })).status, 201);
+    assert.equal(g.PairingModel.docs.at(-1).authVersion, ADMIN.authVersion, 'the code records the admin\'s authVersion');
     assert.equal((await call(g.app, 'GET', '/api/admin/devices', { headers: bearer(login(ADMIN)) })).status, 200);
     assert.equal((await call(g.app, 'GET', '/api/admin/devices', { headers: bearer(login(g.customer)) })).status, 403);
   } finally { g.restore(); }

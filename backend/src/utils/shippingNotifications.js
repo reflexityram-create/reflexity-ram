@@ -34,4 +34,56 @@ async function notifyShipment(order, overrides = {}) {
   }
 }
 
-module.exports = { notifyShipment, CLAIM_MS };
+// A shipment sent without a tracking number has no parcel to follow, so the tracking worker (which retries a failed "shipped"
+// email for tracked parcels) never looks at it: an email that failed, or a server that stopped after the claim, left the buyer
+// without the news for good. This retries those on the same claim. Only for a week: after that the news is stale, and an
+// address that keeps failing is not tried forever.
+const UNTRACKED_RETRY_DAYS = 7;
+async function retryUntrackedShipmentNotices(overrides = {}) {
+  const deps = { Order, notify: notifyShipment, now: () => new Date(), limit: 20, ...overrides };
+  const now = deps.now();
+  const orders = await deps.Order.find({
+    status: 'shipped',
+    paymentStatus: 'paid',
+    trackingNumber: { $in: [null, ''] },
+    shippedAt: { $gte: new Date(now.getTime() - UNTRACKED_RETRY_DAYS * 24 * 60 * 60 * 1000) },
+    $or: [
+      { 'shippingNotification.status': { $in: ['pending', 'failed'] } },
+      { 'shippingNotification.status': 'sending', 'shippingNotification.claimedAt': { $lt: new Date(now.getTime() - CLAIM_MS) } },
+    ],
+  }).populate('user', 'firstName email').limit(deps.limit);
+  const summary = { checked: 0, sent: 0, failed: 0 };
+  for (const order of orders) {
+    const result = await deps.notify(order, { now: deps.now });
+    summary.checked += 1;
+    if (result.status === 'sent') summary.sent += 1;
+    if (result.status === 'failed') summary.failed += 1;
+  }
+  return summary;
+}
+
+// The server runs it on its own timer (as it does the e-Transfer sweep), at most every 15 minutes, and never throws.
+const RETRY_EVERY_MS = 15 * 60 * 1000;
+let lastRetryAt = 0;
+let retrying = false;
+async function retryUntrackedShipmentNoticesThrottled({ now = Date.now(), run = retryUntrackedShipmentNotices } = {}) {
+  if (retrying || now - lastRetryAt < RETRY_EVERY_MS) return null;
+  retrying = true;
+  lastRetryAt = now;
+  try {
+    const summary = await run();
+    if (summary && (summary.sent || summary.failed)) console.log(`Untracked shipment emails: ${JSON.stringify(summary)}`);
+    return summary;
+  } catch (err) {
+    console.error('Untracked shipment email retry failed:', err.message);
+    return null;
+  } finally {
+    retrying = false;
+  }
+}
+const resetRetryThrottleForTest = () => { lastRetryAt = 0; retrying = false; };
+
+module.exports = {
+  notifyShipment, retryUntrackedShipmentNotices, retryUntrackedShipmentNoticesThrottled, resetRetryThrottleForTest,
+  CLAIM_MS, UNTRACKED_RETRY_DAYS,
+};

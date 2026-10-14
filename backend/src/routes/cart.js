@@ -83,8 +83,10 @@ router.post(
   '/add',
   optionalAuth,
   [
-    body('slug').notEmpty().withMessage('Product slug required'),
-    body('qty').isInt({ min: 1, max: 99 }).withMessage('Quantity must be 1–99'),
+    // A slug is a string: an object such as {"$regex": ".*"} would reach Product.findOne as a query operator.
+    body('slug').isString().withMessage('Product slug required').bail().trim().notEmpty().withMessage('Product slug required'),
+    // One whole number: a quantity sent as "2" (or [2]) was added to the cart's 1 as text, giving "12".
+    body('qty').not().isArray().withMessage('Quantity must be 1–99').bail().isInt({ min: 1, max: 99 }).withMessage('Quantity must be 1–99').toInt(),
   ],
   validate,
   async (req, res) => {
@@ -140,8 +142,8 @@ router.patch(
   '/update',
   optionalAuth,
   [
-    body('slug').notEmpty().withMessage('Product slug required'),
-    body('qty').isInt({ min: 0, max: 99 }).withMessage('Quantity must be 0–99'),
+    body('slug').isString().withMessage('Product slug required').bail().trim().notEmpty().withMessage('Product slug required'),
+    body('qty').not().isArray().withMessage('Quantity must be 0–99').bail().isInt({ min: 0, max: 99 }).withMessage('Quantity must be 0–99').toInt(),
   ],
   validate,
   async (req, res) => {

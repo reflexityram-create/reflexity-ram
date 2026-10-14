@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { isWholesaleImage, publicationErrors } = require('../utils/wholesaleLots');
+const { hasAtMostTwoDecimals, isWholesaleImage, publicationErrors } = require('../utils/wholesaleLots');
 
 const imageSchema = new mongoose.Schema({
   url: { type: String, trim: true, maxlength: 2048 },
@@ -29,7 +29,7 @@ const wholesaleLotSchema = new mongoose.Schema({
     min: 0.01,
     max: 1_000_000,
     validate: {
-      validator: (value) => value == null || Math.round(value * 100) === value * 100,
+      validator: (value) => value == null || hasAtMostTwoDecimals(value),
       message: 'Wholesale unit price must use at most two decimal places.',
     },
   },

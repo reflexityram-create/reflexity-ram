@@ -53,6 +53,7 @@ async function call(app, method, path, { headers = {}, body } = {}) {
 
 const seedPairing = async (w, code = 'ABCD-2345', { user = ADMIN, expiresInMs = 10 * 60 * 1000, usedAt } = {}) => w.PairingModel.create({
   user: user._id, codeHash: hashPairingCode(normalizePairingCode(code)), expiresAt: new Date(Date.now() + expiresInMs), ...(usedAt ? { usedAt } : {}),
+  authVersion: user.authVersion ?? 0,
 });
 const pair = (w, code = 'ABCD-2345', label = 'Pixel 8a') => call(w.app, 'POST', '/api/device/pair', { body: { code, label, appVersion: '1.0.0' } });
 const bearer = (token) => ({ authorization: `Bearer ${token}` });

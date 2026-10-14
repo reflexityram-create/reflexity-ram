@@ -1074,4 +1074,145 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
     });
   });
 
+  // ── full review of 2026-10-14: order creation (each test fails against the code before it) ────────────────────────
+  // Stripe answers latest_charge as an ID unless the request asks for the charge itself; this fake does the same, so a test
+  // only sees a refund when the code really asks for it.
+  const asStripe = (base, charge) => async (id, options = {}) => {
+    const s = base();
+    if (charge && (options.expand || []).includes('payment_intent.latest_charge')) s.payment_intent = { ...s.payment_intent, latest_charge: charge };
+    return s;
+  };
+  const cardSession = (extra = {}) => session({
+    payment_status: 'paid', payment_method_types: ['card'], metadata: { userId: 'guest', cartSessionId: SESSION },
+    total_details: { amount_discount: 0, amount_shipping: 1400, amount_tax: 0 }, amount_total: 28400,
+    payment_intent: { id: 'pi_card_review', status: 'succeeded', latest_charge: 'ch_card_review' },
+    ...extra,
+  });
+
+  await root.test('review 2026-10-14: a payment refunded before its order existed becomes a refunded order: no stock, no confirmation, the owner told', async () => {
+    const product = await bankSetup();
+    const before = sent.length;
+    const refunded = { id: 'ch_card_review', object: 'charge', refunded: true, amount_refunded: 28400 };
+    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: asStripe(() => cardSession(), refunded) });
+    try {
+      const { fulfillCheckoutSession } = stripeRouter.internalsForTest;
+      const order = await fulfillCheckoutSession('cs_test_bankdebit_1');
+      assert.equal(order.paymentStatus, 'refunded');
+      assert.equal(order.status, 'refunded');
+      assert.equal(order.stripeChargeId, 'ch_card_review', 'the charge ID, not the expanded charge object');
+      assert.match(order.adminNotes, /REFUNDED in Stripe before this order was recorded: do NOT ship/);
+      assert.equal(await stockOf(product), 10, 'no stock taken for a refunded payment');
+      assert.equal(sent.length, before, 'the buyer is not told "order confirmed"');
+      const alert = await AdminEvent.findOne({ type: 'order.refunded' });
+      assert.ok(alert);
+      assert.equal(alert.priority, 'high');
+      assert.equal(await AdminEvent.countDocuments({ type: 'order.paid' }), 0, 'no "new order, paid" alert');
+      const again = await fulfillCheckoutSession('cs_test_bankdebit_1');   // a retry (the buyer's success page, a Stripe retry)
+      assert.equal(String(again._id), String(order._id));
+      assert.equal(await stockOf(product), 10);
+      assert.equal(await Order.countDocuments(), 1);
+    } finally { stripeRouter.setCheckoutDependenciesForTest(); }
+  });
+
+  await root.test('review 2026-10-14: a payment partly refunded before its order existed is an ordinary paid order with a note', async () => {
+    const product = await bankSetup();
+    const partial = { id: 'ch_card_review', object: 'charge', refunded: false, amount_refunded: 1000 };
+    stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: asStripe(() => cardSession(), partial) });
+    try {
+      const order = await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_test_bankdebit_1');
+      assert.equal(order.paymentStatus, 'paid');
+      assert.equal(order.status, 'processing');
+      assert.equal(order.stripeChargeId, 'ch_card_review');
+      assert.match(order.adminNotes, /part of this payment \(1000 minor currency units\) was refunded in Stripe before this order was recorded/);
+      assert.equal(await stockOf(product), 8);
+      assert.match(sent.at(-1).subject, /Order confirmed/);
+    } finally { stripeRouter.setCheckoutDependenciesForTest(); }
+  });
+
+  await root.test('review 2026-10-14: a line whose price AND slug changed during checkout still finds its product; a sale matching nothing alerts the owner', async () => {
+    const product = await bankSetup();
+    // After the buyer opened checkout the owner changed the price (a new Stripe Price) and the slug.
+    await Product.updateOne({ _id: product._id }, { $set: { stripePriceId: 'price_d4_16_new', slug: 'ddr4-16gb-renamed', stripeProductId: 'prod_d4_16' } });
+    const line = (productField) => ({ data: [{ id: 'li_1', price: { id: 'price_d4_16', unit_amount: 13500, product: productField }, quantity: 2 }] });
+    const stripeProduct = { id: 'prod_d4_16', object: 'product', metadata: { slug: 'ddr4-16gb', productId: String(product._id) } };
+    const { fulfillCheckoutSession } = stripeRouter.internalsForTest;
+    try {
+      // through the Stripe Product we stored
+      stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => cardSession({ id: 'cs_by_product', line_items: line(stripeProduct) }) });
+      const byProduct = await fulfillCheckoutSession('cs_by_product');
+      assert.ok(byProduct, 'an order was made');
+      assert.equal(String(byProduct.items[0].product), String(product._id));
+      assert.equal(byProduct.items[0].slug, 'ddr4-16gb-renamed');
+      assert.equal(byProduct.items[0].qty, 2);
+
+      // through the productId the sync wrote into the Stripe Product (our record of its ID was lost)
+      await Product.updateOne({ _id: product._id }, { $unset: { stripeProductId: '' } });
+      stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => cardSession({ id: 'cs_by_metadata', payment_intent: { id: 'pi_by_metadata', status: 'succeeded', latest_charge: 'ch_by_metadata' }, line_items: line({ ...stripeProduct, id: 'prod_unknown' }) }) });
+      const byMetadata = await fulfillCheckoutSession('cs_by_metadata');
+      assert.ok(byMetadata);
+      assert.equal(String(byMetadata.items[0].product), String(product._id));
+
+      // nothing matches at all: no order, and the owner hears about it once
+      const nothing = { id: 'prod_gone', object: 'product', metadata: { slug: 'no-such-slug', productId: '64b7f0c2a1b2c3d4e5f60719' } };
+      stripeRouter.setCheckoutDependenciesForTest({ retrieveSession: async () => cardSession({ id: 'cs_nothing', payment_intent: { id: 'pi_nothing', status: 'succeeded', latest_charge: 'ch_nothing' }, line_items: line(nothing) }) });
+      assert.equal(await fulfillCheckoutSession('cs_nothing'), null);
+      assert.equal(await fulfillCheckoutSession('cs_nothing'), null);
+      assert.equal(await Order.countDocuments({ stripeCheckoutSessionId: 'cs_nothing' }), 0);
+      const alerts = await AdminEvent.find({ type: 'payment.unmatched' }).lean();
+      assert.equal(alerts.length, 1, 'one alert, however often it is retried');
+      assert.equal(alerts[0].priority, 'high');
+      assert.match(alerts[0].body, /sam@example\.com paid 284\.00 .*cs_nothing/);
+    } finally { stripeRouter.setCheckoutDependenciesForTest(); }
+  });
+
+  await root.test('review 2026-10-14: a cart with more lines than Stripe\'s first page is ordered whole', async () => {
+    await reset();
+    const products = [];
+    for (const n of [1, 2, 3]) {
+      products.push(await seedProduct({ slug: `ddr4-many-${n}`, sku: `D4-MANY-${n}`, stripePriceId: `price_many_${n}`, stockQuantity: 5 }));
+    }
+    const lineFor = (n) => ({ id: `li_many_${n}`, price: { id: `price_many_${n}`, unit_amount: 13500, product: { id: `prod_many_${n}`, metadata: { slug: `ddr4-many-${n}` } } }, quantity: 1 });
+    const pages = [];
+    stripeRouter.setCheckoutDependenciesForTest({
+      retrieveSession: async () => cardSession({ id: 'cs_many', line_items: { object: 'list', data: [lineFor(1)], has_more: true } }),
+      listLineItems: async (id, params) => {
+        pages.push({ id, ...params });
+        return params.starting_after === 'li_many_1'
+          ? { object: 'list', data: [lineFor(2)], has_more: true }
+          : { object: 'list', data: [lineFor(3)], has_more: false };
+      },
+    });
+    try {
+      const order = await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_many');
+      assert.deepEqual(order.items.map((i) => i.slug), ['ddr4-many-1', 'ddr4-many-2', 'ddr4-many-3']);
+      for (const product of products) assert.equal(await stockOf(product), 4, product.slug);
+      assert.deepEqual(pages.map((p) => [p.id, p.starting_after]), [['cs_many', 'li_many_1'], ['cs_many', 'li_many_2']]);
+      assert.deepEqual(pages[0].expand, ['data.price.product'], 'later pages come with their products, like the first');
+    } finally { stripeRouter.setCheckoutDependenciesForTest(); }
+  });
+
+  await root.test('review 2026-10-14: a failed "shipped" email for a parcel without tracking is sent again; tracked, old and sent ones are left alone', async () => {
+    await reset();
+    const { retryUntrackedShipmentNotices } = require('../src/utils/shippingNotifications');
+    const DAY = 24 * HOUR;
+    const make = (extra) => Order.create({
+      guestEmail: 'sam@example.com', items: [{ slug: 'ddr4-16gb', sku: 'D4-16', name: '16GB DDR4 ECC RDIMM', price: 135, qty: 1 }],
+      shippingAddress: { firstName: 'Sam', lastName: 'Buyer', line1: '100 Queen St W', city: 'Toronto', state: 'ON', zip: 'M5H 2N2', country: 'CA' },
+      subtotal: 135, total: 149, paymentStatus: 'paid', status: 'shipped', untracked: true, shippedAt: new Date(), ...extra,
+    });
+    const failed = await make({ shippingNotification: { status: 'failed' } });
+    const stale = await make({ shippingNotification: { status: 'sending', claimedAt: new Date(Date.now() - HOUR) } });
+    const old = await make({ shippedAt: new Date(Date.now() - 8 * DAY), shippingNotification: { status: 'failed' } });
+    const tracked = await make({ trackingNumber: 'GD546149174CA', untracked: false, shippingNotification: { status: 'failed' } });
+    const done = await make({ shippingNotification: { status: 'sent', sentAt: new Date() } });
+    const before = sent.length;
+    const summary = await retryUntrackedShipmentNotices();
+    assert.deepEqual(summary, { checked: 2, sent: 2, failed: 0 });
+    assert.equal(sent.length - before, 2);
+    for (const order of [failed, stale]) assert.equal((await Order.findById(order._id)).shippingNotification.status, 'sent');
+    assert.equal((await Order.findById(old._id)).shippingNotification.status, 'failed', 'a week later the news is stale');
+    assert.equal((await Order.findById(tracked._id)).shippingNotification.status, 'failed', 'tracked parcels are the tracking worker\'s');
+    assert.equal((await Order.findById(done._id)).shippingNotification.status, 'sent');
+    assert.deepEqual(await retryUntrackedShipmentNotices(), { checked: 0, sent: 0, failed: 0 }, 'nothing is sent twice');
+  });
 });

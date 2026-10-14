@@ -3,6 +3,7 @@ const express = require('express');
 const { isConfigured } = require('../utils/canadaPost');
 const { syncShippedOrders } = require('../utils/trackingSync');
 const { sweepEtransferOrders } = require('../utils/etransfer');
+const { retryUntrackedShipmentNotices } = require('../utils/shippingNotifications');
 
 const router = express.Router();
 
@@ -28,6 +29,13 @@ router.post('/sync', async (req, res) => {
     if (swept.expired || swept.reminded || swept.errors) console.log(`e-Transfer sweep: ${JSON.stringify(swept)}`);
   } catch (err) {
     console.error('e-Transfer sweep error:', err.message);
+  }
+  // A "shipped" email that failed for a parcel without a tracking number: no carrier to ask, so it does not wait for one.
+  try {
+    const untracked = await retryUntrackedShipmentNotices();
+    if (untracked.sent || untracked.failed) console.log(`Untracked shipment emails: ${JSON.stringify(untracked)}`);
+  } catch (err) {
+    console.error('Untracked shipment email retry error:', err.message);
   }
   if (!isConfigured()) return res.status(503).json({ error: 'Canada Post tracking is not configured' });
   try {
