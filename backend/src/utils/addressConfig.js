@@ -5,7 +5,7 @@
 //   ADDRESSCOMPLETE_KEY=AA11-AA11-AA11-AA11   Canada Post AddressComplete key (paid, exact postal codes); its SHAPE is checked, so a stray value cannot switch it on
 //   ADDRESS_SUGGEST_PHOTON=true               the free provider: Photon, open source, on OpenStreetMap data (street, city, province; NOT a reliable postal code)
 //   ADDRESSCOMPLETE_BASE_URL / PHOTON_BASE_URL=...   where the service lives (default: the real one): tests, or our own Photon server
-//   ADDRESS_LOOKUPS_PER_DAY=100               most finished addresses the whole site may pick in 24 hours (default 100, 10 to 2000)
+//   ADDRESS_LOOKUPS_PER_DAY=100               Canada Post only: most finished addresses (paid lookups) the whole site may pick in 24 hours (default 100, 10 to 2000)
 //   PHOTON_SEARCHES_PER_DAY=3000              most searches the whole site may send to Photon in 24 hours (default 3000, 100 to 20000): the public
 //                                             Photon server is free "for moderate use" and may block heavy users
 const DEFAULT_BASE = 'https://ws1.postescanada-canadapost.ca/AddressComplete/Interactive';
@@ -25,6 +25,9 @@ const photonConfig = (env = process.env) => ({
 // Which service answers: 'canadapost', 'photon' or null (suggestions off: the buyer types the address).
 const addressProvider = (env = process.env) => (lookupConfig(env).enabled ? 'canadapost' : photonConfig(env).enabled ? 'photon' : null);
 const addressLookupEnabled = (env = process.env) => addressProvider(env) !== null;
+// A middleware (a limiter) that only runs while the given provider answers: the daily cap on PAID lookups is Canada Post's alone,
+// the daily cap on searches is Photon's alone. The provider is read per request.
+const onlyWhenProvider = (provider, middleware, env = process.env) => (req, res, next) => (addressProvider(env) === provider ? middleware(req, res, next) : next());
 
 const intInRange = (value, min, max, fallback) => {
   const text = String(value ?? '').trim();
@@ -34,4 +37,4 @@ const intInRange = (value, min, max, fallback) => {
 const dailyLookupCap = (env = process.env) => intInRange(env.ADDRESS_LOOKUPS_PER_DAY, 10, 2000, 100);
 const photonDailyCap = (env = process.env) => intInRange(env.PHOTON_SEARCHES_PER_DAY, 100, 20000, 3000);
 
-module.exports = { DEFAULT_BASE, PHOTON_DEFAULT_BASE, KEY_FORMAT, lookupConfig, photonConfig, addressProvider, addressLookupEnabled, dailyLookupCap, photonDailyCap };
+module.exports = { DEFAULT_BASE, PHOTON_DEFAULT_BASE, KEY_FORMAT, lookupConfig, photonConfig, addressProvider, addressLookupEnabled, onlyWhenProvider, dailyLookupCap, photonDailyCap };

@@ -25,7 +25,7 @@ const { createLeadRouter } = require('./routes/leads');
 const { createDeviceRouter } = require('./routes/device');
 const { createPaymentsRouter } = require('./routes/payments');
 const { createAddressRouter } = require('./routes/address');
-const { addressProvider, dailyLookupCap, photonDailyCap } = require('./utils/addressConfig');
+const { onlyWhenProvider, dailyLookupCap, photonDailyCap } = require('./utils/addressConfig');
 const { sweepEtransferOrdersThrottled } = require('./utils/etransfer');
 const { syncShippedOrdersThrottled } = require('./utils/trackingSync');
 const { createAdminDevicesRouter } = require('./routes/adminDevices');
@@ -207,7 +207,6 @@ const photonSearchDayLimiter = rateLimit({
   passOnStoreError: false,
   message: { error: 'Address suggestions are paused for today, please type the address instead.' },
 });
-const onlyForPhoton = (limiter) => (req, res, next) => (addressProvider() === 'photon' ? limiter(req, res, next) : next());
 
 const leadLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
@@ -219,8 +218,10 @@ const leadLimiter = rateLimit({
   message: { error: 'Too many quote requests, please try again later.' },
 });
 
-app.use('/api/address/suggest', addressSuggestLimiter, onlyForPhoton(photonSearchDayLimiter));
-app.use('/api/address/retrieve', addressPickLimiter, addressDayLimiter);
+app.use('/api/address/suggest', addressSuggestLimiter, onlyWhenProvider('photon', photonSearchDayLimiter));
+// The daily cap on finished addresses guards PAID lookups (Canada Post). A free pick (Photon) only reads our own memory, so it is not
+// counted: otherwise anyone could use up the day's picks for every buyer with made-up ids.
+app.use('/api/address/retrieve', addressPickLimiter, onlyWhenProvider('canadapost', addressDayLimiter));
 app.use('/api/address', createAddressRouter());
 app.use('/api/device/pair', devicePairLimiter);
 // onPoll: the phone is the one thing that asks often, so it also sweeps unpaid e-Transfer orders (expire / remind).

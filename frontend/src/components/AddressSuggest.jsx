@@ -62,6 +62,8 @@ export default function AddressSuggest({ id, label, value, onChange, onPick, ena
   const typedInto = (event) => {
     const text = event.target.value;
     typed.current = text;
+    // Typing replaces a pick that is still on its way: the buyer's own text wins over an answer that comes back after it.
+    if (inflight.current === 'pick') { latest.current += 1; controller.current?.abort(); inflight.current = null; setBusy(false); }
     setNote('');
     onChange(text);
     window.clearTimeout(timer.current);
@@ -78,6 +80,7 @@ export default function AddressSuggest({ id, label, value, onChange, onPick, ena
       return;
     }
     const request = ++latest.current;
+    const startedAt = performance.now();
     controller.current?.abort();
     controller.current = new AbortController();
     close();
@@ -86,7 +89,7 @@ export default function AddressSuggest({ id, label, value, onChange, onPick, ena
     try {
       const { data } = await addressApi.retrieve(suggestion.id, controller.current.signal);
       if (request !== latest.current) return;
-      if (data?.address) { onPick(data.address); setNote(''); }
+      if (data?.address) { onPick(data.address, { startedAt }); setNote(''); }
       else setNote(pickFailedNote(source));
     } catch (err) {
       if (request !== latest.current || err?.code === 'ERR_CANCELED') return;
@@ -130,39 +133,41 @@ export default function AddressSuggest({ id, label, value, onChange, onPick, ena
         />
         {enabled && busy && <Loader2 size={14} className="animate-spin absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500" aria-hidden="true" />}
         {showList && (
-          <ul
-            id={listId}
-            role="listbox"
-            aria-label="Suggested addresses"
-            data-testid="address-suggestions"
-            className="absolute z-30 left-0 right-0 mt-1 rounded-xl overflow-hidden shadow-lg max-h-72 overflow-y-auto"
-            style={{ background: 'var(--bg)', border: '1px solid var(--border-strong)' }}
-          >
-            {items.map((suggestion, index) => (
-              <li
-                key={suggestion.id}
-                id={optionId(index)}
-                role="option"
-                aria-selected={index === active}
-                data-testid="address-suggestion"
-                className="px-3 py-2.5 cursor-pointer text-[14px] border-t first:border-t-0"
-                style={{ borderColor: 'var(--border-strong)', background: index === active ? 'var(--glass-bg-hover)' : undefined }}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => pick(suggestion)}
-                onMouseEnter={() => setActive(index)}
-              >
-                <span className="block font-medium">{suggestion.text}</span>
-                {suggestion.description && <span className="block text-[12px] text-neutral-500">{suggestion.description}</span>}
-                {suggestion.next !== 'retrieve' && <span className="block text-[11px] text-neutral-500">Choose to see the units</span>}
-              </li>
-            ))}
-            {/* A press here must not blur the field: the list would close before the credit's link is clicked. */}
-            <li role="presentation" className="px-3 py-1.5 text-[11px] text-neutral-500 border-t" style={{ borderColor: 'var(--border-strong)' }} onMouseDown={(event) => event.preventDefault()}>
+          <div className="absolute z-30 left-0 right-0 mt-1 rounded-xl overflow-hidden shadow-lg" style={{ background: 'var(--bg)', border: '1px solid var(--border-strong)' }}>
+            <ul
+              id={listId}
+              role="listbox"
+              aria-label="Suggested addresses"
+              data-testid="address-suggestions"
+              className="max-h-72 overflow-y-auto"
+            >
+              {items.map((suggestion, index) => (
+                <li
+                  key={suggestion.id}
+                  id={optionId(index)}
+                  role="option"
+                  aria-selected={index === active}
+                  data-testid="address-suggestion"
+                  className="px-3 py-2.5 cursor-pointer text-[14px] border-t first:border-t-0"
+                  style={{ borderColor: 'var(--border-strong)', background: index === active ? 'var(--glass-bg-hover)' : undefined }}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => pick(suggestion)}
+                  onMouseEnter={() => setActive(index)}
+                >
+                  <span className="block font-medium">{suggestion.text}</span>
+                  {suggestion.description && <span className="block text-[12px] text-neutral-500">{suggestion.description}</span>}
+                  {suggestion.next !== 'retrieve' && <span className="block text-[11px] text-neutral-500">Choose to see the units</span>}
+                </li>
+              ))}
+            </ul>
+            {/* The credit stays under the results, outside the list's own scroll, so it is in view whenever they are (OpenStreetMap's licence
+                asks for credit without a click). A press here must not blur the field: the list would close before the link is followed. */}
+            <div className="px-3 py-1.5 text-[11px] text-neutral-500 border-t" style={{ borderColor: 'var(--border-strong)' }} onMouseDown={(event) => event.preventDefault()} data-testid="address-credit">
               {source === 'photon'
                 ? <>Suggestions © <a href={OSM_COPYRIGHT_URL} target="_blank" rel="noopener noreferrer" className="underline" data-testid="address-osm-credit">OpenStreetMap contributors</a>. You can always type the address yourself.</>
                 : sourceNote(source)}
-            </li>
-          </ul>
+            </div>
+          </div>
         )}
       </div>
       <span className="sr-only" role="status" aria-live="polite">{showList ? resultsAnnouncement(items.length) : ''}</span>

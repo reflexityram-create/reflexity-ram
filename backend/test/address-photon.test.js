@@ -166,15 +166,55 @@ test('retrieve: a suggestion finishes the address from what the server remembere
   assert.deepEqual(lookup.retrievePhoton({ id }, { now: () => Date.now() + lookup.REMEMBER_MS + 1000 }), { ok: false, reason: 'expired' });
 });
 
-test('the remembered suggestions are bounded: the oldest go first, and expired ones are swept', () => {
-  const address = { line1: '1 A St', line2: '', city: 'X', state: 'ON', zip: '' };
-  const first = lookup.remember(address, 1_000);
-  for (let i = 0; i < lookup.REMEMBER_MAX + 20; i += 1) lookup.remember(address, 2_000 + i);
+const anAddress = (n) => ({ line1: `${n} A St`, line2: '', city: 'X', state: 'ON', zip: '' });
+
+test('the remembered suggestions are bounded: the least recently shown go first, and expired ones are swept', () => {
+  const first = lookup.remember(anAddress(0), 1_000);
+  for (let i = 1; i <= lookup.REMEMBER_MAX + 20; i += 1) lookup.remember(anAddress(i), 2_000 + i);
   assert.ok(lookup.remembered.size <= lookup.REMEMBER_MAX, `${lookup.remembered.size} remembered`);
   assert.equal(lookup.remembered.has(first), false, 'the oldest was dropped to make room');
+  assert.equal(lookup.idByKey.size, lookup.remembered.size, 'the address index never outgrows the entries');
   const before = lookup.remembered.size;
-  lookup.remember(address, 2_000 + lookup.REMEMBER_MS + 10_000);
+  lookup.remember(anAddress('late'), 2_000 + lookup.REMEMBER_MS + 10_000);
   assert.ok(lookup.remembered.size < before, 'everything older than the time allowed was swept');
+  assert.equal(lookup.idByKey.size, lookup.remembered.size);
+});
+
+// Review 2026-10-14 (finding 4): with one entry per search result, 100 searches from one visitor pushed out a suggestion another buyer
+// had just been shown. Now the same address shares one entry, and showing it again moves it to the back of the line.
+test('the same address shares one entry, and showing it again keeps it from being pushed out', () => {
+  const now = 50_000_000;
+  const mine = lookup.remember(anAddress('mine'), now);
+  assert.equal(lookup.remember(anAddress('mine'), now + 1), mine, 'an identical address gets the same id back');
+  assert.notEqual(lookup.remember({ ...anAddress('mine'), zipHint: 'M5H' }, now + 2), mine, 'any difference is another entry');
+  // another visitor fills almost the whole memory; "mine" is shown again just before the last of it
+  for (let i = 0; i < lookup.REMEMBER_MAX - 10; i += 1) lookup.remember(anAddress(`burst-${i}`), now + 10 + i);
+  lookup.remember(anAddress('mine'), now + 10 + lookup.REMEMBER_MAX);
+  for (let i = 0; i < 20; i += 1) lookup.remember(anAddress(`more-${i}`), now + 20 + lookup.REMEMBER_MAX + i);
+  assert.equal(lookup.retrievePhoton({ id: mine }, { now: () => now + 30 + lookup.REMEMBER_MAX }).ok, true, 'still there to be picked');
+});
+
+// Review 2026-10-14 (finding 5): a mistyped self-hosted PHOTON_BASE_URL threw out of the soft-failure path (an Express error page).
+test('a malformed PHOTON_BASE_URL is a soft "unavailable" (config), never a thrown error', async () => {
+  const fetchImpl = fakeFetch({});
+  assert.deepEqual(await lookup.suggest({ query: '100 queen st w' }, { env: { ...ON, PHOTON_BASE_URL: 'not a url' }, fetchImpl }), { ok: false, reason: 'config' });
+  assert.equal(fetchImpl.calls.length, 0);
+});
+
+// Review 2026-10-14 (finding 3): the daily cap on finished addresses counted free picks too, so made-up ids could switch picks off for
+// every buyer. The caps now run only for their own provider.
+test('onlyWhenProvider runs a limiter only while its provider answers', () => {
+  const { onlyWhenProvider } = require('../src/utils/addressConfig');
+  const run = (provider, env) => {
+    const seen = [];
+    onlyWhenProvider(provider, (req, res, next) => { seen.push('limiter'); next(); }, env)({}, {}, () => seen.push('next'));
+    return seen;
+  };
+  assert.deepEqual(run('canadapost', ON), ['next'], 'Photon on: the paid-lookup cap is skipped');
+  assert.deepEqual(run('photon', ON), ['limiter', 'next'], 'Photon on: its search cap runs');
+  assert.deepEqual(run('canadapost', { ADDRESSCOMPLETE_KEY: 'AB12-CD34-EF56-GH78' }), ['limiter', 'next'], 'Canada Post on: its cap runs');
+  assert.deepEqual(run('photon', { ADDRESSCOMPLETE_KEY: 'AB12-CD34-EF56-GH78', ADDRESS_SUGGEST_PHOTON: 'true' }), ['next'], 'a key wins, so the Photon cap is skipped');
+  assert.deepEqual(run('photon', {}), ['next'], 'suggestions off: no cap runs');
 });
 
 test('the dispatcher: Canada Post when its key is set, Photon when only the flag is, nothing otherwise', async () => {

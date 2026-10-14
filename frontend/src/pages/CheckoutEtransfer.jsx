@@ -23,6 +23,8 @@ import { applyAddress, postalNotes, provinceToSelect } from '@/lib/addressSugges
 const EMPTY = { firstName: '', lastName: '', email: '', phone: '', line1: '', line2: '', city: '', state: 'ON', zip: '' };
 // Editing any of these by hand takes away the "address checked" mark, which is only true of an address picked from the suggestions.
 const ADDRESS_FIELDS = ['line1', 'line2', 'city', 'state', 'zip'];
+// The fields a picked address always fills (the postal code too, unless the free provider answers; the apartment line is kept).
+const PICK_FILLS = ['line1', 'city', 'state'];
 
 // The delivery choice (Faster shipping, signature) comes from the checkout page, by navigation state or session storage.
 function readDelivery(state) {
@@ -59,6 +61,9 @@ export default function CheckoutEtransfer() {
   const [zipHint, setZipHint] = useState('');
   // Once the buyer (or a picked suggestion) has chosen the province, typing a postal code stops changing it and only warns.
   const stateTouched = useRef(false);
+  // When the buyer last changed a field that a pick fills. A pick that was already on its way then is dropped, so an answer that
+  // comes back late never overwrites what they typed.
+  const addressEditedAt = useRef(0);
   const [submitting, setSubmitting] = useState(false);
   const delivery = useMemo(() => readDelivery(location.state), [location.state]);
 
@@ -92,13 +97,15 @@ export default function CheckoutEtransfer() {
       return next;
     });
     if (name === 'state') stateTouched.current = true;
+    if (PICK_FILLS.includes(name) || (name === 'zip' && !freeSuggestions)) addressEditedAt.current = performance.now();
     if (errors[name]) setErrors((e) => ({ ...e, [name]: undefined }));
     // Editing the address by hand takes away the "picked" mark and the postal-area hint (typing the postal code is what the free
     // provider asks for, so that alone keeps them).
     if (ADDRESS_FIELDS.includes(name) && !(name === 'zip' && freeSuggestions)) { setChecked(false); setZipHint(''); }
   };
   const typeStreet = (text) => set('line1')({ target: { value: text } });
-  const pickAddress = (address) => {
+  const pickAddress = (address, { startedAt = Infinity } = {}) => {
+    if (addressEditedAt.current > startedAt) return;
     setForm((f) => applyAddress(f, address));
     setErrors((e) => ({ ...e, line1: undefined, city: undefined, state: undefined, zip: undefined }));
     setChecked(true);

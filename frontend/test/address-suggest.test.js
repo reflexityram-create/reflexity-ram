@@ -95,7 +95,7 @@ test('the e-Transfer page uses the box only when the server says so, marks "chec
   assert.match(page, /verified=\{checked\}/);
   assert.match(page, /const ADDRESS_FIELDS = \['line1', 'line2', 'city', 'state', 'zip'\];/);
   assert.match(page, /if \(ADDRESS_FIELDS\.includes\(name\) && !\(name === 'zip' && freeSuggestions\)\) \{ setChecked\(false\); setZipHint\(''\); \}/);
-  assert.match(page, /const pickAddress = \(address\) => \{[\s\S]*?setForm\(\(f\) => applyAddress\(f, address\)\);[\s\S]*?setChecked\(true\);/);
+  assert.match(page, /const pickAddress = \(address, \{ startedAt = Infinity \} = \{\}\) => \{[\s\S]*?setForm\(\(f\) => applyAddress\(f, address\)\);[\s\S]*?setChecked\(true\);/);
   assert.match(page, /inputProps=\{\{ autoComplete: 'address-line1', 'data-testid': 'et-line1' \}\}/, 'browser autofill and the test id are kept');
   const api = await read('../src/lib/api.js');
   assert.match(api, /suggest: \(q, lastId, signal\) => publicApi\.get\('\/address\/suggest'/);
@@ -202,15 +202,34 @@ test('the e-Transfer page words its notes by the provider, never claims a check 
   assert.doesNotMatch(photonBlock, /checked against/i, 'the free provider\'s note never says "checked"');
 });
 
-// OpenStreetMap's licence: the credit sits under the list without a click, links to the copyright page, and a press on it does not
-// close the list (the field keeps focus, as with the options), so the link can actually be followed.
-test("the free provider's suggestions carry a linked OpenStreetMap credit that a press does not close", async () => {
+// OpenStreetMap's licence: the credit sits under the results without a click, OUTSIDE the list's own scroll and outside the listbox
+// (review 2026-10-14: inside a 288 px scrolling list, five results pushed it out of view), links to the copyright page, and a press on
+// it does not close the list (the field keeps focus, as with the options), so the link can actually be followed.
+test("the free provider's suggestions carry a linked OpenStreetMap credit, outside the scrolling list, that a press does not close", async () => {
   assert.equal(OSM_COPYRIGHT_URL, 'https://www.openstreetmap.org/copyright');
   assert.match(sourceNote('photon'), /^Suggestions © OpenStreetMap contributors\./);
   const box = await readFile(new URL('../src/components/AddressSuggest.jsx', import.meta.url), 'utf8');
-  const footer = box.slice(box.indexOf('<li role="presentation"'), box.indexOf('</li>', box.indexOf('<li role="presentation"')));
-  assert.match(footer, /onMouseDown=\{\(event\) => event\.preventDefault\(\)\}/);
-  assert.match(footer, /source === 'photon'[\s\S]*?<a href=\{OSM_COPYRIGHT_URL\} target="_blank" rel="noopener noreferrer"[^>]*>OpenStreetMap contributors<\/a>/);
+  const listEnd = box.indexOf('</ul>');
+  const creditAt = box.indexOf('data-testid="address-credit"');
+  assert.ok(listEnd > 0 && creditAt > listEnd, 'the credit comes after the listbox closes');
+  assert.match(box, /role="listbox"[\s\S]*?className="max-h-72 overflow-y-auto"/, 'only the list scrolls');
+  const credit = box.slice(box.lastIndexOf('<div', creditAt), box.indexOf('</div>', creditAt));
+  assert.match(credit, /onMouseDown=\{\(event\) => event\.preventDefault\(\)\}/);
+  assert.match(credit, /source === 'photon'[\s\S]*?<a href=\{OSM_COPYRIGHT_URL\} target="_blank" rel="noopener noreferrer"[^>]*>OpenStreetMap contributors<\/a>/);
+});
+
+// Review 2026-10-14 (finding 1): a pick still on its way could come back after the buyer had typed something else, and overwrite it.
+// Typing in the street cancels the pick at once; editing a field the pick fills makes the page drop the pick when it arrives.
+test('a late pick never overwrites what the buyer typed meanwhile', async () => {
+  const box = await readFile(new URL('../src/components/AddressSuggest.jsx', import.meta.url), 'utf8');
+  const typedInto = box.slice(box.indexOf('const typedInto = '), box.indexOf('const pick = '));
+  assert.match(typedInto, /if \(inflight\.current === 'pick'\) \{ latest\.current \+= 1; controller\.current\?\.abort\(\); inflight\.current = null; setBusy\(false\); \}/);
+  assert.ok(typedInto.indexOf("inflight.current === 'pick'") < typedInto.indexOf('onChange(text)'), 'cancelled before anything else happens');
+  assert.match(box, /const startedAt = performance\.now\(\);[\s\S]*?onPick\(data\.address, \{ startedAt \}\)/);
+  const page = await readFile(new URL('../src/pages/CheckoutEtransfer.jsx', import.meta.url), 'utf8');
+  assert.match(page, /const PICK_FILLS = \['line1', 'city', 'state'\];/);
+  assert.match(page, /if \(PICK_FILLS\.includes\(name\) \|\| \(name === 'zip' && !freeSuggestions\)\) addressEditedAt\.current = performance\.now\(\);/);
+  assert.match(page, /const pickAddress = \(address, \{ startedAt = Infinity \} = \{\}\) => \{\s*if \(addressEditedAt\.current > startedAt\) return;/);
 });
 
 // The postal-area hint is OpenStreetMap's and can be wrong (1 of 18 measured), so its note must read as advice, never as a refusal.

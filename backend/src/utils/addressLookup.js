@@ -111,15 +111,32 @@ const ABBREVIATIONS = {
 };
 const spelledOut = (value) => (String(value ?? '').toLowerCase().match(/[\p{L}\p{N}]+/gu) || []).map((token) => ABBREVIATIONS[token] || token).join(' ');
 
-// A suggestion the buyer can still pick: kept for a few minutes, so that picking it needs no second call and carries nothing from the browser.
+// A suggestion the buyer can still pick: kept for a few minutes, so that picking it needs no second call and carries nothing from the
+// browser. The same address (identical in every field, from any search) shares one entry, and an entry that is shown again moves to the
+// back of the line: typing that address again keeps it, and one visitor's burst of searches cannot easily push out what another buyer
+// is about to pick. 5,000 entries are about 2 MB. A pick that finds nothing says "type it below".
 const REMEMBER_MS = 15 * 60 * 1000;
-const REMEMBER_MAX = 500;
-const remembered = new Map();   // id -> { at, address }
+const REMEMBER_MAX = 5000;
+const remembered = new Map();   // id -> { at, address, key }, least recently shown first
+const idByKey = new Map();      // the address as JSON -> id
+function forget(id) {
+  const entry = remembered.get(id);
+  if (entry) idByKey.delete(entry.key);
+  remembered.delete(id);
+}
 function remember(address, now = Date.now()) {
-  for (const [id, entry] of remembered) if (now - entry.at > REMEMBER_MS) remembered.delete(id);
-  while (remembered.size >= REMEMBER_MAX) remembered.delete(remembered.keys().next().value);
+  for (const [id, entry] of remembered) if (now - entry.at > REMEMBER_MS) forget(id);
+  const key = JSON.stringify(address);
+  const known = idByKey.get(key);
+  if (known && remembered.has(known)) {
+    remembered.delete(known);
+    remembered.set(known, { at: now, address, key });
+    return known;
+  }
+  while (remembered.size >= REMEMBER_MAX) forget(remembered.keys().next().value);
   const id = `ph_${crypto.randomBytes(9).toString('base64url')}`;
-  remembered.set(id, { at: now, address });
+  remembered.set(id, { at: now, address, key });
+  idByKey.set(key, id);
   return id;
 }
 
@@ -127,7 +144,12 @@ function remember(address, now = Date.now()) {
 async function photonCall(term, { env = process.env, fetchImpl = fetch, timeoutMs = 4000 } = {}) {
   const { enabled, base } = photonConfig(env);
   if (!enabled) return { ok: false, reason: 'off' };
-  const url = new URL(`${base}/api/`);
+  let url;
+  try {
+    url = new URL(`${base}/api/`);
+  } catch {
+    return { ok: false, reason: 'config' };   // a mistyped PHOTON_BASE_URL: soft like any other problem, and logged by the route
+  }
   url.searchParams.set('q', term);
   url.searchParams.set('limit', '10');
   url.searchParams.set('lang', 'en');
@@ -196,5 +218,5 @@ const retrieve = async (args = {}, deps = {}) => (providerOf(deps) === 'photon' 
 
 module.exports = {
   addressLookupEnabled, lookupConfig, validLookupId, cleanQuery, suggest, retrieve, toAddress,
-  toPhotonAddress, suggestPhoton, retrievePhoton, photonCall, remember, remembered, PROVINCE_BY_NAME, CANADA_BBOX, REMEMBER_MS, REMEMBER_MAX,
+  toPhotonAddress, suggestPhoton, retrievePhoton, photonCall, remember, remembered, idByKey, PROVINCE_BY_NAME, CANADA_BBOX, REMEMBER_MS, REMEMBER_MAX,
 };

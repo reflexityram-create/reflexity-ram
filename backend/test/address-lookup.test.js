@@ -218,8 +218,8 @@ test('a provider problem is logged once an hour per reason, as a reason code onl
 
 test('server: the address routes are mounted before the site-wide limiter, each with its own limit, and the paid pick has a daily cap', () => {
   const source = fs.readFileSync(require.resolve('../src/server.js'), 'utf8');
-  const suggestLimiter = source.indexOf("app.use('/api/address/suggest', addressSuggestLimiter, onlyForPhoton(photonSearchDayLimiter));");
-  const pickLimiter = source.indexOf("app.use('/api/address/retrieve', addressPickLimiter, addressDayLimiter);");
+  const suggestLimiter = source.indexOf("app.use('/api/address/suggest', addressSuggestLimiter, onlyWhenProvider('photon', photonSearchDayLimiter));");
+  const pickLimiter = source.indexOf("app.use('/api/address/retrieve', addressPickLimiter, onlyWhenProvider('canadapost', addressDayLimiter));");
   const router = source.indexOf("app.use('/api/address', createAddressRouter());");
   const global = source.indexOf('app.use(globalLimiter);');
   assert.ok(suggestLimiter > 0 && pickLimiter > 0 && router > 0 && global > 0);
@@ -240,5 +240,5 @@ test('server: the address routes are mounted before the site-wide limiter, each 
   assert.match(photonBlock, /max: photonDailyCap\(\),\s*keyGenerator: \(\) => 'everyone',/);
   assert.match(photonBlock, /passOnStoreError: false/);
   assert.match(photonBlock, /new MongoRateLimitStore\(\{ prefix: 'photonday' \}\)/);
-  assert.match(source, /const onlyForPhoton = \(limiter\) => \(req, res, next\) => \(addressProvider\(\) === 'photon' \? limiter\(req, res, next\) : next\(\)\);/);
+  assert.doesNotMatch(source, /onlyForPhoton/, 'one helper for both caps (utils/addressConfig.js onlyWhenProvider, tested in address-photon.test.js)');
 });
