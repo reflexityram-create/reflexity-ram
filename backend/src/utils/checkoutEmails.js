@@ -49,7 +49,14 @@ async function retryCheckoutEmails({ recover } = {}) {
     const orders = await Order.find({
       [`${slot}.queuedAt`]: { $gt: new Date(now - RETRY_MS) },
       [`${slot}.status`]: { $in: ['pending', 'failed', 'sending'] },
-      $or: [{ [`${slot}.claimedAt`]: { $exists: false } }, { [`${slot}.claimedAt`]: { $lt: new Date(now - LEASE_MS) } }],
+      status: { $in: ['pending', 'processing', 'shipped', 'delivered'] },
+      $and: [
+        { $or: [{ [`${slot}.claimedAt`]: { $exists: false } }, { [`${slot}.claimedAt`]: { $lt: new Date(now - LEASE_MS) } }] },
+        slot === 'bankDebitClearedEmail' ? { paymentStatus: 'paid' } : { $or: [
+          { 'checkoutEmail.kind': 'confirmation', paymentStatus: 'paid' },
+          { 'checkoutEmail.kind': 'bankDebitReceived', paymentStatus: 'pending' },
+        ] },
+      ],
     }).sort({ [`${slot}.claimedAt`]: 1, _id: 1 }).limit(25);
     for (const order of orders) {
       if (!order[slot].ready && recover) await recover(order.stripeCheckoutSessionId);

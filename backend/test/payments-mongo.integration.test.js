@@ -568,6 +568,27 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
     });
   });
 
+  await root.test('checkout email: cancelled orders cannot fill the retry batch and starve a valid receipt', async () => {
+    await bankSetup();
+    for (let i = 0; i < 26; i++) await Order.create({
+      orderNumber: `RFX-CANCELLED-QUEUE-${i}`, guestEmail: 'cancelled@example.com',
+      shippingAddress: { ...ADDRESS, firstName: 'Sam', lastName: 'Buyer', country: 'CA' },
+      items: [{ slug: 'ddr4-16gb', sku: 'D4', name: '16GB DDR4', price: 135, qty: 1 }],
+      subtotal: 135, total: 135, paymentMethod: 'stripe', paymentStatus: 'paid', status: 'cancelled',
+      checkoutEmail: { email: 'cancelled@example.com', kind: 'confirmation', status: 'pending', ready: true, queuedAt: new Date() },
+    });
+    await withStripe(() => paidSession(), async ({ fulfillCheckoutSession }) => {
+      process.env.FAIL_EMAIL = '1';
+      const order = await fulfillCheckoutSession('cs_test_bankdebit_1');
+      delete process.env.FAIL_EMAIL;
+      await Order.updateOne({ _id: order._id }, { $set: { 'checkoutEmail.claimedAt': new Date(Date.now() - 6 * 60000) } });
+      await require('../src/utils/checkoutEmails').retryCheckoutEmails();
+      assert.equal(sent.length, 1);
+      assert.equal((await Order.findById(order._id)).checkoutEmail.status, 'sent');
+      assert.equal(sent[0].to, 'sam@example.com');
+    });
+  });
+
   await root.test('checkout email: acceptance followed by a failed database stamp reuses the provider key, including racing retries', async () => {
     await bankSetup();
     await withStripe(() => paidSession(), async ({ fulfillCheckoutSession }) => {
