@@ -233,7 +233,7 @@ async function fulfil(t, session) {
   return created[0];
 }
 
-test('an order made from a session with an unmatched paid line item says so in its admin notes', async (t) => {
+test('an order made from a session with an unmatched paid line item preserves it as a blocked placeholder', async (t) => {
   const order = await fulfil(t, stripeSession({
     id: 'cs_unmatched',
     line_items: { data: [
@@ -242,8 +242,25 @@ test('an order made from a session with an unmatched paid line item says so in i
     ] },
     amount_subtotal: 22000, amount_total: 22000,
   }));
-  assert.equal(order.items.length, 1, 'only the matched item is on the order');
-  assert.match(order.adminNotes, /^REVIEW: 1 paid line item could not be matched to a product and is NOT on this order \(Stripe price price_gone\)\. Check the Stripe payment before shipping\.$/m);
+  assert.equal(order.items.length, 2, 'every paid line remains on the order');
+  assert.equal(order.items[1].sku, 'STRIPE-price_gone');
+  assert.equal(order.items[1].price, 50);
+  assert.equal(order.items[1].qty, 1);
+  assert.equal(order.fulfillmentBlocked, true);
+  assert.match(order.adminNotes, /preserved as Stripe item placeholder/);
+});
+
+test('an all-unmatched paid session still records the charged line and order totals', async (t) => {
+  const order = await fulfil(t, stripeSession({
+    id: 'cs_all_unmatched',
+    line_items: { data: [{ price: { id: 'price_gone', unit_amount: 5000, product: { name: 'Legacy RAM bundle' } }, quantity: 2, description: 'Legacy RAM bundle' }] },
+    amount_subtotal: 10000, amount_total: 10000,
+  }));
+  assert.equal(order.items.length, 1);
+  assert.equal(order.items[0].name, 'Legacy RAM bundle');
+  assert.equal(order.items[0].qty, 2);
+  assert.equal(order.total, 100);
+  assert.equal(order.fulfillmentBlocked, true);
 });
 
 test('the note that says which service to buy names international services instead of showing Canada Post codes', async (t) => {
@@ -285,6 +302,19 @@ test('...and still returns the order, without the panel, when the shipping helpe
   assert.equal(res.status, 200, 'a failure in the convenience panel must not 500 the order page');
   assert.equal(res.body.order.shippingPreparation, null);
   assert.equal(res.body.order.orderNumber, 'RFX-1');
+});
+
+test('admin fulfillment transitions refuse orders blocked by unmatched paid Stripe lines', async (t) => {
+  const { app, headers } = adminApp(t);
+  stub(t, Order, {
+    findById: () => query(orderDoc({ fulfillmentBlocked: true })),
+    findOneAndUpdate: () => { throw new Error('must not write a blocked order'); },
+  });
+  const tracking = await request(app, 'PATCH', `/api/admin/orders/${PRODUCT_ID}/tracking`, { trackingNumber: 'CP1' }, headers);
+  assert.equal(tracking.status, 409);
+  const shipped = await request(app, 'PATCH', `/api/admin/orders/${PRODUCT_ID}/status`, { status: 'shipped', noTracking: true }, headers);
+  assert.equal(shipped.status, 409);
+  assert.match(shipped.body.error, /unmatched Stripe item/);
 });
 
 test('the Google callback refuses an unverified email with its own error code, and the page has a message for it', () => {

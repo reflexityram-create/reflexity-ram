@@ -29,6 +29,9 @@ function serviceFromOrder(order) {
 }
 
 function fulfilmentState(order) {
+  if (order?.fulfillmentBlocked) {
+    return { canCreateLabel: false, state: 'blocked_payment_item_mapping', reason: 'This paid order contains an item that could not be matched to the catalog. Review the Stripe payment before shipping.' };
+  }
   if (order?.status === 'shipped' || order?.status === 'delivered') {
     return { canCreateLabel: false, reason: 'This order is already shipped.' };
   }

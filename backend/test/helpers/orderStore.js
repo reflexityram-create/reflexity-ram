@@ -11,6 +11,7 @@ function matches(doc, filter) {
         if (op === '$exists') return (value !== undefined) === arg;
         if (op === '$in') return arg.some((x) => equal(value, x));
         if (op === '$nin') return !arg.some((x) => equal(value, x));
+        if (op === '$ne') return !equal(value, arg);
         if (op === '$lt') return value != null && value < arg;
         if (op === '$gte') return value != null && value >= arg;
         throw new Error(`Unsupported query ${op}`);

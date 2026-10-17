@@ -1369,16 +1369,25 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
       assert.ok(byMetadata);
       assert.equal(String(byMetadata.items[0].product), String(product._id));
 
-      // nothing matches at all: no order, and the owner hears about it once
+      // nothing matches at all: retain the paid line as a blocked order and alert the owner once
       const nothing = { id: 'prod_gone', object: 'product', metadata: { slug: 'no-such-slug', productId: '64b7f0c2a1b2c3d4e5f60719' } };
+      const stockBeforeUnmatched = await stockOf(product);
       stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async () => cardSession({ id: 'cs_nothing', currency: 'cad', payment_intent: { id: 'pi_nothing', status: 'succeeded', latest_charge: 'ch_nothing' }, line_items: line(nothing) }) });
-      assert.equal(await fulfillCheckoutSession('cs_nothing'), null);
-      assert.equal(await fulfillCheckoutSession('cs_nothing'), null);
-      assert.equal(await Order.countDocuments({ stripeCheckoutSessionId: 'cs_nothing' }), 0);
+      const unmatched = await fulfillCheckoutSession('cs_nothing');
+      assert.ok(unmatched, 'a paid unmatched checkout is retained for review');
+      assert.equal(unmatched.fulfillmentBlocked, true);
+      assert.equal(unmatched.items.length, 1);
+      assert.equal(unmatched.items[0].sku, 'STRIPE-price_d4_16');
+      assert.equal(unmatched.items[0].qty, 2);
+      const duplicate = await fulfillCheckoutSession('cs_nothing');
+      assert.equal(String(duplicate._id), String(unmatched._id));
+      assert.equal(await Order.countDocuments({ stripeCheckoutSessionId: 'cs_nothing' }), 1);
+      assert.equal(await stockOf(product), stockBeforeUnmatched, 'unmatched paid lines never consume stock');
       const alerts = await AdminEvent.find({ type: 'payment.unmatched' }).lean();
       assert.equal(alerts.length, 1, 'one alert, however often it is retried');
       assert.equal(alerts[0].priority, 'high');
-      assert.match(alerts[0].body, /^Paid 284\.00 CAD, Stripe checkout cs_nothing: none of its 1 line item\(s\) matches a product\.$/);
+      assert.match(alerts[0].body, /^Paid 284\.00 CAD, Stripe checkout cs_nothing:/);
+      assert.match(alerts[0].body, /preserved as blocked placeholders.*before shipping/);
       assert.ok(!alerts[0].body.includes('sam@example.com'), 'lock-screen text never carries the buyer\'s email');
     } finally { stripeRouter.setCheckoutDependenciesForTest(); }
   });
