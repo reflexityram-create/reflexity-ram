@@ -31,6 +31,16 @@ test('a tracked shipping email shows the number and its link, and does not claim
   assert.equal(message.replyTo, 'reflexityram@gmail.com', 'a reply to the tracked email reaches the shop too (it used to go to the no-reply address and bounce)');
 });
 
+test('a fulfillment-blocked paid order cannot trigger a shipment email', async () => {
+  let calls = 0;
+  const result = await notifyShipment(baseOrder({ status: 'shipped', paymentStatus: 'paid', fulfillmentBlocked: true }), {
+    sendEmail: async () => { calls += 1; },
+    Order: { findOneAndUpdate: async () => { calls += 1; return {}; }, updateOne: async () => {} },
+  });
+  assert.equal(result.status, 'blocked');
+  assert.equal(calls, 0);
+});
+
 test('an untracked shipping email says it plainly, shows no number, links to the order and can be answered', async () => {
   sent.length = 0;
   await sendShippingNotificationEmail({ email: 'buyer@example.com', firstName: 'Sam', order: baseOrder() });

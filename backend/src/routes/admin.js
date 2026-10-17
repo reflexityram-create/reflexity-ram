@@ -453,8 +453,9 @@ router.patch('/orders/:id/tracking', [
   body('trackingNumber').isString().trim().isLength({ min: 1, max: 100 }),
 ], validate, async (req, res) => {
   try {
-    const current = await Order.findById(req.params.id).select('status paymentStatus trackingNumber');
+    const current = await Order.findById(req.params.id).select('status paymentStatus trackingNumber fulfillmentBlocked');
     if (!current) return res.status(404).json({ error: 'Order not found' });
+    if (current.fulfillmentBlocked) return res.status(409).json({ error: 'This paid order contains an unmatched Stripe item and must be reviewed before fulfillment' });
     if (current.paymentStatus !== 'paid' || !['pending', 'processing'].includes(current.status)) {
       return res.status(409).json({ error: 'Tracking can only be saved for a paid order awaiting shipment' });
     }
@@ -476,7 +477,7 @@ router.post('/orders/:id/sent-without-tracking', [
   param('id').custom((v) => isValidObjectId(v)).withMessage('Invalid order ID'),
 ], validate, async (req, res) => {
   try {
-    const current = await Order.findById(req.params.id).select('status trackingNumber');
+    const current = await Order.findById(req.params.id).select('status trackingNumber fulfillmentBlocked');
     if (!current) return res.status(404).json({ error: 'Order not found' });
     if (current.status !== 'shipped') {
       return res.status(409).json({ error: 'Only an order that is marked shipped can be changed to sent without tracking' });
@@ -510,8 +511,9 @@ router.patch(
   async (req, res) => {
     try {
       const { status, trackingNumber, note, noTracking } = req.body;
-      const current = await Order.findById(req.params.id).select('status paymentStatus trackingNumber');
+      const current = await Order.findById(req.params.id).select('status paymentStatus trackingNumber fulfillmentBlocked');
       if (!current) return res.status(404).json({ error: 'Order not found' });
+      if (current.fulfillmentBlocked && ['shipped', 'delivered'].includes(status)) return res.status(409).json({ error: 'This paid order contains an unmatched Stripe item and must be reviewed before fulfillment' });
       if (!canTransitionOrder(current.status, status, current.paymentStatus)) {
         return res.status(409).json({ error: `Cannot change order from ${current.status} to ${status}` });
       }

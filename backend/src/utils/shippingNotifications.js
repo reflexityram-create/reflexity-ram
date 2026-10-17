@@ -6,6 +6,7 @@ const CLAIM_MS = 15 * 60 * 1000;
 // Both an admin and the carrier worker use the same durable claim. A crash can
 // be retried after the lease; Resend also deduplicates the stable key for 24h.
 async function notifyShipment(order, overrides = {}) {
+  if (order?.fulfillmentBlocked) return { status: 'blocked', message: 'Shipment notification is blocked until unmatched paid items are reviewed' };
   const deps = { Order, sendEmail: sendShippingNotificationEmail, now: () => new Date(), ...overrides };
   const now = deps.now();
   const claimed = await deps.Order.findOneAndUpdate({

@@ -122,4 +122,9 @@ test('non-fulfillable states are explicit', () => {
   assert.equal(fulfilmentState({ paymentStatus: 'pending', status: 'processing' }).canCreateLabel, false);
   assert.equal(fulfilmentState({ paymentStatus: 'paid', status: 'shipped' }).canCreateLabel, false);
   assert.equal(fulfilmentState({ paymentStatus: 'paid', status: 'processing' }).canCreateLabel, true);
+  assert.deepEqual(fulfilmentState({ paymentStatus: 'paid', status: 'processing', fulfillmentBlocked: true }), {
+    canCreateLabel: false,
+    state: 'blocked_payment_item_mapping',
+    reason: 'This paid order contains an item that could not be matched to the catalog. Review the Stripe payment before shipping.',
+  });
 });

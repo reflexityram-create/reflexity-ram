@@ -548,32 +548,22 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
 
   // ── Map Stripe line items back to our products via stored Price IDs ────────
   const orderItems = [];
-  const unmappedPrices = [];   // paid line items no product could be found for: the buyer was charged, so the order must say so
+  const unmappedLines = [];   // paid line items no product could be found for: retain the charged line in the order
   for (const li of await allLineItems(session)) {
     const product = await productForLineItem(li);
     if (!product) {
       console.error(`Fulfillment: no product for Stripe price ${li.price.id}`);
-      unmappedPrices.push(li.price.id);
+      const stripeProduct = li.price?.product;
+      const description = li.description || stripeProduct?.name || (typeof stripeProduct === 'object' ? stripeProduct?.description : '') || `Unmatched Stripe item ${li.price.id}`;
+      const price = Number(li.price?.unit_amount || 0) / 100;
+      unmappedLines.push({ priceId: li.price.id, description, price, qty: Number(li.quantity) || 1 });
+      orderItems.push({ slug: `stripe-unmatched-${li.price.id}`, sku: `STRIPE-${li.price.id}`, name: description, price, image: '', qty: Number(li.quantity) || 1 });
       continue;
     }
     orderItems.push({
       product: product._id, slug: product.slug, sku: product.sku, name: product.name,
       price: li.price.unit_amount / 100, image: product.images?.[0]?.url || '', qty: li.quantity,
     });
-  }
-
-  if (orderItems.length === 0) {
-    // The buyer paid and not one line matches a product, so there can be no order. That used to end here in silence (the
-    // webhook still answered 200): the owner must hear about it, to make the order by hand or refund.
-    console.error(`Fulfillment: session ${checkoutSessionId} produced no order items`);
-    const paid = `${((session.amount_total || 0) / 100).toFixed(2)} ${String(session.currency || '').toUpperCase()}`.trim();
-    await recordAdminEvent({
-      type: 'payment.unmatched', title: 'Paid, but no order was made: needs you', priority: 'high', path: '/admin/orders',
-      // Lock-screen text: the amount and the Stripe checkout ID (the buyer is found from it in Stripe), never the buyer's email.
-      body: `Paid ${paid}, Stripe checkout ${checkoutSessionId}: none of its ${unmappedPrices.length} line item(s) matches a product.`,
-      dedupeKey: `payment.unmatched:${checkoutSessionId}`,
-    });
-    return null;
   }
 
   // ── Address + contact, exactly as Stripe collected them ────────────────────
@@ -637,6 +627,7 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
       total,
       stripeCheckoutSessionId: session.id,
       postOrderPending: true,
+      fulfillmentBlocked: unmappedLines.length > 0,
       checkoutEmail: refundedFirst ? undefined : pendingCheckoutEmail(customer.email, delayed ? 'bankDebitReceived' : 'confirmation'),
       stripePaymentIntentId: typeof pi === 'string' ? pi : pi?.id,
       stripeChargeId: charge?.id || (typeof latestCharge === 'string' ? latestCharge : undefined),
@@ -666,8 +657,8 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
           : null,
         shippingChoiceNote(session.metadata, shippingMethodLabel),
         usOrderNote(usDuties),
-        unmappedPrices.length
-          ? `REVIEW: ${unmappedPrices.length} paid line item${unmappedPrices.length === 1 ? '' : 's'} could not be matched to a product and ${unmappedPrices.length === 1 ? 'is' : 'are'} NOT on this order (Stripe price ${unmappedPrices.join(', ')}). Check the Stripe payment before shipping.`
+        unmappedLines.length
+          ? `REVIEW: ${unmappedLines.length} paid line item${unmappedLines.length === 1 ? '' : 's'} could not be matched to a product and ${unmappedLines.length === 1 ? 'is' : 'are'} preserved as Stripe item placeholder${unmappedLines.length === 1 ? '' : 's'} (Stripe price ${unmappedLines.map((line) => line.priceId).join(', ')}). Check the Stripe payment before shipping.`
           : null,
       ].filter(Boolean).join('\n') || undefined,
       statusHistory: [refundedFirst
@@ -691,6 +682,16 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
       return ensureCriticalFulfillmentEffects(existingAfterRace);
     }
     throw createErr;
+  }
+
+  if (unmappedLines.length) {
+    const paid = `${((session.amount_total || 0) / 100).toFixed(2)} ${String(session.currency || '').toUpperCase()}`.trim();
+    await recordAdminEvent({
+      type: 'payment.unmatched', title: 'Paid order contains unmatched Stripe item(s): needs you', priority: 'high', path: '/admin/orders',
+      body: `Paid ${paid}, Stripe checkout ${checkoutSessionId}: ${unmappedLines.length} line item(s) were preserved as blocked placeholders. Review the payment before shipping.`,
+      dedupeKey: `payment.unmatched:${checkoutSessionId}`,
+      order,
+    }).catch((error) => console.error(`Unmatched payment alert could not be recorded for ${checkoutSessionId}:`, error.message));
   }
 
   // A refund made while this order was being written (after the session above was read) found no order to mark and was

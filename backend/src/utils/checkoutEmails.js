@@ -59,8 +59,13 @@ async function retryCheckoutEmails({ recover } = {}) {
       ],
     }).sort({ [`${slot}.claimedAt`]: 1, _id: 1 }).limit(25);
     for (const order of orders) {
-      if (!order[slot].ready && recover) await recover(order.stripeCheckoutSessionId);
-      else await deliverCheckoutEmail(order, slot);
+      try {
+        if (!order[slot].ready && recover) await recover(order.stripeCheckoutSessionId);
+        else await deliverCheckoutEmail(order, slot);
+      } catch (error) {
+        // One deleted/invalid Stripe session must not starve later receipts.
+        console.error(`Checkout email recovery for ${slot} needs retry`);
+      }
     }
   }
 }

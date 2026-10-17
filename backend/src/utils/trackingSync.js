@@ -51,6 +51,7 @@ const sendOnce = async (order, flag, kind, deps) => {
 
 const syncOrder = async (order, deps) => {
   const result = { delivered: false, emails: [] };
+  if (order.fulfillmentBlocked === true) return result;
   if (order.paymentStatus !== 'paid' || !['pending', 'processing', 'shipped', 'delivered'].includes(order.status)) return result;
   const tracking = await deps.trackParcel(order.trackingNumber);
   const now = deps.now();
@@ -66,7 +67,7 @@ const syncOrder = async (order, deps) => {
   if (saved.matchedCount === 0) return result; // tracking/status changed during the lookup
 
   if (tracking.hasShipped && canTransitionOrder(order.status, 'shipped', order.paymentStatus)) {
-    const moved = await Order.updateOne({ _id: order._id, status: order.status, paymentStatus: 'paid', trackingNumber: order.trackingNumber }, {
+    const moved = await Order.updateOne({ _id: order._id, status: order.status, paymentStatus: 'paid', fulfillmentBlocked: { $ne: true }, trackingNumber: order.trackingNumber }, {
       $set: { status: 'shipped', shippedAt: dayToDate(tracking.shippedOn) || now,
         'shippingNotification.status': tracking.delivered ? 'skipped' : 'pending' },
       $push: { statusHistory: { status: 'shipped', note: 'Shipped (Canada Post acceptance scan)', timestamp: now } },
@@ -111,6 +112,7 @@ const syncShippedOrders = async (overrides = {}) => {
   const recheckBefore = new Date(deps.now().getTime() - RECHECK_MS);
   const orders = await Order.find({
     paymentStatus: 'paid',
+    fulfillmentBlocked: { $ne: true },
     trackingNumber: { $exists: true, $nin: [null, ''] },
     $and: [{ $or: [
       { status: { $in: ['pending', 'processing', 'shipped'] } },
