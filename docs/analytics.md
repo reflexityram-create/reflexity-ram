@@ -39,10 +39,15 @@ Traffic acquisition for exact production-host visitor channels. For event
 counts, use Reports → Engagement → Events. Use Explore only for aggregate
 path analysis and keep purchases separate from the visitor-host filter.
 
-Suggested tagged outreach links (prepare only; do not send automatically):
+Tagged arrival links use the allowlisted `utm_*` values as GA's standard
+`campaign_*` fields when the tag is configured. Page locations remain query-free.
+Use tags on externally shared links; internal homepage and guide links stay
+untagged so they do not overwrite acquisition attribution.
+
+Prepared product-specific outreach links (not sent; verify stock before use):
 
 ```text
-https://reflexityram.com/shop?utm_source=repair_shops&utm_medium=referral&utm_campaign=buyer_outreach
-https://reflexityram.com/shop?utm_source=refurbishers&utm_medium=referral&utm_campaign=buyer_outreach
-https://reflexityram.com/shop?utm_source=homelab&utm_medium=community&utm_campaign=buyer_outreach
+https://reflexityram.com/shop/rfx-lenovo-16gb-ddr4-3200-ecc-rdimm-server-memory-2r?utm_source=repair_shops&utm_medium=referral&utm_campaign=buyer_outreach
+https://reflexityram.com/shop/rfx-samsung-32gb-ddr4-3200-ecc-rdimm-m393a4g43ab3-cwe?utm_source=refurbishers&utm_medium=referral&utm_campaign=buyer_outreach
+https://reflexityram.com/shop/rfx-sk-hynix-16gb-ddr4-3200-ecc-rdimm-server-memory-?utm_source=homelab&utm_medium=community&utm_campaign=buyer_outreach
 ```
