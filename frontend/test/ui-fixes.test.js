@@ -50,7 +50,7 @@ test("phones get a comfortable hit area on the header logo, the back links and t
     read("../src/pages/Product.jsx"), read("../src/pages/Shop.jsx"), read("../src/pages/Guides.jsx"),
   ]);
   assert.match(css, /@media \(max-width: 767px\) \{[^}]*\.tap-min \{ min-height: 40px; \}[\s\S]*?\.tap-target \{[^}]*min-height: 40px;[\s\S]*?\.tap-list > a \{[^}]*min-height: 40px;/);
-  assert.match(header, /className="tap-min flex items-center gap-3 shrink-0 mr-8"\s+data-testid="header-logo-link"/);
+  assert.match(header, /className="tap-min flex items-center gap-2 sm:gap-3 shrink-0 mr-2 sm:mr-8"\s+data-testid="header-logo-link"/);
   assert.match(footer, /className="tap-list flex flex-col gap-2\.5 text-\[13px\]"/);
   assert.match(product, /className="tap-target inline-flex[^"]*"\s+data-testid="product-back-link"/);
   assert.match(shop, /className="tap-target inline-flex[^"]*"\s+data-testid="shop-back-to-categories"/);

@@ -5,7 +5,7 @@ import { Toaster, toast } from "sonner";
 
 import ScrollToTop from "@/components/ScrollToTop";
 import AdminTabBar from "@/components/AdminTabBar";
-import { useApplyTheme, useTheme } from "@/lib/theme";
+import { useApplyTheme, useResolvedTheme } from "@/lib/theme";
 import useAuthStore from "@/lib/authStore";
 import useCartStore from "@/lib/cartStore";
 import { CART_SESSION_KEY } from "@/lib/api";
@@ -71,7 +71,7 @@ const AdminMore = lazy(() => import("@/pages/admin/More"));
 
 export default function App() {
   useApplyTheme();
-  const theme = useTheme((s) => s.theme);
+  const theme = useResolvedTheme();
   const { initialize, clearAuth } = useAuthStore();
 
   // Initialize auth state on app load
@@ -200,15 +200,15 @@ export default function App() {
 
         <Toaster
           position="bottom-left"
-          theme="dark"
+          theme={theme}
           richColors
           closeButton
           toastOptions={{
             style: {
-              background: "rgba(14,14,18,0.92)",
+              background: "var(--bg-elev)",
               backdropFilter: "blur(14px)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              color: "#f5f5f7",
+              border: "1px solid var(--border-strong)",
+              color: "var(--fg)",
               fontFamily: "Instrument Sans, sans-serif",
             },
             className: "reflexity-toast",
