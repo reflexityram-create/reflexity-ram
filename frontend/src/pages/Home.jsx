@@ -15,6 +15,7 @@ import {
 } from "@/lib/currency";
 import { useSEO } from "@/lib/seo";
 import { useStock } from "@/lib/useStock";
+import { pickHomeExactParts } from "@/lib/homeProducts";
 
 /**
  * Storefront home: the headline and trust points on the left, the featured
@@ -84,6 +85,7 @@ export default function Home() {
   const publicProducts = products.filter(isPublicServerRam);
   const featured = pickFeatured(publicProducts);
   const rest = publicProducts.filter((p) => p !== featured);
+  const exactParts = pickHomeExactParts(publicProducts);
 
   return (
     <>
@@ -127,6 +129,41 @@ export default function Home() {
                 )}
               </div>
             </div>
+
+            {exactParts.length > 0 && (
+              <section className="mt-12" aria-labelledby="home-exact-parts">
+                <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+                  <div>
+                    <div className="section-label mb-2"><span className="num">SHOP</span> EXACT PARTS</div>
+                    <h2 id="home-exact-parts" className="text-xl sm:text-2xl font-semibold tracking-tight">In-stock modules by model</h2>
+                  </div>
+                  <Link to="/guides/how-to-identify-ram" className="min-h-11 inline-flex items-center text-[13px] underline underline-offset-4" style={{ color: "var(--fg-muted)" }}>
+                    Identify your RAM first <ArrowRight size={14} className="inline" />
+                  </Link>
+                </div>
+                <div className="grid gap-3 md:grid-cols-3">
+                  {exactParts.map((p) => (
+                    <Link
+                      key={p.slug}
+                      to={`/shop/${p.slug}`}
+                      className="glass card-hover rounded-xl p-4 min-h-11 transition-colors"
+                      data-testid={`home-exact-part-${p.slug}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="mono text-[10px] tracking-widest uppercase" style={{ color: "var(--fg-faint)" }}>
+                            {[p.brand, p.capacityLabel, p.generation, p.formFactor].filter(Boolean).join(" · ")}
+                          </div>
+                          <div className="mt-2 text-sm font-semibold break-words">{p.mpn}</div>
+                        </div>
+                        <ArrowRight size={16} className="shrink-0 mt-0.5" aria-hidden="true" />
+                      </div>
+                      <div className="mt-2 text-[12px]" style={{ color: "var(--fg-muted)" }}>{p.stockLabel || "Available"}</div>
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            )}
 
             {(loading || rest.length > 0) && (
               <>

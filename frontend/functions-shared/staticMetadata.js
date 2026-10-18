@@ -1,4 +1,5 @@
 import { applyStorefrontSecurityHeaders } from "./securityHeaders.js";
+import { isAvailableServerPart } from "../src/lib/availableServerPart.js";
 
 const ORIGIN = "https://reflexityram.com";
 const BACKEND_ORIGIN = "https://reflexity-ram.onrender.com";
@@ -52,20 +53,23 @@ const PAGES = {
     heading: "DDR4 or DDR5: which memory should you buy?",
     body: "DDR4 and DDR5 are not interchangeable. Your motherboard and processor determine which generation fits; capacity usually matters more than a small speed increase.",
     links: [["Browse RAM categories", "/categories"], ["Shop tested RAM", "/shop"]],
+    productList: { inStockOnly: true, strictServer: true, includeMpn: true },
   },
   "/guides/ecc-rdimm-udimm-explained": {
     title: "RDIMM vs UDIMM: ECC, LRDIMM & Server RAM Explained — Reflexity RAM",
     description: "Understand ECC, RDIMM, LRDIMM, and UDIMM differences before ordering server memory in Canada or comparing an exact part number.",
     heading: "RDIMM vs UDIMM, ECC, and LRDIMM explained",
-    body: "Registered, load-reduced, and unbuffered DIMMs serve different platforms and are usually not interchangeable. Check the server or motherboard memory rules before ordering. Current examples include SK hynix HMA82GR7DJR8N-XN (RDIMM) and Samsung M386A8K40DM2-CWEZY (LRDIMM).",
-    links: [["Shop tested server RAM", "/shop"], ["Shop current RDIMM stock", "/shop/rfx-sk-hynix-16gb-ddr4-3200-ecc-rdimm-server-memory-"], ["Shop current LRDIMM stock", "/shop/rfx-samsung-64gb-ddr4-3200-ecc-registered-rdimm-serv"], ["Ask about compatibility", "/support"]],
+    body: "Registered, load-reduced, and unbuffered DIMMs serve different platforms and are usually not interchangeable. Check the server or motherboard memory rules before ordering. Example part numbers include SK hynix HMA82GR7DJR8N-XN (RDIMM) and Samsung M386A8K40DM2-CWEZY (LRDIMM); the live list below shows available inventory.",
+    links: [["Shop tested server RAM", "/shop"], ["Ask about compatibility", "/support"]],
+    productList: { inStockOnly: true, strictServer: true, includeMpn: true },
   },
   "/guides/how-to-identify-ram": {
     title: "How to Identify RAM: Labels & Part Numbers — Reflexity RAM",
     description: "Read a RAM label and part number to identify capacity, DDR generation, speed, form factor, ECC type, and rank.",
     heading: "How to identify RAM from its label and part number",
     body: "Use the complete manufacturer part number, then verify capacity, DDR generation, speed, form factor, ECC type, and rank against the computer or server manual.",
-    links: [["Search the RAM catalog", "/shop"], ["Search HMA82GR7DJR8N-XN", "/shop/rfx-sk-hynix-16gb-ddr4-3200-ecc-rdimm-server-memory-"], ["Ask us to identify a module", "/support"]],
+    links: [["Search the RAM catalog", "/shop"], ["Ask us to identify a module", "/support"]],
+    productList: { inStockOnly: true, strictServer: true, includeMpn: true },
   },
   "/guides/how-much-ram-do-i-need": {
     title: "How Much RAM Do I Need? Capacity Guide — Reflexity RAM",
@@ -73,6 +77,7 @@ const PAGES = {
     heading: "How much RAM do you need?",
     body: "Sixteen gigabytes is a practical everyday baseline, 32GB adds headroom, and professional or server workloads may need 64GB or more.",
     links: [["Browse RAM categories", "/categories"], ["Shop tested RAM", "/shop"]],
+    productList: { inStockOnly: true, strictServer: true, includeMpn: true },
   },
   "/wholesale": {
     title: "Wholesale Tested RAM Lots in Canada — Reflexity RAM",
@@ -179,16 +184,19 @@ const AVAILABILITY_SCHEMA = {
 };
 
 // Only products with a valid slug and a name are listed; anything else is dropped rather than trusted.
-function listableProducts(products) {
+function listableProducts(products, { inStockOnly = false, strictServer = false, includeMpn = false } = {}) {
   if (!Array.isArray(products)) return [];
   return products
     .filter((product) => product && VALID_SLUG.test(product.slug || "") && typeof product.name === "string" && product.name.trim())
+    .filter((product) => !strictServer || product.line === "Server")
+    .filter((product) => !inStockOnly || ((product.stock === "in" || product.stock === "low") && (product.stockQuantity === undefined || Number(product.stockQuantity) > 0)))
+    .filter((product) => !includeMpn || isAvailableServerPart(product))
     .slice(0, 100);
 }
 
-function productListHtml(products) {
+function productListHtml(products, { includeMpn = false } = {}) {
   const items = products.map((product) => {
-    const details = [product.generation, product.formFactor, product.capacityLabel, product.speedLabel]
+    const details = [product.generation, product.formFactor, product.capacityLabel, product.speedLabel, includeMpn && product.mpn]
       .filter((part) => typeof part === "string" && part.trim())
       .join(" · ");
     const price = Number.isFinite(Number(product.price)) ? `CA$${Number(product.price).toFixed(2)}` : "";
@@ -216,7 +224,8 @@ function itemListJsonLd(products) {
 
 export function injectStaticPage(html, page, pathname, { products = null } = {}) {
   const canonicalUrl = `${ORIGIN}${pathname === "/" ? "" : pathname}`;
-  const listed = page.productList ? listableProducts(products) : [];
+  const productOptions = typeof page.productList === "object" ? page.productList : {};
+  const listed = page.productList ? listableProducts(products, productOptions) : [];
   let output = upsertTitle(html, page.title);
   output = upsertMeta(output, "name", "description", page.description);
   output = upsertMeta(output, "property", "og:title", page.title);
@@ -232,7 +241,8 @@ export function injectStaticPage(html, page, pathname, { products = null } = {})
     output = insertBeforeHeadClose(output, `<script type="application/ld+json" data-edge-schema>${safeJson(schema)}</script>`);
   }
   const links = page.links.map(([label, href]) => `<li><a href="${escapeHtml(href)}">${escapeHtml(label)}</a></li>`).join("");
-  const body = `<div id="root"><main data-edge-content="static"><nav><a href="/">Reflexity RAM</a> · <a href="/shop">Shop</a> · <a href="/guides">Guides</a></nav><article><h1>${escapeHtml(page.heading)}</h1><p>${escapeHtml(page.body || page.description)}</p>${listed.length ? productListHtml(listed) : ""}<ul>${links}</ul></article></main></div>`;
+  const productBlock = listed.length ? `<h2>Current server RAM by exact part number</h2>${productListHtml(listed, productOptions)}` : "";
+  const body = `<div id="root"><main data-edge-content="static"><nav><a href="/">Reflexity RAM</a> · <a href="/shop">Shop</a> · <a href="/guides">Guides</a></nav><article><h1>${escapeHtml(page.heading)}</h1><p>${escapeHtml(page.body || page.description)}</p>${productBlock}<ul>${links}</ul></article></main></div>`;
   return output.replace(/<div\s+id=(['"])root\1\s*><\/div>/i, () => body);
 }
 
