@@ -138,8 +138,8 @@ export default function Guides() {
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   {guideProducts.map((product) => (
                     <Link key={product.slug} to={`/shop/${product.slug}`} className="glass card-hover rounded-xl p-4 min-w-0" data-testid={`guide-product-${product.slug}`}>
-                      <div className="mono text-[10px] tracking-widest uppercase break-words" style={{ color: "var(--fg-faint)" }}>{guideProductLabel(product)}</div>
-                      <div className="mt-2 text-sm font-semibold break-words">{product.mpn || product.name}</div>
+                      <div className="mono text-[12px] tracking-wide uppercase break-words" style={{ color: "var(--fg-faint)" }}>{guideProductLabel(product)}</div>
+                      <div className="mt-2 text-[15px] font-semibold break-words">{product.mpn || product.name}</div>
                       <div className="mt-2 text-[12px] break-words" style={{ color: "var(--fg-muted)" }}>{product.stockLabel || "Available"} · View current listing</div>
                     </Link>
                   ))}

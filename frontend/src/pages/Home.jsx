@@ -151,10 +151,10 @@ export default function Home() {
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="mono text-[10px] tracking-widest uppercase" style={{ color: "var(--fg-faint)" }}>
+                          <div className="mono text-[12px] tracking-wide uppercase" style={{ color: "var(--fg-faint)" }}>
                             {[p.brand, p.capacityLabel, p.generation, p.formFactor].filter(Boolean).join(" · ")}
                           </div>
-                          <div className="mt-2 text-sm font-semibold break-words">{p.mpn}</div>
+                          <div className="mt-2 text-[15px] font-semibold break-words">{p.mpn}</div>
                         </div>
                         <ArrowRight size={16} className="shrink-0 mt-0.5" aria-hidden="true" />
                       </div>
