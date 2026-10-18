@@ -57,7 +57,7 @@ export default function Header() {
           {/* ── Logo ───────────────────────────────────── */}
           <Link
             to="/"
-            className="tap-min flex items-center gap-3 shrink-0 mr-8"
+            className="tap-min flex items-center gap-2 sm:gap-3 shrink-0 mr-2 sm:mr-8"
             data-testid="header-logo-link"
           >
             <ReflexityMark size={22} />
@@ -89,8 +89,8 @@ export default function Header() {
           {/* ── Right side ─────────────────────────────── */}
           <div className="flex items-center gap-1.5 ml-auto">
 
-            {/* Theme toggle — desktop only */}
-            <div className="hidden md:flex items-center">
+            {/* Theme toggle stays within reach on phones too. */}
+            <div className="flex items-center">
               <ThemeToggle />
             </div>
 
@@ -258,10 +258,7 @@ export default function Header() {
                   </>
                 )}
               </div>
-              <div className="flex items-center justify-between px-3 py-2.5 border-t border-white/5 mt-1">
-                <span className="text-[14px] text-neutral-400">Theme</span>
-                <ThemeToggle compact />
-              </div>
+
             </div>
           </div>
         )}

@@ -217,9 +217,7 @@ body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-feature-settings: "ss01", "cv11";
-    transition:
-        background-color 0.4s ease,
-        color 0.4s ease;
+    /* Theme surfaces and text change together, avoiding a low-contrast crossfade. */
 }
 
 body::before {
@@ -802,28 +800,27 @@ html.light .bg-white.text-black {
     color: #ffffff !important;
 }
 
-/* Theme toggle button */
+/* One-tap appearance control, with a full phone-sized touch target. */
 .theme-toggle-btn {
-    background: var(--toggle-track);
-    border: 1px solid var(--toggle-track-border);
-    transition:
-        background 0.3s ease,
-        border-color 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--bg-elev);
+    border: 1px solid var(--border-strong);
+    color: var(--fg);
     cursor: pointer;
     padding: 0;
+    transition: background 0.15s ease, border-color 0.15s ease;
 }
-.theme-toggle-btn:hover {
-    border-color: var(--border-hover);
-}
-.theme-toggle-thumb {
-    background: var(--toggle-thumb);
-    box-shadow: 0 2px 6px -2px rgba(0, 0, 0, 0.35);
-    transition:
-        background 0.3s ease,
-        transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-html.light .theme-toggle-thumb {
-    background: #ffffff;
+.theme-toggle-btn:hover { border-color: var(--border-hover); }
+.theme-toggle-btn:active { background: var(--btn-secondary-bg-hover); }
+.theme-toggle-btn:focus-visible { outline: 2px solid var(--brand-yellow-deep); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+    .theme-toggle-btn { transition: none; }
 }
 
 /* Toast container theme switching */
