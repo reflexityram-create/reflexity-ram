@@ -34,7 +34,18 @@ if (window.location.hostname === "reflexityram.com" && !analyticsDisabled && !pr
   window.dataLayer = window.dataLayer || [];
   window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
   window.gtag("js", new Date());
+  // Manual page views omit the query for privacy. Map safe landing tags to
+  // GA's campaign fields so those visits retain their source and medium.
+  const campaigns = {};
+  for (const [query, field] of [
+    ["utm_source", "campaign_source"], ["utm_medium", "campaign_medium"],
+    ["utm_campaign", "campaign_name"], ["utm_term", "campaign_term"],
+    ["utm_content", "campaign_content"],
+  ]) {
+    const value = params.get(query);
+    if (value && /^[A-Za-z0-9._~-]{1,100}$/.test(value)) campaigns[field] = value;
+  }
   // Route-level tracking is emitted by AnalyticsTracker after React has removed
   // authentication, checkout, and guest-order query parameters.
-  window.gtag("config", "G-LHK5KZSYG6", { send_page_view: false });
+  window.gtag("config", "G-LHK5KZSYG6", { send_page_view: false, ...campaigns });
 }

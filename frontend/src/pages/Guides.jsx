@@ -4,6 +4,8 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { useSEO } from "@/lib/seo";
 import { serializeJsonLd } from "@/lib/safeJsonLd";
+import { useStock } from "@/lib/useStock";
+import { guideProductLabel, selectGuideProducts } from "@/lib/guideProducts";
 
 const GUIDES = [
   {
@@ -13,8 +15,7 @@ const GUIDES = [
     keywords: "DDR4 vs DDR5, DDR5 RAM Canada, DDR4 upgrade",
     cta: { label: "Browse RAM by generation", to: "/categories" },
     relatedLinks: [
-      ["DDR4 RDIMM modules", "/shop/rfx-sk-hynix-16gb-ddr4-3200-ecc-rdimm-server-memory-"],
-      ["DDR4 LRDIMM modules", "/shop/rfx-samsung-64gb-ddr4-3200-ecc-registered-rdimm-serv"],
+      ["Browse tested server RAM", "/shop"],
     ],
     sections: [
       ["The short answer", "DDR4 and DDR5 are not interchangeable. Your motherboard and processor determine which generation you can install. If your system supports DDR5, it offers higher bandwidth and newer platforms. If it uses DDR4, a tested DDR4 upgrade is usually the best value."],
@@ -30,14 +31,14 @@ const GUIDES = [
     keywords: "ECC RAM, RDIMM vs UDIMM, LRDIMM server memory",
     cta: { label: "Shop tested server RAM", to: "/shop" },
     relatedLinks: [
-      ["Shop verified RDIMM stock", "/shop/rfx-sk-hynix-16gb-ddr4-3200-ecc-rdimm-server-memory-"],
-      ["Shop verified LRDIMM stock", "/shop/rfx-samsung-64gb-ddr4-3200-ecc-registered-rdimm-serv"],
+      ["Browse tested server RAM", "/shop"],
     ],
     sections: [
       ["ECC memory", "ECC adds error detection and correction for many single-bit memory errors. It is common in servers, workstations, and systems where reliability matters. ECC support depends on the motherboard and CPU; an ECC module is not automatically compatible with every desktop platform."],
       ["UDIMM", "Unbuffered DIMMs are common in desktops and many entry-level systems. They communicate directly with the memory controller and are the usual choice for consumer motherboards. Do not substitute a registered DIMM for a UDIMM unless the platform documentation explicitly supports it."],
-      ["RDIMM", "Registered DIMMs place a register between the memory controller and the memory chips. This reduces electrical load and lets supported servers use more modules and larger capacities. RDIMM is primarily a server format and must match the server CPU and board. Current stock includes the SK hynix HMA82GR7DJR8N-XN and Lenovo 4X71B67860; search the complete part number before ordering."],
-      ["LRDIMM", "Load-reduced DIMMs use additional buffering to support very high capacities in compatible servers. LRDIMM and RDIMM are not interchangeable in most systems. Current 64GB examples include Samsung M386A8K40DM2-CWEZY and SK hynix HMAA8GL7CPR4N-VK. Check the server manufacturer's memory population rules before buying."],
+      ["RDIMM", "Registered DIMMs place a register between the memory controller and the memory chips. This reduces electrical load and lets supported servers use more modules and larger capacities. RDIMM is primarily a server format and must match the server CPU and board. Examples of DDR4 RDIMM part numbers include SK hynix HMA82GR7DJR8N-XN and Lenovo 4X71B67860; compare the complete part number with the live listings below."],
+      ["LRDIMM", "Load-reduced DIMMs use additional buffering to support very high capacities in compatible servers. LRDIMM and RDIMM are not interchangeable in most systems. Check the server manufacturer's memory population rules before buying."],
+      ["Before you order", "Copy the complete MPN, then confirm the server model, CPU generation, supported DDR generation, DIMM type, maximum capacity, rank, and population order. If you are unsure, send us the exact system model and current RAM label through support so we can check the match."],
     ],
   },
   {
@@ -47,14 +48,14 @@ const GUIDES = [
     keywords: "identify RAM part number, Samsung RAM model number, server RAM label",
     cta: { label: "Search the RAM catalog", to: "/shop" },
     relatedLinks: [
-      ["Search SK hynix HMA82GR7DJR8N-XN", "/shop/rfx-sk-hynix-16gb-ddr4-3200-ecc-rdimm-server-memory-"],
-      ["Search Samsung M386A8K40DM2-CWEZY", "/shop/rfx-samsung-64gb-ddr4-3200-ecc-registered-rdimm-serv"],
+      ["Search the RAM catalog", "/shop"],
     ],
     sections: [
       ["Start with the exact model", "Search the complete label number, including letters and suffixes. A model such as M471A2K43DB1-CTD can identify a specific Samsung module more reliably than a generic search for 16GB DDR4."],
       ["Read the key specifications", "Look for capacity, DDR generation, transfer rate, and the PC4 or PC5 speed code. SO-DIMM usually indicates laptop memory, while DIMM or UDIMM usually indicates desktop memory. RDIMM, LRDIMM, ECC, and REG point toward server memory."],
       ["Check rank and organization", "Markings such as 1Rx8, 2Rx8, or 4Rx4 describe the module's rank and chip organization. Servers can have strict rules for rank, population order, and mixing. Match the existing module or follow the platform QVL."],
       ["Verify before ordering", "Use the motherboard or server service manual as the final authority. Product photos and labels help identify a module, but the system's supported capacity, voltage, rank, and memory type determine whether it will work."],
+      ["Search with the full MPN", "Search the complete manufacturer part number, including the suffix, then compare the listing's capacity, DDR generation, speed, ECC type, form factor, rank, and condition. If the exact system model is unclear, ask support before ordering."],
     ],
   },
   {
@@ -64,14 +65,14 @@ const GUIDES = [
     keywords: "how much RAM do I need, 16GB vs 32GB RAM, server memory capacity",
     cta: { label: "Browse RAM by use case", to: "/categories" },
     relatedLinks: [
-      ["See current 16GB RDIMM stock", "/shop/rfx-sk-hynix-16gb-ddr4-3200-ecc-rdimm-server-memory-"],
-      ["See current 64GB LRDIMM stock", "/shop/rfx-samsung-64gb-ddr4-3200-ecc-registered-rdimm-serv"],
+      ["Browse current server RAM", "/shop"],
     ],
     sections: [
       ["Everyday laptops and desktops", "16GB is a practical baseline for office work, web browsing, school, and general multitasking. Choose 32GB if you regularly use large spreadsheets, development tools, many browser tabs, or photo and video applications."],
       ["Gaming and creative work", "Capacity needs depend on the game and the rest of the system, but 32GB gives modern gaming PCs useful headroom. Video editing, 3D work, and large creative projects may benefit from 64GB or more, especially when several applications are open."],
       ["Servers and virtual machines", "Server capacity depends on the number of virtual machines, databases, caches, and services. ECC RDIMM or LRDIMM capacity is more important than consumer speed ratings. Follow the server's supported population rules and install matched modules where possible."],
       ["Capacity versus speed", "If a system is paging to disk, adding capacity usually produces a larger improvement than a small speed increase. Confirm compatibility first, then choose the fastest supported memory that fits the budget."],
+      ["Use capacity and compatibility together", "Capacity alone does not make a module compatible. Confirm the server model, CPU, DIMM type, rank, and population rules before choosing a 16GB, 32GB, or 64GB module. Send us the exact model if you want a second check."],
     ],
   },
 ];
@@ -93,6 +94,8 @@ function GuideSchema({ guide }) {
 export default function Guides() {
   const { slug } = useParams();
   const guide = GUIDES.find((item) => item.slug === slug);
+  const { loading: productsLoading, products } = useStock(100);
+  const guideProducts = selectGuideProducts(products);
   const unknownGuide = Boolean(slug && !guide);
   const title = guide ? guide.title : unknownGuide ? "Guide not found" : "RAM Buying Guides";
   const description = guide?.description || (unknownGuide ? "The requested Reflexity guide was not found." : "Practical guides to DDR4, DDR5, ECC, RDIMM, LRDIMM, laptop, desktop, and server RAM.");
@@ -115,6 +118,9 @@ export default function Guides() {
             <div className="section-label mb-5"><span className="num">GUIDE</span> RAM BUYING GUIDE</div>
             <h1 className="display-2 max-w-[22ch]">{guide.title}</h1>
             <p className="mt-5 text-[17px] max-w-[62ch]" style={{ color: "var(--fg-muted)" }}>{guide.description}</p>
+            {guideProducts.length > 0 && (
+              <a href="#guide-current-stock" className="btn-secondary mt-6">Compare current server RAM</a>
+            )}
             <div className="mt-10 grid gap-5">
               {guide.sections.map(([heading, body]) => (
                 <section key={heading} className="border-t pt-5" style={{ borderColor: "var(--border)" }}>
@@ -123,6 +129,27 @@ export default function Guides() {
                 </section>
               ))}
             </div>
+            {guideProducts.length > 0 ? (
+              <section className="mt-10 border-t pt-8" style={{ borderColor: "var(--border)" }} aria-labelledby="guide-current-stock">
+                <h2 id="guide-current-stock" className="text-xl font-semibold">Current server RAM to compare by exact part number</h2>
+                <p className="mt-2 text-[15px] leading-7" style={{ color: "var(--fg-muted)" }}>
+                  Match the complete MPN, capacity, DDR generation, DIMM type, rank, and population rules before ordering. Stock can change, so open the product page for the current condition and quantity.
+                </p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {guideProducts.map((product) => (
+                    <Link key={product.slug} to={`/shop/${product.slug}`} className="glass card-hover rounded-xl p-4 min-w-0" data-testid={`guide-product-${product.slug}`}>
+                      <div className="mono text-[12px] tracking-wide uppercase break-words" style={{ color: "var(--fg-faint)" }}>{guideProductLabel(product)}</div>
+                      <div className="mt-2 text-[15px] font-semibold break-words">{product.mpn || product.name}</div>
+                      <div className="mt-2 text-[12px] break-words" style={{ color: "var(--fg-muted)" }}>{product.stockLabel || "Available"} · View current listing</div>
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            ) : !productsLoading ? (
+              <p className="mt-10 border-t pt-8 text-[13px]" style={{ borderColor: "var(--border)", color: "var(--fg-muted)" }}>
+                Current product links are unavailable right now. <Link to="/shop" className="underline">Search the live catalog</Link> or <Link to="/support" className="underline">send us your exact system model</Link> for a compatibility check.
+              </p>
+            ) : null}
             <div className="mt-12 border-t pt-8" style={{ borderColor: "var(--border)" }}>
               <div className="flex flex-wrap gap-3">
                 <Link to={guide.cta.to} className="btn-primary"><CheckCircle2 size={15} /> {guide.cta.label}</Link>
@@ -130,7 +157,7 @@ export default function Guides() {
               </div>
               {guide.relatedLinks?.length ? (
                 <div className="mt-8">
-                  <h2 className="text-sm font-semibold">Related current stock</h2>
+                  <h2 className="text-sm font-semibold">Browse the full catalog</h2>
                   <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-[13px]" style={{ color: "var(--fg-muted)" }}>
                     {guide.relatedLinks.map(([label, to]) => <Link key={to} to={to} className="underline hover:text-white">{label}</Link>)}
                   </div>
