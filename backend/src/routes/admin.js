@@ -494,6 +494,27 @@ router.post('/orders/:id/sent-without-tracking', [
   } catch { res.status(500).json({ error: 'Failed to remove the tracking number' }); }
 });
 
+// A paid order with a Stripe line no product matched is born fulfillment-blocked (routes/stripe.js): no tracking, no "shipped",
+// no label until the owner has checked the payment in Stripe. This records that check and releases the order to the normal
+// shipping actions. Only a still-blocked order is changed (the condition is part of the write), and the history says so.
+router.post('/orders/:id/fulfillment-review', [
+  param('id').custom((v) => isValidObjectId(v)).withMessage('Invalid order ID'),
+  body('note').optional({ values: 'falsy' }).isString().trim().isLength({ max: 300 }),
+], validate, async (req, res) => {
+  try {
+    const current = await Order.findById(req.params.id).select('status fulfillmentBlocked');
+    if (!current) return res.status(404).json({ error: 'Order not found' });
+    if (current.fulfillmentBlocked !== true) return res.status(409).json({ error: 'This order is not waiting for a payment review' });
+    const note = typeof req.body.note === 'string' && req.body.note ? `: ${req.body.note}` : '';
+    const order = await Order.findOneAndUpdate({ _id: req.params.id, status: current.status, fulfillmentBlocked: true }, {
+      $set: { fulfillmentBlocked: false },
+      $push: { statusHistory: { status: current.status, note: `Unmatched Stripe item(s) reviewed by the owner and released for fulfillment${note}`, timestamp: new Date() } },
+    }, { returnDocument: 'after' }).populate('user', 'firstName lastName email');
+    if (!order) return res.status(409).json({ error: 'Order changed while this was being saved' });
+    res.json({ order });
+  } catch { res.status(500).json({ error: 'Failed to release the order for fulfillment' }); }
+});
+
 // PATCH /api/admin/orders/:id/status
 router.patch(
   '/orders/:id/status',

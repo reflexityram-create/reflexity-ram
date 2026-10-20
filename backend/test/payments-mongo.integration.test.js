@@ -1392,6 +1392,33 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
     } finally { stripeRouter.setCheckoutDependenciesForTest(); }
   });
 
+  await root.test('review 2026-10-19: an order blocked by an unmatched paid line is released by the owner\'s review, once, and can then ship', async () => {
+    await bankSetup();
+    const owner = await User.create({ email: 'owner@reflexity.example', firstName: 'Yusuf', lastName: 'Owner', role: 'admin', isEmailVerified: true });
+    const adminHeaders = { authorization: `Bearer ${generateAccessToken(owner._id, owner.authVersion)}` };
+    const gone = { id: 'prod_gone', object: 'product', metadata: {} };
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async () => cardSession({ id: 'cs_blocked_review', payment_intent: { id: 'pi_blocked_review', status: 'succeeded', latest_charge: 'ch_blocked_review' }, line_items: { data: [{ id: 'li_1', price: { id: 'price_gone', unit_amount: 13500, product: gone }, quantity: 2 }] } }) });
+    try {
+      const order = await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_blocked_review');
+      assert.equal(order.fulfillmentBlocked, true);
+      const id = String(order._id);
+      await serve(async (call) => {
+        const ship = { headers: adminHeaders, body: { status: 'shipped', trackingNumber: 'CP123456789CA' } };
+        assert.equal((await call('PATCH', `/api/admin/orders/${id}/status`, ship)).status, 409, 'still blocked before the review');
+        assert.equal((await call('POST', `/api/admin/orders/${id}/fulfillment-review`, { body: { note: 'x' } })).status, 401, 'owner only');
+        const released = await call('POST', `/api/admin/orders/${id}/fulfillment-review`, { headers: adminHeaders, body: { note: 'Checked in Stripe: ship the 2 sticks' } });
+        assert.equal(released.status, 200, 'the review the 409 asks for exists');
+        assert.equal(released.body.order.fulfillmentBlocked, false);
+        assert.match(released.body.order.statusHistory.at(-1).note, /reviewed.*Checked in Stripe: ship the 2 sticks/);
+        assert.equal((await call('POST', `/api/admin/orders/${id}/fulfillment-review`, { headers: adminHeaders, body: {} })).status, 409, 'nothing left to release');
+        const shipped = await call('PATCH', `/api/admin/orders/${id}/status`, ship);
+        assert.equal(shipped.status, 200, 'a reviewed order ships like any other');
+        assert.equal(shipped.body.order.status, 'shipped');
+        assert.equal(shipped.body.shippingNotification.status, 'sent', 'and the buyer is told');
+      });
+    } finally { stripeRouter.setCheckoutDependenciesForTest(); }
+  });
+
   await root.test('review 2026-10-14: a cart with more lines than Stripe\'s first page is ordered whole', async () => {
     await reset();
     const products = [];

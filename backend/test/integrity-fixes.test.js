@@ -52,7 +52,7 @@ async function request(app, method, urlPath, body, headers = {}) {
     const response = await fetch(`http://127.0.0.1:${server.address().port}${urlPath}`, {
       method, headers: { 'Content-Type': 'application/json', ...headers }, body: body === undefined ? undefined : JSON.stringify(body),
     });
-    return { status: response.status, body: await response.json() };
+    return { status: response.status, body: await response.json().catch(() => null) };
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -315,6 +315,33 @@ test('admin fulfillment transitions refuse orders blocked by unmatched paid Stri
   const shipped = await request(app, 'PATCH', `/api/admin/orders/${PRODUCT_ID}/status`, { status: 'shipped', noTracking: true }, headers);
   assert.equal(shipped.status, 409);
   assert.match(shipped.body.error, /unmatched Stripe item/);
+});
+
+// The 409 above says "must be reviewed before fulfillment". Nothing could record that review, so a paid order with one unmatched line
+// (the other lines matched, their stock already taken) could never be given a tracking number or marked shipped.
+test('the owner can release a blocked order after reviewing it, once, and its tracking can then be saved', async (t) => {
+  const { app, headers } = adminApp(t);
+  let doc = orderDoc({ fulfillmentBlocked: true, statusHistory: [] });
+  const writes = [];
+  stub(t, Order, {
+    findById: () => query(doc),
+    findOneAndUpdate: (filter, update) => {
+      writes.push({ filter, update });
+      const fits = Object.entries(filter).every(([key, value]) => key === '_id' || key === 'trackingNumber' || doc[key] === value);
+      if (!fits) return query(null);
+      doc = { ...doc, ...update.$set, statusHistory: [...doc.statusHistory, ...(update.$push?.statusHistory ? [update.$push.statusHistory] : [])] };
+      return query(doc);
+    },
+  });
+  const released = await request(app, 'POST', `/api/admin/orders/${PRODUCT_ID}/fulfillment-review`, { note: 'Checked in Stripe' }, headers);
+  assert.equal(released.status, 200, 'a review action exists');
+  assert.equal(released.body.order.fulfillmentBlocked, false);
+  assert.equal(writes[0].filter.fulfillmentBlocked, true, 'only a still-blocked order is released (atomic with the check)');
+  assert.match(writes[0].update.$push.statusHistory.note, /reviewed.*Checked in Stripe/);
+  const again = await request(app, 'POST', `/api/admin/orders/${PRODUCT_ID}/fulfillment-review`, {}, headers);
+  assert.equal(again.status, 409, 'an order that is not blocked has nothing to release');
+  const tracking = await request(app, 'PATCH', `/api/admin/orders/${PRODUCT_ID}/tracking`, { trackingNumber: 'CP1' }, headers);
+  assert.equal(tracking.status, 200, 'the released order goes on through the normal shipping actions');
 });
 
 test('the Google callback refuses an unverified email with its own error code, and the page has a message for it', () => {
