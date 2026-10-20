@@ -1,6 +1,5 @@
-// Every email sender reports a Resend failure the same way (failSend in utils/email.js): the provider's error name, status and message are
-// logged and thrown, with any email address in the provider's words replaced, because a provider's message can quote the recipient's.
-// The error thrown is logged again by whoever caught it, so what it says is what ends up in the logs.
+// Every sender normalizes Resend failures to generic thrown errors and safe allowlisted diagnostics.
+// Provider messages, arbitrary fields and recipient data must never appear in logs or thrown errors.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
