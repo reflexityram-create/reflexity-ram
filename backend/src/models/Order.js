@@ -101,7 +101,7 @@ const orderSchema = new mongoose.Schema({
   total: { type: Number, required: true },
   // Guard flag: stock is decremented exactly once per order (see utils/stock.js)
   stockDecremented: { type: Boolean, default: false },
-  // Set atomically with a full refund when stock had already been taken; a redelivery can then repeat the urgent owner alert safely.
+  // Set atomically with a full refund of a pending/processing order whose stock was taken; a redelivery can then repeat the urgent owner alert safely.
   refundStockRecoveryRequired: { type: Boolean, default: false },
   // True from the moment a Stripe order is saved until the steps that follow it are done: the buyer's stock hold given back
   // (utils/stockHolds.js) and the cart that became this order emptied. A crash in between leaves it set, and the next retry of the

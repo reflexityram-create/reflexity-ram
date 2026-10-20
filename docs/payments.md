@@ -85,9 +85,13 @@ retain the payment/fulfillment state and add one line per cumulative refunded am
 Conditional database writes prevent duplicate history on redelivery or concurrent delivery;
 a delayed partial event cannot change a fully refunded order back to paid.
 The full-refund transition records `refundStockRecoveryRequired` from the exact pre-update
-state when stock had already been decremented. The owner alert then says not to ship and to
+state only for pending/processing orders whose stock had already been decremented. Shipped,
+delivered, cancelled and legacy already-refunded orders do not infer recovery from that stock flag.
+The owner alert then says not to ship and to
 put stock back only for that proven case; returning stock still waits for inspection and is
-never automatic. The marker keeps that warning on a retry after an alert write failed.
+never automatic. The marker keeps that warning on a retry after an alert write failed. It is one Boolean per order,
+owned by the refund transition and retained with the order history; it creates no new collection or
+retention job. Failed writes propagate through the webhook retry path.
 
 When no order matches the charge or PaymentIntent, the owner receives a deduplicated
 `payment.refund_unmatched` alert. If that required alert cannot be persisted, the webhook
