@@ -263,6 +263,29 @@ test('an all-unmatched paid session still records the charged line and order tot
   assert.equal(order.fulfillmentBlocked, true);
 });
 
+test('the "needs you" alert for an unmatched paid line opens that order when tapped, not the bare order list', async (t) => {
+  const mongoose = require('mongoose');
+  const AdminEvent = require('../src/models/AdminEvent');
+  const saved = [];
+  const realCreate = AdminEvent.create;
+  const realState = Object.getOwnPropertyDescriptor(mongoose.connection, 'readyState');
+  AdminEvent.create = async (doc) => { saved.push(doc); return { ...doc, _id: 'event-1' }; };
+  Object.defineProperty(mongoose.connection, 'readyState', { get: () => 1, configurable: true });
+  t.after(() => {
+    AdminEvent.create = realCreate;
+    if (realState) Object.defineProperty(mongoose.connection, 'readyState', realState); else delete mongoose.connection.readyState;
+  });
+  await fulfil(t, stripeSession({
+    id: 'cs_unmatched_alert',
+    line_items: { data: [{ price: { id: 'price_gone', unit_amount: 5000, product: {} }, quantity: 1 }] },
+    amount_subtotal: 5000, amount_total: 5000,
+  }));
+  const alert = saved.find((event) => event.type === 'payment.unmatched');
+  assert.ok(alert, 'the owner is alerted');
+  assert.equal(alert.orderNumber, 'RFX-9');
+  assert.equal(alert.path, '/admin/orders?order=o1');
+});
+
 test('the note that says which service to buy names international services instead of showing Canada Post codes', async (t) => {
   const order = await fulfil(t, stripeSession({
     id: 'cs_intl',

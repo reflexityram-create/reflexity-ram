@@ -687,7 +687,8 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
   if (unmappedLines.length) {
     const paid = `${((session.amount_total || 0) / 100).toFixed(2)} ${String(session.currency || '').toUpperCase()}`.trim();
     await recordAdminEvent({
-      type: 'payment.unmatched', title: 'Paid order contains unmatched Stripe item(s): needs you', priority: 'high', path: '/admin/orders',
+      // No `path`: with the order given, a tap opens that order's panel (the bare list was right only when no order was made).
+      type: 'payment.unmatched', title: 'Paid order contains unmatched Stripe item(s): needs you', priority: 'high',
       body: `Paid ${paid}, Stripe checkout ${checkoutSessionId}: ${unmappedLines.length} line item(s) were preserved as blocked placeholders. Review the payment before shipping.`,
       dedupeKey: `payment.unmatched:${checkoutSessionId}`,
       order,

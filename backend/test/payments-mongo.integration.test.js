@@ -1389,6 +1389,7 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
       assert.match(alerts[0].body, /^Paid 284\.00 CAD, Stripe checkout cs_nothing:/);
       assert.match(alerts[0].body, /preserved as blocked placeholders.*before shipping/);
       assert.ok(!alerts[0].body.includes('sam@example.com'), 'lock-screen text never carries the buyer\'s email');
+      assert.equal(alerts[0].path, `/admin/orders?order=${unmatched._id}`, 'tapping the "needs you" alert opens the blocked order, not the bare list');
     } finally { stripeRouter.setCheckoutDependenciesForTest(); }
   });
 
