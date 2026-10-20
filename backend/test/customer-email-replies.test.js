@@ -55,7 +55,7 @@ test('every kind of e-Transfer, bank debit and tracking email in the module is c
   const covered = EVERY_CUSTOMER_EMAIL.map(([name]) => name).join('|');
   for (const kind of Object.keys(email.PAYMENT_NOTICES)) assert.ok(covered.includes(`payment notice: ${kind}`), kind);
   const source = require('node:fs').readFileSync(require.resolve('../src/utils/email.js'), 'utf8');
-  const sends = (source.match(/emails\.send\(/g) || []).length;
+  const sends = (source.match(/await sendEmail\(/g) || []).length;
   const withReply = (source.match(/replyTo: SUPPORT_EMAIL/g) || []).length;
   assert.equal(sends, withReply, `a new email was added without a Reply-To (${sends} sends, ${withReply} reply addresses)`);
 });

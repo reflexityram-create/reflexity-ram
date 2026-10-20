@@ -53,6 +53,18 @@ const sendFor = async (orderValues) => {
   return sent[0];
 };
 
+test('confirmation email shows each real item\'s SKU but never the placeholder SKU of a Stripe line no product matched', async () => {
+  const message = await sendFor({ items: [
+    { name: '64GB DDR4', sku: 'SKU-64', slug: 'ddr4-64gb', qty: 1, price: 585 },
+    { name: 'Mystery module', sku: 'STRIPE-price_ABC', slug: 'stripe-unmatched-price_ABC', qty: 1, price: 50 },
+  ] });
+  assert.match(message.html, /64GB DDR4/);
+  assert.match(message.html, />SKU-64</, 'a real item keeps its SKU');
+  assert.match(message.html, /Mystery module/, 'the held line is still listed, with its quantity and price');
+  assert.match(message.html, /\$50\.00/);
+  assert.doesNotMatch(message.html, /STRIPE-price_ABC/, 'but its placeholder SKU means nothing to the buyer');
+});
+
 test('confirmation email shows the promotion discount between subtotal and shipping', async () => {
   const message = await sendFor({ discount: 110 });
   assert.deepEqual(totalsRows(message.html), [

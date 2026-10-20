@@ -11,6 +11,7 @@ import OrderTracking from '@/components/OrderTracking';
 import { startOrderUpdates } from '@/lib/orderUpdates';
 import { torontoDeadline } from '@/lib/paymentMethods';
 import { SUPPORT_EMAIL, differsFromContact } from '@/lib/contact';
+import { isUnmatchedItem } from '@/lib/orderItems';
 
 const STATUS_STEPS = [
   { id: 'pending', label: 'Order placed' },
@@ -215,7 +216,7 @@ export default function OrderSuccess() {
                     </div>
                     <div className="flex-1">
                       <div className="text-[13px] font-medium">{item.name}</div>
-                      <div className="mono text-[11px] text-neutral-500">{item.sku}</div>
+                      {!isUnmatchedItem(item) && <div className="mono text-[11px] text-neutral-500">{item.sku}</div>}
                       <div className="text-[12px] text-neutral-400 mt-0.5">Qty: {item.qty}</div>
                     </div>
                     <div className="mono text-[13px]">${(item.price * item.qty).toFixed(2)}</div>

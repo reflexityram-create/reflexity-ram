@@ -29,7 +29,9 @@ function serviceFromOrder(order) {
 }
 
 function fulfilmentState(order) {
-  if (order?.fulfillmentBlocked) {
+  // The hold means "check the payment first" only while there is something to ship: a paid order that is still open. A refunded, cancelled,
+  // shipped or still-unpaid one is described by the lines below (the admin Orders screen treats it the same way).
+  if (order?.fulfillmentBlocked && order?.paymentStatus === 'paid' && ['pending', 'processing'].includes(order?.status)) {
     return { canCreateLabel: false, state: 'blocked_payment_item_mapping', reason: 'This paid order contains an item that could not be matched to the catalog. Review the Stripe payment before shipping.' };
   }
   if (order?.status === 'shipped' || order?.status === 'delivered') {
