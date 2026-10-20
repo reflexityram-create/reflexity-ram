@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 // Swap the Resend SDK out before email.js loads: its send answers with whatever the test sets.
 let answer = { data: { id: 'email_test' }, error: null };
 const resendPath = require.resolve('resend');
-require.cache[resendPath] = { id: resendPath, filename: resendPath, loaded: true, exports: { Resend: class { constructor() { this.emails = { send: async () => answer }; } } } };
+require.cache[resendPath] = { id: resendPath, filename: resendPath, loaded: true, exports: { Resend: class { constructor() { this.emails = { send: async () => answer, cancel: async () => answer }; } } } };
 process.env.FRONTEND_URL = 'https://reflexityram.com';
 process.env.NODE_ENV ||= 'test';
 process.env.STRIPE_SECRET_KEY ||= 'sk_test_email_errors_unit_test';
@@ -41,7 +41,7 @@ test('all seven senders log and throw a generic provider failure without recipie
   for (const [name, sender] of Object.entries(SENDERS)) {
     const { thrown, logged } = await failWith({ name: 'validation_error', statusCode: 422, message: 'The recipient alex.buyer@gmail.com is on the suppression list' }, sender);
     assert.equal(thrown?.message, 'Email send failed: provider rejected the message', name);
-    assert.deepEqual(logged, ['Resend error detail: {"name":"validation_error","statusCode":422}'], name);
+    assert.deepEqual(logged, ['Resend send error detail: {"name":"validation_error","statusCode":422}'], name);
     assert.equal(`${thrown.message} ${logged.join(' ')}`.includes('alex.buyer'), false, `${name} leaks the address`);
   }
 });
@@ -54,11 +54,11 @@ test('untrusted provider body, name, status and recipient data never enter diagn
 
   const noMessage = await failWith({ statusCode: 500, to: 'Sam.O+tag@mail.example.co.uk' }, SENDERS.shipping);
   assert.equal(noMessage.thrown.message, 'Email send failed: provider rejected the message');
-  assert.deepEqual(noMessage.logged, ['Resend error detail: {"name":"unknown","statusCode":500}']);
+  assert.deepEqual(noMessage.logged, ['Resend send error detail: {"name":"unknown","statusCode":500}']);
 
   const long = await failWith({ name: 'x'.repeat(100), message: `${'y'.repeat(150)} bounced for sam@gmail.com ${'z'.repeat(300)}` }, SENDERS.paymentNotice);
   assert.equal(long.thrown.message, 'Email send failed: provider rejected the message');
-  assert.deepEqual(long.logged, ['Resend error detail: {"name":"unknown"}']);
+  assert.deepEqual(long.logged, ['Resend send error detail: {"name":"unknown"}']);
 });
 
 test('a send that works is returned untouched, and a failure of unexpected shape still throws', async () => {
@@ -78,4 +78,27 @@ test('a rejected provider promise and a malformed circular error are still redac
   const malformed = await failWith(circular, SENDERS.shipping);
   assert.equal(malformed.thrown.message, 'Email send failed: provider rejected the message');
   assert.equal(malformed.logged.join(' ').includes('[object Object]'), false);
+});
+
+test('scheduled-email cancellation uses the same safe normalization for resolved, rejected and circular failures', async () => {
+  const real = console.error;
+  const logged = [];
+  console.error = (...args) => logged.push(args.join(' '));
+  try {
+    answer = { data: null, error: { name: 'validation_error', statusCode: 422, message: 'cancel alex.buyer@gmail.com' } };
+    await assert.rejects(email.cancelScheduledEmail('email_1'), { message: 'Email cancel failed: provider rejected the message' });
+    answer = Promise.reject(new Error('cancel failed for alex.buyer@gmail.com'));
+    await assert.rejects(email.cancelScheduledEmail('email_2'), { message: 'Email cancel failed: provider rejected the message' });
+    const circular = {};
+    circular.self = circular;
+    answer = Promise.reject(circular);
+    await assert.rejects(email.cancelScheduledEmail('email_3'), { message: 'Email cancel failed: provider rejected the message' });
+    assert.equal(logged.length, 3);
+    assert.equal(logged.join(' ').includes('alex.buyer'), false);
+    assert.equal(logged.join(' ').includes('[object Object]'), false);
+    assert.ok(logged.every((line) => line.startsWith('Resend cancel error detail:')));
+  } finally {
+    console.error = real;
+    answer = { data: { id: 'email_test' }, error: null };
+  }
 });

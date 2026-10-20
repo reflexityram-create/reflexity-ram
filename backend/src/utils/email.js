@@ -18,13 +18,13 @@ const SAFE_RESEND_NAMES = new Set(['validation_error', 'rate_limit_exceeded', 'm
 const errorField = (error, field) => {
   try { return error?.[field]; } catch { return undefined; }
 };
-function failSend(error) {
+function failSend(error, action = 'send') {
   const rawName = errorField(error, 'name');
   const name = SAFE_RESEND_NAMES.has(rawName) ? rawName : 'unknown';
   const rawStatus = errorField(error, 'statusCode');
   const statusCode = Number.isFinite(rawStatus) && Number.isInteger(rawStatus) && rawStatus >= 100 && rawStatus <= 599 ? rawStatus : undefined;
-  console.error('Resend error detail:', JSON.stringify({ name, ...(statusCode === undefined ? {} : { statusCode }) }));
-  throw new Error('Email send failed: provider rejected the message');
+  console.error(`Resend ${action} error detail:`, JSON.stringify({ name, ...(statusCode === undefined ? {} : { statusCode }) }));
+  throw new Error(`Email ${action} failed: provider rejected the message`);
 }
 const sendEmail = async (message, options) => {
   try {
@@ -284,9 +284,14 @@ const sendReviewRequestEmail = async ({ email, firstName, order, reviewUrl, unsu
 };
 
 const cancelScheduledEmail = async (id) => {
-  const { data, error } = await getResend().emails.cancel(id);
-  if (error) throw new Error(`Email cancel failed: ${error.message || JSON.stringify(error)}`);
-  return data;
+  let result;
+  try {
+    result = await getResend().emails.cancel(id);
+  } catch (error) {
+    failSend(error, 'cancel');
+  }
+  if (result?.error) failSend(result.error, 'cancel');
+  return result?.data;
 };
 
 // ─── Canada Post tracking updates (utils/trackingSync.js) ─────────────────────
