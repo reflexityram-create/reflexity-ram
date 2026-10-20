@@ -10,6 +10,7 @@ require.cache[resendPath] = { id: resendPath, filename: resendPath, loaded: true
 process.env.FRONTEND_URL = 'https://reflexityram.com';
 process.env.NODE_ENV ||= 'test';
 process.env.STRIPE_SECRET_KEY ||= 'sk_test_email_errors_unit_test';
+process.env.RESEND_API_KEY ||= ['re', 'test_email_errors_unit_test'].join('_');
 
 const email = require('../src/utils/email');
 
@@ -36,11 +37,11 @@ async function failWith(error, sender) {
   } finally { console.error = real; answer = { data: { id: 'email_test' }, error: null }; }
 }
 
-test('all seven senders log and throw a generic provider failure without recipient data', async () => {
+test('all seven senders retain the safe provider category and status without recipient data', async () => {
   assert.equal(Object.keys(SENDERS).length, 7);
   for (const [name, sender] of Object.entries(SENDERS)) {
     const { thrown, logged } = await failWith({ name: 'validation_error', statusCode: 422, message: 'The recipient alex.buyer@gmail.com is on the suppression list' }, sender);
-    assert.equal(thrown?.message, 'Email send failed: provider rejected the message', name);
+    assert.equal(thrown?.message, 'Email send failed (validation_error, 422)', name);
     assert.deepEqual(logged, ['Resend send error detail: {"name":"validation_error","statusCode":422}'], name);
     assert.equal(`${thrown.message} ${logged.join(' ')}`.includes('alex.buyer'), false, `${name} leaks the address`);
   }
@@ -49,15 +50,15 @@ test('all seven senders log and throw a generic provider failure without recipie
 test('untrusted provider body, name, status and recipient data never enter diagnostics', async () => {
   const help = 'Invalid `to` field. The email address needs to follow the `email@example.com` or `Name <email@example.com>` format.';
   const helpFailure = await failWith({ name: 'validation_error', statusCode: 422, message: help, phone: '+1 416 555 0199' }, SENDERS.confirmation);
-  assert.equal(helpFailure.thrown.message, 'Email send failed: provider rejected the message');
+  assert.equal(helpFailure.thrown.message, 'Email send failed (validation_error, 422)');
   assert.equal(helpFailure.logged.join(' ').includes('416'), false);
 
   const noMessage = await failWith({ statusCode: 500, to: 'Sam.O+tag@mail.example.co.uk' }, SENDERS.shipping);
-  assert.equal(noMessage.thrown.message, 'Email send failed: provider rejected the message');
+  assert.equal(noMessage.thrown.message, 'Email send failed (unknown, 500)');
   assert.deepEqual(noMessage.logged, ['Resend send error detail: {"name":"unknown","statusCode":500}']);
 
   const long = await failWith({ name: 'x'.repeat(100), message: `${'y'.repeat(150)} bounced for sam@gmail.com ${'z'.repeat(300)}` }, SENDERS.paymentNotice);
-  assert.equal(long.thrown.message, 'Email send failed: provider rejected the message');
+  assert.equal(long.thrown.message, 'Email send failed (unknown)');
   assert.deepEqual(long.logged, ['Resend send error detail: {"name":"unknown"}']);
 });
 
@@ -65,18 +66,18 @@ test('a send that works is returned untouched, and a failure of unexpected shape
   answer = { data: { id: 'email_ok' }, error: null };
   assert.deepEqual(await SENDERS.passwordReset(), { id: 'email_ok' });
   const { thrown } = await failWith('plain string error', SENDERS.verification);
-  assert.equal(thrown.message, 'Email send failed: provider rejected the message');
+  assert.equal(thrown.message, 'Email send failed (unknown)');
 });
 
 test('a rejected provider promise and a malformed circular error are still redacted and normalized', async () => {
   const rejected = await failWith(Promise.reject(new Error('delivery failed for alex.buyer@gmail.com')), SENDERS.shipping);
-  assert.equal(rejected.thrown.message, 'Email send failed: provider rejected the message');
+  assert.equal(rejected.thrown.message, 'Email send failed (unknown)');
   assert.equal(rejected.logged.join(' ').includes('alex.buyer'), false);
 
   const circular = {};
   circular.self = circular;
   const malformed = await failWith(circular, SENDERS.shipping);
-  assert.equal(malformed.thrown.message, 'Email send failed: provider rejected the message');
+  assert.equal(malformed.thrown.message, 'Email send failed (unknown)');
   assert.equal(malformed.logged.join(' ').includes('[object Object]'), false);
 });
 
@@ -86,13 +87,13 @@ test('scheduled-email cancellation uses the same safe normalization for resolved
   console.error = (...args) => logged.push(args.join(' '));
   try {
     answer = { data: null, error: { name: 'validation_error', statusCode: 422, message: 'cancel alex.buyer@gmail.com' } };
-    await assert.rejects(email.cancelScheduledEmail('email_1'), { message: 'Email cancel failed: provider rejected the message' });
+    await assert.rejects(email.cancelScheduledEmail('email_1'), { message: 'Email cancel failed (validation_error, 422)' });
     answer = Promise.reject(new Error('cancel failed for alex.buyer@gmail.com'));
-    await assert.rejects(email.cancelScheduledEmail('email_2'), { message: 'Email cancel failed: provider rejected the message' });
+    await assert.rejects(email.cancelScheduledEmail('email_2'), { message: 'Email cancel failed (unknown)' });
     const circular = {};
     circular.self = circular;
     answer = Promise.reject(circular);
-    await assert.rejects(email.cancelScheduledEmail('email_3'), { message: 'Email cancel failed: provider rejected the message' });
+    await assert.rejects(email.cancelScheduledEmail('email_3'), { message: 'Email cancel failed (unknown)' });
     assert.equal(logged.length, 3);
     assert.equal(logged.join(' ').includes('alex.buyer'), false);
     assert.equal(logged.join(' ').includes('[object Object]'), false);
@@ -100,5 +101,30 @@ test('scheduled-email cancellation uses the same safe normalization for resolved
   } finally {
     console.error = real;
     answer = { data: { id: 'email_test' }, error: null };
+  }
+});
+
+test('known quota, sender and access categories stay typed while network and missing-key failures are classified safely', async () => {
+  const cases = [
+    [{ name: 'daily_quota_exceeded', statusCode: 429, message: 'private recipient@example.com' }, 'Email send failed (daily_quota_exceeded, 429)'],
+    [{ name: 'invalid_from_address', statusCode: 403, message: 'private recipient@example.com' }, 'Email send failed (invalid_from_address, 403)'],
+    [{ name: 'invalid_idempotency_key', statusCode: 400, message: 'private recipient@example.com' }, 'Email send failed (invalid_idempotency_key, 400)'],
+    [{ name: 'invalid_attachment', statusCode: 400, message: 'private recipient@example.com' }, 'Email send failed (invalid_attachment, 400)'],
+    [{ name: 'invalid_region', statusCode: 400, message: 'private recipient@example.com' }, 'Email send failed (invalid_region, 400)'],
+    [Object.assign(new TypeError('fetch failed for recipient@example.com'), { statusCode: 503 }), 'Email send failed (network_error, 503)'],
+  ];
+  for (const [error, message] of cases) {
+    const { thrown, logged } = await failWith(error, SENDERS.shipping);
+    assert.equal(thrown.message, message);
+    assert.equal((thrown.message + ' ' + logged.join(' ')).includes('recipient@example.com'), false);
+  }
+  const originalKey = process.env.RESEND_API_KEY;
+  try {
+    delete process.env.RESEND_API_KEY;
+    const { thrown, logged } = await failWith(new Error('Missing API key for recipient@example.com'), SENDERS.shipping);
+    assert.equal(thrown.message, 'Email send failed (missing_api_key)');
+    assert.equal((thrown.message + ' ' + logged.join(' ')).includes('recipient@example.com'), false);
+  } finally {
+    process.env.RESEND_API_KEY = originalKey;
   }
 });
