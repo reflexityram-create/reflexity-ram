@@ -91,3 +91,12 @@ test("the browser chrome colour is the page background of the active theme", asy
   assert.deepEqual({ ...THEME_COLOR }, { light, dark }, "theme.jsx colours");
   assert.equal(indexHtml.match(/<meta name="theme-color" content="(#[0-9a-fA-F]{6})"/)?.[1].toLowerCase(), light, "index.html default");
 });
+
+test("the theme toggle states its action in its name and does not also claim a pressed state", async () => {
+  const source = await readFile(new URL("../src/components/ThemeToggle.jsx", import.meta.url), "utf8");
+  // The name already says which theme is active and what a press does ("Theme: dark. Switch to light mode"). With aria-pressed as well,
+  // screen readers announce "Switch to light mode, pressed", which reads as the opposite of what happens.
+  assert.match(source, /aria-label=\{label\}/);
+  assert.match(source, /Switch to \$\{isDark \? "light" : "dark"\} mode/);
+  assert.doesNotMatch(source, /aria-pressed/);
+});
