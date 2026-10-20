@@ -6,6 +6,10 @@ const DEFAULT_FROM = process.env.FROM_EMAIL || 'Reflexity RAM <onboarding@resend
 const DEFAULT_TO = process.env.LEADS_TO_EMAIL || 'reflexityram@gmail.com';
 const LEAD_SEND_TIMEOUT_MS = 12_000;
 
+// The two ways delivery fails that are not a bug here, with a code the route can name in the log and in the owner's alert without
+// repeating anything the provider said (a provider's words can quote the visitor's address).
+const leadError = (message, code) => Object.assign(new Error(message), { code });
+
 const INTENT_LABELS = {
   buy: 'Buyer inventory request',
   sell: 'Hardware acquisition lead',
@@ -59,13 +63,13 @@ async function sendLeadEmail(lead, {
     send(buildLeadEmail(lead, { from, to }), { idempotencyKey }),
     timeoutMs,
   );
-  if (error || !data) throw new Error('Lead delivery was not accepted');
+  if (error || !data) throw leadError('Lead delivery was not accepted', 'LEAD_REJECTED');
   return data;
 }
 
 function settleLeadSend(sendPromise, timeoutMs) {
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('Lead delivery timed out')), timeoutMs);
+    const timeout = setTimeout(() => reject(leadError('Lead delivery timed out', 'LEAD_TIMEOUT')), timeoutMs);
     Promise.resolve(sendPromise).then(
       (result) => { clearTimeout(timeout); resolve(result); },
       (error) => { clearTimeout(timeout); reject(error); },

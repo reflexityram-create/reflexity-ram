@@ -38,6 +38,14 @@ function hasHoneypot(req) {
 
 class LeadSourceError extends Error {}
 
+// What a failed delivery is called in the log and in the owner's alert: the KIND of failure only. The lead, the visitor and the provider's
+// own words can all contain personal information, so none of them is repeated.
+const FAILURE_REASONS = {
+  LEAD_TIMEOUT: 'the email service did not answer in time',
+  LEAD_REJECTED: 'the email service refused the message',
+};
+const failureReason = (error) => FAILURE_REASONS[error?.code] || 'unexpected error';
+
 async function canonicalizeLeadSource(lead, WholesaleLotModel) {
   if (lead.sourceType !== 'wholesale-lot') return lead;
   if (!WHOLESALE_LOT_ID.test(lead.sourceId || '')) throw new LeadSourceError('Invalid wholesale lot');
@@ -66,7 +74,7 @@ const leadAlertBody = (lead) => [
   Number.isInteger(lead.quantity) ? `qty ${lead.quantity}` : null,
 ].filter(Boolean).join(' · ');
 
-function createLeadRouter({ sendLead = sendLeadEmail, WholesaleLotModel = WholesaleLot, record = recordAdminEvent } = {}) {
+function createLeadRouter({ sendLead = sendLeadEmail, WholesaleLotModel = WholesaleLot, record = recordAdminEvent, now = () => new Date() } = {}) {
   const router = express.Router();
 
   router.post(
@@ -95,6 +103,14 @@ function createLeadRouter({ sendLead = sendLeadEmail, WholesaleLotModel = Wholes
         if (error instanceof LeadSourceError) {
           return res.status(400).json({ error: 'The selected inventory is no longer available. Please refresh and try again.' });
         }
+        // The visitor sees an error and nobody reads the log, so the owner's phone is told: at most once an hour (the key), however many requests fail.
+        const reason = failureReason(error);
+        console.error(`Quote request could not be sent (${reason})`);
+        await record({
+          type: 'lead.failed', title: 'A quote request could not be sent', priority: 'high', path: '/admin/orders',
+          body: `A visitor saw an error (${reason}). Check that the email service works; they may try again or email you.`,
+          dedupeKey: `lead.failed:${now().toISOString().slice(0, 13)}`,
+        });
         // Provider responses and lead data may contain personal information.
         return res.status(502).json({ error: 'We could not submit your request. Please try again.' });
       }
@@ -103,4 +119,4 @@ function createLeadRouter({ sendLead = sendLeadEmail, WholesaleLotModel = Wholes
   return router;
 }
 
-module.exports = { createLeadRouter, leadValidation, hasHoneypot, REQUEST_ID, canonicalizeLeadSource, LeadSourceError };
+module.exports = { createLeadRouter, leadValidation, hasHoneypot, REQUEST_ID, canonicalizeLeadSource, LeadSourceError, failureReason };
