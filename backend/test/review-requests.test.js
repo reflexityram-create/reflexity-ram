@@ -258,10 +258,10 @@ test('a send failure releases the claim so the order screen can retry', async (t
   const updates = recordUpdates(t);
   failNextSend = { message: 'Resend is down' };
 
-  await assert.rejects(scheduleReviewRequest(order(), { now: SHIPPED_AT }), /Resend is down/);
+  await assert.rejects(scheduleReviewRequest(order(), { now: SHIPPED_AT }), /Email send failed: provider rejected the message/);
   const release = updates.at(-1).update;
   assert.deepEqual(release.$unset, { 'reviewRequest.claimedAt': '' });
-  assert.match(release.$set['reviewRequest.lastError'], /Resend is down/);
+  assert.match(release.$set['reviewRequest.lastError'], /Email send failed: provider rejected the message/);
 });
 
 test('"send now" goes out immediately and late shipments are capped inside Resend\'s window', async (t) => {

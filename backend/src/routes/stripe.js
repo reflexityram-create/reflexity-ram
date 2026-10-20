@@ -33,6 +33,7 @@ const { resolveCanadaDelivery, DeliveryChoiceError } = require('../utils/canadaD
 const { recordAdminEvent, describeOrder } = require('../utils/adminEvents');
 const { isValidObjectId } = require('mongoose');
 const { removeNoteLines } = require('../utils/orderNotes');
+const { UNMATCHED_SLUG_PREFIX, isUnmatchedItem } = require('../utils/unmatchedItems');
 
 const { validGuestSessionId } = require('../utils/guestSession');
 const { resolveCartLines } = require('../utils/cartLines');
@@ -370,21 +371,26 @@ const announceNewOrder = (order, { created = false } = {}) => {
   }
   // A bank debit that has cleared since already told the owner "cleared" (settleBankDebitPaid): only one that was born paid is news here.
   if (order.paymentMethod === BANK_DEBIT && !created) return null;
+  // A paid order held for an unmatched Stripe item is not ready to ship; the "needs you" alert that follows says why (announceUnmatched).
+  const title = Number(order.total) === 0 ? 'New order: $0, a discount code covered it' : order.fulfillmentBlocked === true ? 'New order, paid: on hold, needs a check' : 'New order, paid';
   return recordAdminEvent({
-    type: 'order.paid', title: Number(order.total) === 0 ? 'New order: $0, a discount code covered it' : 'New order, paid', body: describeOrder(order), priority: 'high', order, dedupeKey: `order.paid:${order._id}`,
+    type: 'order.paid', title, body: describeOrder(order), priority: 'high', order, dedupeKey: `order.paid:${order._id}`,
   });
 };
 
 // The owner's "needs you" alert for a paid order that holds Stripe line(s) no product matched (fulfillCheckoutSession keeps them as
 // placeholders and blocks the order). One per checkout (dedupeKey), so the retry below can repeat it safely. `paid` is Stripe's
 // amount and currency when the session is at hand; a retry falls back to the order's total in the store currency.
-const UNMATCHED_SLUG_PREFIX = 'stripe-unmatched-';
 const announceUnmatched = (order, paid = `${(Number(order.total) || 0).toFixed(2)} ${String(CURRENCY).toUpperCase()}`) => {
-  const count = (order.items || []).filter((item) => String(item?.slug || '').startsWith(UNMATCHED_SLUG_PREFIX)).length;
+  const count = (order.items || []).filter(isUnmatchedItem).length;
+  // A bank debit is "complete" for days before the money clears, and an order can be born refunded: "Paid" is true only when it is.
+  const [heading, money] = order.paymentStatus === 'paid' ? ['Paid order', `Paid ${paid}`]
+    : order.paymentStatus === 'pending' ? ['Bank debit order', `Bank debit of ${paid}, still clearing`]
+      : ['Order', `Payment ${paid} (${order.paymentStatus || 'not paid'})`];
   return recordAdminEvent({
     // No `path`: with the order given, a tap opens that order's panel (the bare list was right only when no order was made).
-    type: 'payment.unmatched', title: 'Paid order contains unmatched Stripe item(s): needs you', priority: 'high',
-    body: `Paid ${paid}, Stripe checkout ${order.stripeCheckoutSessionId}: ${count} line item(s) were preserved as blocked placeholders. Review the payment before shipping.`,
+    type: 'payment.unmatched', title: `${heading} contains unmatched Stripe item(s): needs you`, priority: 'high',
+    body: `${money}, Stripe checkout ${order.stripeCheckoutSessionId}: ${count} line item(s) were preserved as blocked placeholders. Review the payment before shipping.`,
     dedupeKey: `payment.unmatched:${order.stripeCheckoutSessionId}`,
     order,
   });
@@ -792,7 +798,7 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
 const FRESH_MS = 60 * 60 * 1000;
 const isFresh = (order) => Date.now() - new Date(order?.updatedAt || order?.createdAt || 0).getTime() < FRESH_MS;
 const announceCleared = (order) => recordAdminEvent({
-  type: 'order.bank_debit_paid', title: 'Bank debit cleared: ready to ship', body: describeOrder(order), priority: 'high', order, dedupeKey: `order.bank_debit_paid:${order._id}`,
+  type: 'order.bank_debit_paid', title: order.fulfillmentBlocked === true ? 'Bank debit cleared: on hold, needs a check' : 'Bank debit cleared: ready to ship', body: describeOrder(order), priority: 'high', order, dedupeKey: `order.bank_debit_paid:${order._id}`,
 });
 const announceFailed = (order) => recordAdminEvent({
   type: 'order.payment_failed', title: 'Bank debit failed: order cancelled', body: describeOrder(order), priority: 'high', order, dedupeKey: `order.payment_failed:${order._id}`,
@@ -1090,7 +1096,7 @@ if (process.env.NODE_ENV === 'test') {
     checkoutEmailDeliverer = deliverEmail;
   };
   // The settlement steps are not routes of their own, so tests reach them here.
-  router.internalsForTest = { fulfillCheckoutSession, settleBankDebitPaid, settleBankDebitFailed, isDelayedBankDebit, bankDebitInFlight };
+  router.internalsForTest = { fulfillCheckoutSession, settleBankDebitPaid, settleBankDebitFailed, announceCleared, isDelayedBankDebit, bankDebitInFlight };
 }
 
 module.exports = router;

@@ -4,6 +4,7 @@ const { escapeHtml } = require('./htmlEscape');
 const { orderAccessUrl } = require('./orderAccessLink');
 const { trackingUrlFor } = require('./tracking');
 const { SUPPORT_EMAIL, etransferAddressDiffersFromContact } = require('./contact');
+const { isUnmatchedItem } = require('./unmatchedItems');
 
 let resend;
 const getResend = () => {
@@ -12,6 +13,26 @@ const getResend = () => {
 };
 const DISPLAY_CURRENCY = CURRENCY.toUpperCase();
 
+// One place for a Resend failure. Provider body text is never copied into logs or thrown errors because it may contain recipient data.
+const SAFE_RESEND_NAMES = new Set(['validation_error', 'rate_limit_exceeded', 'missing_api_key', 'invalid_api_key', 'not_found', 'internal_server_error']);
+const errorField = (error, field) => {
+  try { return error?.[field]; } catch { return undefined; }
+};
+function failSend(error) {
+  const rawName = errorField(error, 'name');
+  const name = SAFE_RESEND_NAMES.has(rawName) ? rawName : 'unknown';
+  const rawStatus = errorField(error, 'statusCode');
+  const statusCode = Number.isFinite(rawStatus) && Number.isInteger(rawStatus) && rawStatus >= 100 && rawStatus <= 599 ? rawStatus : undefined;
+  console.error('Resend error detail:', JSON.stringify({ name, ...(statusCode === undefined ? {} : { statusCode }) }));
+  throw new Error('Email send failed: provider rejected the message');
+}
+const sendEmail = async (message, options) => {
+  try {
+    return await getResend().emails.send(message, options);
+  } catch (error) {
+    failSend(error);
+  }
+};
 // IMPORTANT: onboarding@resend.dev is Resend's sandbox sender.
 // It can ONLY send to the email address that owns the Resend account.
 // For production you MUST set FROM_EMAIL to a verified domain sender,
@@ -26,7 +47,7 @@ const sendVerificationEmail = async ({ email, firstName, token }) => {
   // The token rides in the fragment: a browser never sends that part to a server, the edge, or its logs (the page reads both forms).
   const verifyUrl = `${FRONTEND_URL}/verify-email#token=${token}`;
 
-  const { data, error } = await getResend().emails.send({
+  const { data, error } = await sendEmail({
     from: FROM_EMAIL,
     to: email,
     replyTo: SUPPORT_EMAIL,
@@ -53,7 +74,7 @@ const sendVerificationEmail = async ({ email, firstName, token }) => {
     `,
   });
 
-  if (error) { console.error('Resend error detail:', JSON.stringify(error)); throw new Error(`Email send failed: ${error.message || JSON.stringify(error)}`); }
+  if (error) failSend(error);
   return data;
 };
 
@@ -63,7 +84,7 @@ const sendVerificationEmail = async ({ email, firstName, token }) => {
 const sendPasswordResetEmail = async ({ email, firstName, token }) => {
   const resetUrl = `${FRONTEND_URL}/reset-password#token=${token}`;
 
-  const { data, error } = await getResend().emails.send({
+  const { data, error } = await sendEmail({
     from: FROM_EMAIL,
     to: email,
     replyTo: SUPPORT_EMAIL,
@@ -89,7 +110,7 @@ const sendPasswordResetEmail = async ({ email, firstName, token }) => {
     `,
   });
 
-  if (error) { console.error('Resend error detail:', JSON.stringify(error)); throw new Error(`Email send failed: ${error.message || JSON.stringify(error)}`); }
+  if (error) failSend(error);
   return data;
 };
 
@@ -103,14 +124,14 @@ const sendOrderConfirmationEmail = async ({ email, firstName, order, idempotency
     <tr>
       <td style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
         <div style="font-size:13px;color:#f5f5f7;">${escapeHtml(item.name)}</div>
-        <div style="font-size:11px;color:#5a5a64;font-family:monospace;">${escapeHtml(item.sku)}</div>
+        ${isUnmatchedItem(item) ? '' : `<div style="font-size:11px;color:#5a5a64;font-family:monospace;">${escapeHtml(item.sku)}</div>`}
       </td>
       <td style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.05);text-align:center;color:#a0a0aa;font-size:13px;">${item.qty}</td>
       <td style="padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.05);text-align:right;font-family:monospace;font-size:13px;">$${(item.price * item.qty).toFixed(2)} ${DISPLAY_CURRENCY}</td>
     </tr>
   `).join('');
 
-  const { data, error } = await getResend().emails.send({
+  const { data, error } = await sendEmail({
     from: FROM_EMAIL,
     to: email,
     replyTo: SUPPORT_EMAIL,
@@ -178,7 +199,7 @@ const sendOrderConfirmationEmail = async ({ email, firstName, order, idempotency
     `,
   }, idempotencyKey ? { idempotencyKey } : undefined);
 
-  if (error) { console.error('Resend error detail:', JSON.stringify(error)); throw new Error(`Email send failed: ${error.message || JSON.stringify(error)}`); }
+  if (error) failSend(error);
   return data;
 };
 
@@ -191,7 +212,7 @@ const sendShippingNotificationEmail = async ({ email, firstName, order, idempote
   // Sent on purpose without a tracking number (the owner chose it): say so plainly, and let a reply reach the shop.
   const untracked = !order.trackingNumber;
 
-  const { data, error } = await getResend().emails.send({
+  const { data, error } = await sendEmail({
     from: FROM_EMAIL,
     to: email,
     replyTo: SUPPORT_EMAIL,
@@ -217,7 +238,7 @@ const sendShippingNotificationEmail = async ({ email, firstName, order, idempote
     `,
   }, idempotencyKey ? { idempotencyKey } : undefined);
 
-  if (error) { console.error('Resend error detail:', JSON.stringify(error)); throw new Error(`Email send failed: ${error.message || JSON.stringify(error)}`); }
+  if (error) failSend(error);
   return data;
 };
 
@@ -231,7 +252,7 @@ const sendReviewRequestEmail = async ({ email, firstName, order, reviewUrl, unsu
     <li style="margin:0 0 6px;color:#f5f5f7;font-size:13px;">${escapeHtml(item.name)}</li>
   `).join('');
 
-  const { data, error } = await getResend().emails.send({
+  const { data, error } = await sendEmail({
     from: FROM_EMAIL,
     to: email,
     replyTo: SUPPORT_EMAIL,
@@ -258,7 +279,7 @@ const sendReviewRequestEmail = async ({ email, firstName, order, reviewUrl, unsu
     `,
   });
 
-  if (error) { console.error('Resend error detail:', JSON.stringify(error)); throw new Error(`Email send failed: ${error.message || JSON.stringify(error)}`); }
+  if (error) failSend(error);
   return data;
 };
 
@@ -292,7 +313,7 @@ const sendTrackingUpdateEmail = async ({ email, firstName, order, kind }) => {
   if (!copy) throw new Error(`Unknown tracking email: ${kind}`);
   const orderUrl = orderAccessUrl(FRONTEND_URL, order, email);
   const trackingUrl = trackingUrlFor(order);
-  const { data, error } = await getResend().emails.send({
+  const { data, error } = await sendEmail({
     from: FROM_EMAIL,
     to: email,
     replyTo: SUPPORT_EMAIL,
@@ -316,7 +337,7 @@ const sendTrackingUpdateEmail = async ({ email, firstName, order, kind }) => {
       </html>
     `,
   });
-  if (error) { console.error('Resend error detail:', JSON.stringify(error)); throw new Error(`Email send failed: ${error.message || JSON.stringify(error)}`); }
+  if (error) failSend(error);
   return data;
 };
 
@@ -394,7 +415,7 @@ const sendPaymentNoticeEmail = async ({ email, firstName, order, kind, idempoten
   const notice = PAYMENT_NOTICES[kind];
   if (!notice) throw new Error(`Unknown payment notice: ${kind}`);
   const orderUrl = orderAccessUrl(FRONTEND_URL, order, email);
-  const { data, error } = await getResend().emails.send({
+  const { data, error } = await sendEmail({
     from: FROM_EMAIL,
     to: email,
     replyTo: SUPPORT_EMAIL,
@@ -417,7 +438,7 @@ const sendPaymentNoticeEmail = async ({ email, firstName, order, kind, idempoten
       </html>
     `,
   }, idempotencyKey ? { idempotencyKey } : undefined);
-  if (error) { console.error('Resend error detail:', JSON.stringify(error)); throw new Error(`Email send failed: ${error.message || JSON.stringify(error)}`); }
+  if (error) failSend(error);
   return data;
 };
 
