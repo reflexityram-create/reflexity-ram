@@ -4,7 +4,7 @@ const test = require('node:test');
 const express = require('express');
 const Product = require('../src/models/Product');
 
-const { createLeadRouter } = require('../src/routes/leads');
+const { createLeadRouter, failureReason } = require('../src/routes/leads');
 const { buildLeadEmail, sendLeadEmail } = require('../src/utils/leads');
 const feedRouter = require('../src/routes/feed');
 const { VALID_SLUGS } = require('../src/routes/pages');
@@ -130,9 +130,84 @@ test('lead honeypots acknowledge without validation or provider delivery', async
 });
 
 test('lead endpoint fails closed when the email provider does not accept the request', async () => {
-  const response = await request(leadApp(async () => { throw new Error('provider rejected'); }), '/api/leads', validLead);
+  const { result: response } = await withQuietLog(() => request(leadApp(async () => { throw new Error('provider rejected'); }), '/api/leads', validLead));
   assert.equal(response.status, 502);
   assert.deepEqual(JSON.parse(response.text), { error: 'We could not submit your request. Please try again.' });
+});
+
+// ── a delivery that fails is visible to the owner without repeating anything personal ───────────────────────────────────────────────
+function failingLeadApp(sendLead, { record, now } = {}) {
+  const app = express();
+  app.use(express.json());
+  app.use('/api/leads', createLeadRouter({ sendLead, record, now }));
+  return app;
+}
+async function withQuietLog(fn) {
+  const real = console.error;
+  const lines = [];
+  console.error = (...args) => lines.push(args.join(' '));
+  try { return { result: await fn(), lines }; } finally { console.error = real; }
+}
+const PERSONAL = ['Alex', 'alex@example.test', 'Example Reseller', 'M393A4K40CB2', '<stock request>', '600', 'product-123'];
+
+test('a lead whose email cannot be sent is named in the log by kind, tells the owner once an hour, and repeats nothing the visitor typed', async () => {
+  const alerts = [];
+  let clock = new Date('2026-10-20T14:05:00Z');
+  const record = async (alert) => { alerts.push(alert); return alert; };
+  const timedOut = async () => { throw Object.assign(new Error('Lead delivery timed out'), { code: 'LEAD_TIMEOUT' }); };
+  const { result, lines } = await withQuietLog(() => request(failingLeadApp(timedOut, { record, now: () => clock }), '/api/leads', validLead));
+  assert.equal(result.status, 502);
+  assert.deepEqual(JSON.parse(result.text), { error: 'We could not submit your request. Please try again.' });
+  assert.deepEqual(lines, ['Quote request could not be sent (the email service did not answer in time)']);
+  assert.equal(alerts.length, 1);
+  const [alert] = alerts;
+  assert.deepEqual([alert.type, alert.priority, alert.path], ['lead.failed', 'high', '/admin/orders']);
+  assert.equal(alert.title, 'A quote request could not be sent');
+  assert.equal(alert.body, 'A visitor saw an error (the email service did not answer in time). Check that the email service works; they may try again or email you.');
+  assert.equal(alert.dedupeKey, 'lead.failed:2026-10-20T14');
+  for (const secret of PERSONAL) assert.equal(`${lines.join(' ')} ${JSON.stringify(alert)}`.includes(secret), false, `leaks "${secret}"`);
+
+  // another failure in the same hour carries the same key (the database keeps the first alert only); the next hour has its own
+  await withQuietLog(() => request(failingLeadApp(timedOut, { record, now: () => clock }), '/api/leads', validLead));
+  clock = new Date('2026-10-20T15:00:00Z');
+  await withQuietLog(() => request(failingLeadApp(timedOut, { record, now: () => clock }), '/api/leads', validLead));
+  assert.deepEqual(alerts.map((a) => a.dedupeKey), ['lead.failed:2026-10-20T14', 'lead.failed:2026-10-20T14', 'lead.failed:2026-10-20T15']);
+});
+
+test('a refusal by the email service and an unexpected failure are named too, and the provider\'s own words are not repeated', async () => {
+  const alerts = [];
+  const record = async (alert) => { alerts.push(alert); return alert; };
+  const refused = async () => { throw Object.assign(new Error('Lead delivery was not accepted'), { code: 'LEAD_REJECTED' }); };
+  const odd = async () => { throw new Error('provider says: alex@example.test is on the suppression list'); };
+  const first = await withQuietLog(() => request(failingLeadApp(refused, { record }), '/api/leads', validLead));
+  const second = await withQuietLog(() => request(failingLeadApp(odd, { record }), '/api/leads', validLead));
+  assert.deepEqual([first.result.status, second.result.status], [502, 502]);
+  assert.deepEqual(first.lines, ['Quote request could not be sent (the email service refused the message)']);
+  assert.deepEqual(second.lines, ['Quote request could not be sent (unexpected error)']);
+  for (const text of [...first.lines, ...second.lines, ...alerts.map((a) => a.body)]) {
+    for (const secret of ['alex@example.test', 'suppression', ...PERSONAL]) assert.equal(text.includes(secret), false, `leaks "${secret}"`);
+  }
+});
+
+test('a request that is refused, ignored or delivered raises no failure alert and writes no failure log', async () => {
+  const alerts = [];
+  const record = async (alert) => { alerts.push(alert); return alert; };
+  const ok = async () => ({ id: 'email' });
+  const { lines } = await withQuietLog(async () => {
+    assert.equal((await request(failingLeadApp(ok, { record }), '/api/leads', { ...validLead, email: 'not-an-email' })).status, 400);
+    assert.equal((await request(failingLeadApp(ok, { record }), '/api/leads', { website: 'https://spam.example.test' })).status, 202);
+    assert.equal((await request(failingLeadApp(ok, { record }), '/api/leads', { ...validLead, sourceType: 'wholesale-lot', sourceId: 'not-a-lot-id' })).status, 400);
+    assert.equal((await request(failingLeadApp(ok, { record }), '/api/leads', validLead)).status, 202);
+  });
+  assert.deepEqual(lines, []);
+  assert.deepEqual(alerts.map((a) => a.type), ['lead.new'], 'only the delivered request tells the owner anything');
+});
+
+test('the two delivery failures carry a code the route can name', async () => {
+  await assert.rejects(sendLeadEmail(validLead, { send: async () => ({ data: null, error: { message: 'x' } }) }), { code: 'LEAD_REJECTED' });
+  await assert.rejects(sendLeadEmail(validLead, { timeoutMs: 5, send: () => new Promise(() => {}) }), { code: 'LEAD_TIMEOUT' });
+  assert.equal(failureReason(new Error('anything else')), 'unexpected error');
+  assert.equal(failureReason(undefined), 'unexpected error');
 });
 
 test('lead mail is escaped, replyable, and can use a fake sender', async () => {

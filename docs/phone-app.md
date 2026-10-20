@@ -35,7 +35,7 @@ With `after` it returns newer events oldest-first; if there are none it holds th
 name, email, phone or address (it is shown on a lock screen).
 
 Events written today: `order.paid`, `order.refunded`, `order.partial_refund`, `order.shipped`, `order.delivered`, `order.oversold`,
-`lead.new` (kind and quantity only: the rest of that form is a stranger's free text), `review.new`, `device.paired`, `test`.
+`lead.new` (kind and quantity only: the rest of that form is a stranger's free text), `lead.failed` (a quote request whose email could not be sent: the kind of failure only, at most one an hour), `review.new`, `device.paired`, `test`.
 
 Alerts are **idempotent**: pass a `dedupeKey` (`order.paid:<orderId>`, `lead.new:<requestId>` ...) and a repeat is a silent no-op
 (unique sparse index), so the retry paths can announce again safely (a lost paid-order alert is re-sent while the order is under an
