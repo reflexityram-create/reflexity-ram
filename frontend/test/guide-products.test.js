@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { isGuideProduct, selectGuideProducts, guideProductLabel } from "../src/lib/guideProducts.js";
 import { renderStaticPage } from "../functions-shared/staticMetadata.js";
 
@@ -45,4 +46,15 @@ test("static guide product links include available Server MPNs and exclude inval
   assert.match(html, /href="\/shop\/live-server">Live server &lt;RAM&gt;<\/a>/);
   assert.match(html, /DDR4 · RDIMM · 16GB · LIVE-MPN/);
   assert.doesNotMatch(html, /sold-out|consumer|OUT-MPN|CONSUMER-MPN|unknown-quantity|UNKNOWN-MPN|missing-mpn/);
+});
+
+test("the jump link to the live stock lands below the fixed header instead of under it", async () => {
+  const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
+  const [guides, header] = await Promise.all([read("../src/pages/Guides.jsx"), read("../src/components/Header.jsx")]);
+  assert.match(guides, /href="#guide-current-stock"/);
+  const headerUnits = Number(header.match(/container-tight flex items-center h-(\d+)"/)?.[1]); // Tailwind spacing units of 4px
+  const target = guides.match(/<h2 id="guide-current-stock" className="([^"]*)"/)?.[1] ?? "";
+  const clearanceUnits = Number(target.match(/(?:^|\s)scroll-mt-(\d+)(?:\s|$)/)?.[1]);
+  assert.ok(headerUnits > 0, "the header height is a Tailwind h-* class");
+  assert.ok(clearanceUnits > headerUnits, `the stock heading needs scroll-mt-* above the ${headerUnits * 4}px header (got "${target}")`);
 });

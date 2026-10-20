@@ -131,7 +131,7 @@ export default function Guides() {
             </div>
             {guideProducts.length > 0 ? (
               <section className="mt-10 border-t pt-8" style={{ borderColor: "var(--border)" }} aria-labelledby="guide-current-stock">
-                <h2 id="guide-current-stock" className="text-xl font-semibold">Current server RAM to compare by exact part number</h2>
+                <h2 id="guide-current-stock" className="text-xl font-semibold scroll-mt-20">Current server RAM to compare by exact part number</h2>
                 <p className="mt-2 text-[15px] leading-7" style={{ color: "var(--fg-muted)" }}>
                   Match the complete MPN, capacity, DDR generation, DIMM type, rank, and population rules before ordering. Stock can change, so open the product page for the current condition and quantity.
                 </p>
