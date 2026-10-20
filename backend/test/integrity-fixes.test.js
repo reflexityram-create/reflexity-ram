@@ -342,6 +342,28 @@ test('a bank debit that clears while its item mapping is still held stays on hol
   assert.equal(saved[0].title, 'Bank debit cleared: on hold, needs a check');
 });
 
+test('an unmatched terminal order alert reports the retained line without telling the owner to ship', async (t) => {
+  const saved = captureAdminEvents(t);
+  const item = { slug: 'stripe-unmatched-price_gone', sku: 'STRIPE-price_gone', name: 'Legacy module', qty: 1, price: 50 };
+  await stripeRouter.internalsForTest.announceUnmatched({ _id: 'o-refunded', stripeCheckoutSessionId: 'cs_refunded', status: 'refunded', paymentStatus: 'refunded', total: 50, items: [item] }, '50.00 CAD');
+  assert.equal(saved[0].title, 'Refunded order contains unmatched Stripe item(s): needs you');
+  assert.match(saved[0].body, /Refunded payment 50\.00 CAD/);
+  assert.match(saved[0].body, /1 line item\(s\) were preserved as blocked placeholders/);
+  assert.match(saved[0].body, /No shipping action is needed\./);
+  assert.doesNotMatch(saved[0].body, /Review the payment before shipping/);
+});
+
+test('shipped and delivered unmatched orders keep their terminal state in the alert', async (t) => {
+  const saved = captureAdminEvents(t);
+  for (const status of ['shipped', 'delivered']) {
+    saved.length = 0;
+    await stripeRouter.internalsForTest.announceUnmatched({ _id: `o-${status}`, stripeCheckoutSessionId: `cs-${status}`, status, paymentStatus: 'paid', total: 50, items: [{ sku: 'STRIPE-price_gone', qty: 1, price: 50 }] }, '50.00 CAD');
+    assert.equal(saved[0].title, 'Shipped order contains unmatched Stripe item(s): needs you');
+    assert.match(saved[0].body, /already shipped/);
+    assert.doesNotMatch(saved[0].body, /Review the payment before shipping/);
+  }
+});
+
 test('the note that says which service to buy names international services instead of showing Canada Post codes', async (t) => {
   const order = await fulfil(t, stripeSession({
     id: 'cs_intl',

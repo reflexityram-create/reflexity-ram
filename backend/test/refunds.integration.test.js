@@ -85,7 +85,8 @@ test('refunds on a real MongoDB, through the signed webhook', { skip }, async (r
     assert.equal(after.total, before.total);
     assert.ok(after.updatedAt > before.updatedAt, 'the order was touched');
     const events = await alerts();
-    assert.deepEqual(events.map((e) => [e.type, e.dedupeKey, e.priority]), [['order.refunded', `order.refunded:${order._id}`, 'normal']]);
+    assert.deepEqual(events.map((e) => [e.type, e.dedupeKey, e.priority]), [['order.refunded', `order.refunded:${order._id}`, 'high']]);
+    assert.match(events[0].body, /do not ship · its stock was taken: put it back/);
     assert.equal(String(events[0].orderId), String(order._id));
     assert.equal(events[0].path, `/admin/orders?order=${order._id}`);
     for (const secret of ['Samantha', 'Privatename', 'private', 'example.com', '4165550123', 'Secret St']) assert.equal(`${events[0].title} ${events[0].body}`.includes(secret), false, secret);
@@ -154,6 +155,86 @@ test('refunds on a real MongoDB, through the signed webhook', { skip }, async (r
     assert.equal(await send(event('evt_late', fullCharge(order))), 200);
     assert.deepEqual(notes(await fresh(order)), [born]);
     assert.deepEqual((await alerts()).map((e) => e.dedupeKey), [`order.refunded:${order._id}`]);
+  });
+
+  await root.test('only pre-refund pending or processing orders with taken stock carry recovery instructions', async () => {
+    for (const status of ['pending', 'processing', 'shipped', 'delivered', 'cancelled']) {
+      await reset();
+      const order = await makeOrder({ status, stockDecremented: true });
+      assert.equal(await send(event(`evt_state_${status}`, fullCharge(order))), 200);
+      const after = await fresh(order);
+      const alert = (await alerts())[0];
+      const eligible = ['pending', 'processing'].includes(status);
+      assert.equal(after.refundStockRecoveryRequired, eligible, status);
+      assert.equal(after.stockDecremented, true, 'no automatic inventory restoration');
+      assert.equal(alert.priority, eligible ? 'high' : 'normal', status);
+      assert.equal(alert.body.includes('put it back'), eligible, status);
+      assert.deepEqual([after.status, after.paymentStatus, after.statusHistory.length], ['refunded', 'refunded', 1]);
+    }
+  });
+
+  await root.test('a ship transition after the initial lookup prevents an unsafe stock warning', async () => {
+    await reset();
+    const order = await makeOrder({ status: 'processing', stockDecremented: true });
+    const realFind = Order.findOne;
+    let raced = false;
+    Order.findOne = async function(filter, ...args) {
+      const snapshot = await realFind.call(this, filter, ...args);
+      if (!raced && filter.$or) {
+        raced = true;
+        await Order.updateOne({ _id: order._id }, { $set: { status: 'shipped' } });
+      }
+      return snapshot;
+    };
+    try { assert.equal(await send(event('evt_ship_race', fullCharge(order))), 200); }
+    finally { Order.findOne = realFind; }
+    assert.equal(raced, true);
+    assert.equal((await fresh(order)).refundStockRecoveryRequired, false);
+    assert.equal((await alerts())[0].priority, 'normal');
+    assert.doesNotMatch((await alerts())[0].body, /put it back/);
+  });
+
+  await root.test('if classification changes between both atomic branches, the webhook retries instead of acknowledging an unrefunded order', async () => {
+    await reset();
+    const order = await makeOrder({ status: 'shipped', stockDecremented: true });
+    const realUpdate = Order.findOneAndUpdate;
+    const realError = console.error;
+    let raced = false;
+    Order.findOneAndUpdate = async function(filter, ...args) {
+      const result = await realUpdate.call(this, filter, ...args);
+      if (!raced && filter.status?.$in) {
+        raced = true;
+        assert.equal(result, null);
+        await Order.updateOne({ _id: order._id }, { $set: { status: 'processing' } });
+      }
+      return result;
+    };
+    console.error = () => {};
+    try { assert.equal(await send(event('evt_classification_race', fullCharge(order))), 500); }
+    finally { Order.findOneAndUpdate = realUpdate; console.error = realError; }
+    assert.equal(raced, true);
+    assert.equal((await fresh(order)).paymentStatus, 'paid');
+    assert.equal((await alerts()).length, 0);
+    assert.equal(await send(event('evt_classification_race', fullCharge(order))), 200);
+    assert.equal((await fresh(order)).refundStockRecoveryRequired, true);
+    assert.equal((await alerts())[0].priority, 'high');
+  });
+
+  await root.test('a redelivery retains proven stock recovery after the first matched-order alert could not be written', async () => {
+    await reset();
+    const order = await makeOrder({ status: 'processing', stockDecremented: true });
+    const realCreate = AdminEvent.create;
+    const realError = console.error;
+    AdminEvent.create = async () => { throw new Error('temporary alert write failure'); };
+    console.error = () => {};
+    try { assert.equal(await send(event('evt_lost_stock_alert', fullCharge(order))), 200); }
+    finally { AdminEvent.create = realCreate; console.error = realError; }
+    assert.equal((await fresh(order)).refundStockRecoveryRequired, true);
+    assert.equal((await alerts()).length, 0);
+    assert.equal(await send(event('evt_lost_stock_alert', fullCharge(order))), 200);
+    assert.equal((await alerts())[0].priority, 'high');
+    assert.match((await alerts())[0].body, /put it back/);
+    assert.equal((await fresh(order)).statusHistory.length, 1);
   });
 
   await root.test('an order is found by its payment when the charge was never stored on it', async () => {

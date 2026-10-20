@@ -55,13 +55,14 @@ test('a full refund makes the order refunded with one history line, tells the ow
   const { order, calls, deps, store } = harness();
   const result = await recordRefundEvent(event('evt_full', full()), deps);
   assert.deepEqual(result, { matched: true, applied: true });
-  assert.deepEqual(calls.finds, [{ $or: [{ stripeChargeId: 'ch_1' }, { stripePaymentIntentId: 'pi_1' }] }]);
+  assert.deepEqual(calls.finds[0], { $or: [{ stripeChargeId: 'ch_1' }, { stripePaymentIntentId: 'pi_1' }] });
+  assert.deepEqual(calls.finds[1], { _id: 'order-1' }, 'the alert reads the after-refund order state');
   assert.equal(order.status, 'refunded');
   assert.equal(order.paymentStatus, 'refunded');
   assert.deepEqual(order.statusHistory.map((line) => [line.status, line.note]), [['refunded', 'Fully refunded via Stripe; inventory unchanged pending return inspection']]);
   assert.equal(FULL_REFUND_NOTE, order.statusHistory[0].note, 'the wording the admin screens have always shown');
   // the write is conditional: it only changes an order that is not refunded yet
-  assert.deepEqual(store.updates[0].filter, { _id: 'order-1', paymentStatus: { $ne: 'refunded' } });
+  assert.deepEqual(store.updates.find((u) => u.filter.$or)?.filter, { _id: 'order-1', paymentStatus: { $ne: 'refunded' }, $or: [{ stockDecremented: { $ne: true } }, { status: { $nin: ['pending', 'processing'] } }] });
   assert.deepEqual(calls.alerts.map((a) => [a.type, a.dedupeKey, a.priority]), [['order.refunded', 'order.refunded:order-1', 'normal']]);
   assert.deepEqual(calls.cancels, ['order-1']);
   assert.deepEqual(calls.required, [], 'an order was found: no "refund with no order" alert');
@@ -77,6 +78,27 @@ test('the same full-refund event delivered again adds no second line and no seco
   assert.equal(calls.alerts.length, 2);
   assert.equal(calls.alerts[0].dedupeKey, calls.alerts[1].dedupeKey);
   assert.equal(calls.cancels.length, 2);
+});
+
+test('a full refund that races after stock was taken keeps the one alert but marks the stock recovery urgent', async () => {
+  const { calls, deps, order } = harness(baseOrder({ stockDecremented: true }));
+  const result = await recordRefundEvent(event('evt_stock_race', full()), deps);
+  assert.equal(result.applied, true);
+  assert.equal(calls.alerts[0].priority, 'high');
+  assert.equal(calls.alerts[0].body, 'RFX-TEST-1 · $281.30 CAD · 2× 16GB DDR4 ECC RDIMM · Card · do not ship · its stock was taken: put it back');
+  assert.equal(order.refundStockRecoveryRequired, true);
+  await recordRefundEvent(event('evt_stock_race', full()), deps);
+  assert.equal(calls.alerts[1].priority, 'high', 'a redelivery retains the durable stock warning');
+});
+
+test('a shipped or delivered refund never claims stock is ready to recover before return inspection', async () => {
+  for (const status of ['shipped', 'delivered']) {
+    const { calls, deps, order } = harness(baseOrder({ status, stockDecremented: true }));
+    await recordRefundEvent(event(`evt_${status}`, full()), deps);
+    assert.equal(calls.alerts[0].priority, 'normal', status);
+    assert.doesNotMatch(calls.alerts[0].body, /stock was taken/);
+    assert.equal(order.refundStockRecoveryRequired, false, status);
+  }
 });
 
 test('an order that was made already refunded (the refund came first) gets no extra line when charge.refunded arrives', async () => {
@@ -96,7 +118,7 @@ test('a partial refund adds one line with the total refunded so far, leaves stat
   assert.equal(order.statusHistory[0].note, partialRefundNote(partial(5000)));
   assert.equal(order.statusHistory[0].status, 'processing', 'the line carries the order\'s own status');
   assert.deepEqual([order.status, order.paymentStatus], ['processing', 'paid']);
-  assert.deepEqual(store.updates[0].filter, { _id: 'order-1', 'statusHistory.note': { $ne: 'Partial Stripe refund recorded (5000 minor currency units); inventory unchanged' } });
+  assert.deepEqual(store.updates.find((u) => u.update.$push?.statusHistory).filter, { _id: 'order-1', 'statusHistory.note': { $ne: 'Partial Stripe refund recorded (5000 minor currency units); inventory unchanged' } });
   assert.equal(store.updates[0].update.$set, undefined, 'a partial refund sets nothing on the order');
   assert.deepEqual(calls.alerts.map((a) => [a.type, a.dedupeKey]), [['order.partial_refund', 'order.partial_refund:evt_p1'], ['order.partial_refund', 'order.partial_refund:evt_p1']]);
   assert.deepEqual(calls.cancels, [], 'a partial refund leaves the review email alone');

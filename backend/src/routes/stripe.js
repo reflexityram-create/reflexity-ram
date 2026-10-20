@@ -383,14 +383,19 @@ const announceNewOrder = (order, { created = false } = {}) => {
 // amount and currency when the session is at hand; a retry falls back to the order's total in the store currency.
 const announceUnmatched = (order, paid = `${(Number(order.total) || 0).toFixed(2)} ${String(CURRENCY).toUpperCase()}`) => {
   const count = (order.items || []).filter(isUnmatchedItem).length;
-  // A bank debit is "complete" for days before the money clears, and an order can be born refunded: "Paid" is true only when it is.
-  const [heading, money] = order.paymentStatus === 'paid' ? ['Paid order', `Paid ${paid}`]
-    : order.paymentStatus === 'pending' ? ['Bank debit order', `Bank debit of ${paid}, still clearing`]
-      : ['Order', `Payment ${paid} (${order.paymentStatus || 'not paid'})`];
+  const terminal = ['cancelled', 'refunded', 'shipped', 'delivered'].includes(order.status) || order.paymentStatus === 'refunded';
+  // A bank debit is "complete" for days before the money clears, and a terminal order must not be described as awaiting shipment.
+  const [heading, money] = order.paymentStatus === 'refunded' || order.status === 'refunded' ? ['Refunded order', `Refunded payment ${paid}`]
+    : ['shipped', 'delivered'].includes(order.status) ? ['Shipped order', `Paid ${paid} (already shipped)`]
+      : order.status === 'cancelled' ? ['Cancelled order', `Payment ${paid} (cancelled)`]
+        : order.paymentStatus === 'paid' ? ['Paid order', `Paid ${paid}`]
+          : order.paymentStatus === 'pending' ? ['Bank debit order', `Bank debit of ${paid}, still clearing`]
+            : ['Order', `Payment ${paid} (${order.paymentStatus || 'not paid'})`];
+  const action = terminal ? 'No shipping action is needed.' : 'Review the payment before shipping.';
   return recordAdminEvent({
     // No `path`: with the order given, a tap opens that order's panel (the bare list was right only when no order was made).
     type: 'payment.unmatched', title: `${heading} contains unmatched Stripe item(s): needs you`, priority: 'high',
-    body: `${money}, Stripe checkout ${order.stripeCheckoutSessionId}: ${count} line item(s) were preserved as blocked placeholders. Review the payment before shipping.`,
+    body: `${money}, Stripe checkout ${order.stripeCheckoutSessionId}: ${count} line item(s) were preserved as blocked placeholders. ${action}`,
     dedupeKey: `payment.unmatched:${order.stripeCheckoutSessionId}`,
     order,
   });
@@ -751,7 +756,8 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
 
   if (refunded) {
     // Nothing to take from stock, confirm to the buyer or report as a sale; the owner is told what happened.
-    await recordAdminEvent({ type: 'order.refunded', title: 'Refunded before the order was recorded', body: `${describeOrder(order)} · do not ship${order.stockDecremented ? ' · its stock was taken: put it back' : ''}`, priority: 'high', order, dedupeKey: `order.refunded:${order._id}` });
+    // This path has no atomic pre-refund stock fact. Keep the warning truthful and leave stock recovery to return inspection.
+    await recordAdminEvent({ type: 'order.refunded', title: 'Refunded before the order was recorded', body: `${describeOrder(order)} · do not ship`, priority: 'normal', order, dedupeKey: `order.refunded:${order._id}` });
     console.log(`💸 Checkout session ${session.id} was refunded before its order existed → order ${order.orderNumber} recorded as refunded`);
     // no stock was taken: nothing to keep set aside (and the cart is left as it is)
     if (await releaseHoldsOf(userId, session.metadata?.cartSessionId, session.id)) await Order.updateOne({ _id: order._id }, { $unset: { postOrderPending: '' } }).catch(() => {});
@@ -1053,7 +1059,7 @@ if (process.env.NODE_ENV === 'test') {
     checkoutEmailDeliverer = deliverEmail;
   };
   // The settlement steps are not routes of their own, so tests reach them here.
-  router.internalsForTest = { fulfillCheckoutSession, settleBankDebitPaid, settleBankDebitFailed, announceCleared, isDelayedBankDebit, bankDebitInFlight };
+  router.internalsForTest = { fulfillCheckoutSession, settleBankDebitPaid, settleBankDebitFailed, announceCleared, announceUnmatched, isDelayedBankDebit, bankDebitInFlight };
 }
 
 module.exports = router;
