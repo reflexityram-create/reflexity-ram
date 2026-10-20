@@ -26,12 +26,18 @@ export function nextStep(order) {
   if (payment.key === 'etransfer_waiting' || payment.key === 'etransfer_expired') return { key: 'collect', payment };
   if (payment.key === 'bank_debit_clearing') return { key: 'clearing', payment };
   const paid = order.paymentStatus === 'paid';
+  // A paid order holding a Stripe line no product matched is blocked by the server until the owner has checked the payment in Stripe.
+  if (paid && order.fulfillmentBlocked === true && ['pending', 'processing'].includes(order.status)) return { key: 'review', payment };
   if (paid && ['pending', 'processing'].includes(order.status)) return { key: 'ship', payment };
   if (paid && order.status === 'shipped') return { key: 'deliver', payment };
   if (order.status === 'delivered') return { key: 'done', payment };
   if (['cancelled', 'refunded'].includes(order.status)) return { key: 'closed', payment };
   return { key: 'unpaid', payment };
 }
+
+// The Stripe lines of a paid order that no product matched are kept as placeholder items (UNMATCHED_SLUG_PREFIX in backend/src/routes/stripe.js).
+const UNMATCHED_SLUG_PREFIX = 'stripe-unmatched-';
+export const unmatchedItems = (order) => (Array.isArray(order?.items) ? order.items : []).filter((item) => String(item?.slug || '').startsWith(UNMATCHED_SLUG_PREFIX));
 
 // An unpaid order can be cancelled by hand (its stock goes back); a paid one only through a refund.
 // (statusOptions lists the order's own status first, so an already cancelled order must not count itself.)
