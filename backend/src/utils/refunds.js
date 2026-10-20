@@ -63,7 +63,10 @@ async function recordRefundEvent(event, {
     logger.log?.(applied ? `💸 Full refund processed for order ${order.orderNumber}` : `Full refund for order ${order.orderNumber} was already recorded`);
     // These two repeat harmlessly (the alert has a key, a cancelled email is skipped), so a delivery that stopped after the write above
     // still finishes them when Stripe sends it again.
-    await record({ type: 'order.refunded', title: 'Order refunded', body: describeOrder(refunded), priority: 'normal', order: refunded, dedupeKey: `order.refunded:${refunded._id}` });
+    // Fulfillment can take stock just before Stripe's refund delivery wins the race. Keep the one keyed alert, but carry the urgent
+    // recovery instruction here because a later fulfillment retry reuses this key and cannot create a second alert.
+    const stockWarning = refunded.stockDecremented ? ' · its stock was taken: put it back' : '';
+    await record({ type: 'order.refunded', title: 'Order refunded', body: `${describeOrder(refunded)} · do not ship${stockWarning}`, priority: refunded.stockDecremented ? 'high' : 'normal', order: refunded, dedupeKey: `order.refunded:${refunded._id}` });
     // Don't ask a refunded buyer how the order went.
     try {
       if (await cancelReview(refunded)) logger.log?.(`Cancelled the scheduled review email for order ${order.orderNumber}`);

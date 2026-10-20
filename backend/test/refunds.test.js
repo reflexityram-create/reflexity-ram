@@ -79,6 +79,14 @@ test('the same full-refund event delivered again adds no second line and no seco
   assert.equal(calls.cancels.length, 2);
 });
 
+test('a full refund that races after stock was taken keeps the one alert but marks the stock recovery urgent', async () => {
+  const { calls, deps } = harness(baseOrder({ stockDecremented: true }));
+  const result = await recordRefundEvent(event('evt_stock_race', full()), deps);
+  assert.equal(result.applied, true);
+  assert.equal(calls.alerts[0].priority, 'high');
+  assert.equal(calls.alerts[0].body, 'RFX-TEST-1 · $281.30 CAD · 2× 16GB DDR4 ECC RDIMM · Card · do not ship · its stock was taken: put it back');
+});
+
 test('an order that was made already refunded (the refund came first) gets no extra line when charge.refunded arrives', async () => {
   const { order, deps, calls } = harness(baseOrder({ status: 'refunded', paymentStatus: 'refunded', statusHistory: [{ status: 'refunded', note: 'Paid, then fully refunded in Stripe before this order was recorded; no stock taken' }] }));
   const result = await recordRefundEvent(event('evt_late', full()), deps);
