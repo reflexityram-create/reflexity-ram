@@ -51,7 +51,7 @@ function FeaturedProduct({ p }) {
             decoding="async"
           />
         )}
-        <span className="absolute top-3 left-3 pill pill-amber text-[10px] py-0.5 px-2">Featured</span>
+        <span className="absolute top-3 left-3 pill pill-amber pill-on-photo text-[10px] py-0.5 px-2">Featured</span>
       </div>
       <div className="p-5 sm:p-6">
         <div className="mono text-[10px] sm:text-[11px] tracking-widest uppercase" style={{ color: "var(--fg-faint)" }}>

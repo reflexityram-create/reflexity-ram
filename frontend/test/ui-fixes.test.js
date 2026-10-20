@@ -75,3 +75,16 @@ test("the account page has its own title instead of inheriting the home page's",
   assert.match(account, /import \{ useSEO \} from '@\/lib\/seo';/);
   assert.match(account, /export default function Account\(\) \{\s+useSEO\(\{ title: 'Your account'/);
 });
+
+test("the Featured pill laid over the home product photo stays readable in dark mode", async () => {
+  const [css, home] = await Promise.all([read("../src/index.css"), read("../src/pages/Home.jsx")]);
+  const token = (name) => css.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{6})`))?.[1];
+  // The dark-theme pill is brand yellow on translucent yellow, made for dark surfaces; on the photo's white tile that is about 1.4:1.
+  assert.ok(contrast(token("brand-yellow"), "#ffffff") < 3, "the dark-theme pill colour is unreadable on the white photo tile");
+  assert.match(home, /className="absolute top-3 left-3 pill pill-amber pill-on-photo /);
+  const rule = css.match(/html \.pill-amber\.pill-on-photo\s*\{([^}]*)\}/)?.[1] ?? "";
+  assert.match(rule, /color:\s*var\(--brand-on-yellow\)/);
+  assert.match(rule, /background:\s*var\(--brand-yellow-tint\)/);
+  assert.ok(contrast(token("brand-on-yellow"), token("brand-yellow-tint")) >= 4.5, "the on-photo pill meets AA");
+  assert.ok(css.indexOf("html .pill-amber.pill-on-photo") > css.indexOf("html:not(.light) .pill-amber"), "the override comes after the dark rule");
+});
