@@ -375,6 +375,21 @@ const announceNewOrder = (order, { created = false } = {}) => {
   });
 };
 
+// The owner's "needs you" alert for a paid order that holds Stripe line(s) no product matched (fulfillCheckoutSession keeps them as
+// placeholders and blocks the order). One per checkout (dedupeKey), so the retry below can repeat it safely. `paid` is Stripe's
+// amount and currency when the session is at hand; a retry falls back to the order's total in the store currency.
+const UNMATCHED_SLUG_PREFIX = 'stripe-unmatched-';
+const announceUnmatched = (order, paid = `${(Number(order.total) || 0).toFixed(2)} ${String(CURRENCY).toUpperCase()}`) => {
+  const count = (order.items || []).filter((item) => String(item?.slug || '').startsWith(UNMATCHED_SLUG_PREFIX)).length;
+  return recordAdminEvent({
+    // No `path`: with the order given, a tap opens that order's panel (the bare list was right only when no order was made).
+    type: 'payment.unmatched', title: 'Paid order contains unmatched Stripe item(s): needs you', priority: 'high',
+    body: `Paid ${paid}, Stripe checkout ${order.stripeCheckoutSessionId}: ${count} line item(s) were preserved as blocked placeholders. Review the payment before shipping.`,
+    dedupeKey: `payment.unmatched:${order.stripeCheckoutSessionId}`,
+    order,
+  });
+};
+
 const ensureCriticalFulfillmentEffects = async (order) => {
   if (!order) return order;
 
@@ -408,6 +423,8 @@ const ensureCriticalFulfillmentEffects = async (order) => {
   // And the owner's alert, if the first attempt did not get through (no-op once recorded). Only for a fresh order: a buyer
   // reopening an old success link must not tell the owner about a months-old sale again.
   if ((order.paymentStatus === 'paid' || order.paymentMethod === BANK_DEBIT) && Date.now() - new Date(order.createdAt).getTime() < 60 * 60 * 1000) await announceNewOrder(order);
+  // The same for the alert that says the order is blocked: the first attempt can stop between the insert and that alert.
+  if (order.fulfillmentBlocked === true && Date.now() - new Date(order.createdAt).getTime() < 60 * 60 * 1000) await announceUnmatched(order);
 
   return order;
 };
@@ -557,7 +574,7 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
       const description = li.description || stripeProduct?.name || (typeof stripeProduct === 'object' ? stripeProduct?.description : '') || `Unmatched Stripe item ${li.price.id}`;
       const price = Number(li.price?.unit_amount || 0) / 100;
       unmappedLines.push({ priceId: li.price.id, description, price, qty: Number(li.quantity) || 1 });
-      orderItems.push({ slug: `stripe-unmatched-${li.price.id}`, sku: `STRIPE-${li.price.id}`, name: description, price, image: '', qty: Number(li.quantity) || 1 });
+      orderItems.push({ slug: `${UNMATCHED_SLUG_PREFIX}${li.price.id}`, sku: `STRIPE-${li.price.id}`, name: description, price, image: '', qty: Number(li.quantity) || 1 });
       continue;
     }
     orderItems.push({
@@ -686,13 +703,8 @@ const fulfillCheckoutSession = async (checkoutSessionId) => {
 
   if (unmappedLines.length) {
     const paid = `${((session.amount_total || 0) / 100).toFixed(2)} ${String(session.currency || '').toUpperCase()}`.trim();
-    await recordAdminEvent({
-      // No `path`: with the order given, a tap opens that order's panel (the bare list was right only when no order was made).
-      type: 'payment.unmatched', title: 'Paid order contains unmatched Stripe item(s): needs you', priority: 'high',
-      body: `Paid ${paid}, Stripe checkout ${checkoutSessionId}: ${unmappedLines.length} line item(s) were preserved as blocked placeholders. Review the payment before shipping.`,
-      dedupeKey: `payment.unmatched:${checkoutSessionId}`,
-      order,
-    }).catch((error) => console.error(`Unmatched payment alert could not be recorded for ${checkoutSessionId}:`, error.message));
+    await announceUnmatched(order, paid)
+      .catch((error) => console.error(`Unmatched payment alert could not be recorded for ${checkoutSessionId}:`, error.message));
   }
 
   // A refund made while this order was being written (after the session above was read) found no order to mark and was

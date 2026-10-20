@@ -1393,6 +1393,28 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
     } finally { stripeRouter.setCheckoutDependenciesForTest(); }
   });
 
+  await root.test('review 2026-10-19: a stop right after a blocked order was saved still gives the owner its "needs you" alert on the retry', async () => {
+    await bankSetup();
+    const gone = { id: 'prod_gone', object: 'product', metadata: {} };
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async () => cardSession({ id: 'cs_blocked_stop', payment_intent: { id: 'pi_blocked_stop', status: 'succeeded', latest_charge: 'ch_blocked_stop' }, line_items: { data: [{ id: 'li_1', price: { id: 'price_gone', unit_amount: 13500, product: gone }, quantity: 2 }] } }) });
+    const { fulfillCheckoutSession } = stripeRouter.internalsForTest;
+    try {
+      const first = await fulfillCheckoutSession('cs_blocked_stop');
+      assert.equal(first.fulfillmentBlocked, true);
+      // The first attempt stopped between the insert and the alert (a crash, a deploy): the order exists, the alert does not.
+      await AdminEvent.deleteMany({ type: 'payment.unmatched' });
+      const retried = await fulfillCheckoutSession('cs_blocked_stop');   // Stripe redelivers the event / the buyer reopens the page
+      assert.equal(String(retried._id), String(first._id));
+      const alerts = await AdminEvent.find({ type: 'payment.unmatched' }).lean();
+      assert.equal(alerts.length, 1, 'the retry gives the owner the alert the first attempt did not');
+      assert.equal(alerts[0].priority, 'high');
+      assert.match(alerts[0].body, /^Paid 284\.00 CAD, Stripe checkout cs_blocked_stop: 1 line item\(s\) were preserved as blocked placeholders/);
+      assert.equal(alerts[0].path, `/admin/orders?order=${first._id}`);
+      await fulfillCheckoutSession('cs_blocked_stop');
+      assert.equal(await AdminEvent.countDocuments({ type: 'payment.unmatched' }), 1, 'and only once');
+    } finally { stripeRouter.setCheckoutDependenciesForTest(); }
+  });
+
   await root.test('review 2026-10-19: an order blocked by an unmatched paid line is released by the owner\'s review, once, and can then ship', async () => {
     await bankSetup();
     const owner = await User.create({ email: 'owner@reflexity.example', firstName: 'Yusuf', lastName: 'Owner', role: 'admin', isEmailVerified: true });
