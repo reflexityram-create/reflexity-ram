@@ -2,13 +2,10 @@ import { useEffect, useSyncExternalStore } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+import { subscribeSystemTheme, systemTheme } from "./systemTheme.js";
+import { THEME_COLOR } from "./themeColors.js";
+
 const validTheme = (theme) => ["light", "dark", "system"].includes(theme);
-const systemTheme = () => window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-const subscribeSystemTheme = (notify) => {
-  const media = window.matchMedia("(prefers-color-scheme: dark)");
-  media.addEventListener("change", notify);
-  return () => media.removeEventListener("change", notify);
-};
 
 // Keep the existing storage key so returning visitors retain their choice.
 export const useTheme = create(
@@ -38,6 +35,6 @@ export function useApplyTheme() {
     root.classList.toggle("light", theme === "light");
     root.classList.toggle("dark", theme === "dark");
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", theme === "light" ? "#f4f4f6" : "#050505");
+    if (meta) meta.setAttribute("content", THEME_COLOR[theme]);
   }, [theme]);
 }

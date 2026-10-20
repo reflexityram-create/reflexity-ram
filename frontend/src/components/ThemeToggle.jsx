@@ -12,7 +12,6 @@ export default function ThemeToggle() {
       type="button"
       onClick={() => setTheme(isDark ? "light" : "dark")}
       aria-label={label}
-      aria-pressed={isDark}
       title={label}
       className="theme-toggle-btn"
       data-theme={theme}

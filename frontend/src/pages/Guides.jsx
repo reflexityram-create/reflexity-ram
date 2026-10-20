@@ -118,9 +118,11 @@ export default function Guides() {
             <div className="section-label mb-5"><span className="num">GUIDE</span> RAM BUYING GUIDE</div>
             <h1 className="display-2 max-w-[22ch]">{guide.title}</h1>
             <p className="mt-5 text-[17px] max-w-[62ch]" style={{ color: "var(--fg-muted)" }}>{guide.description}</p>
-            {guideProducts.length > 0 && (
+            {productsLoading ? (
+              <span className="btn-secondary mt-6 invisible" aria-hidden="true">Compare current server RAM</span>
+            ) : guideProducts.length > 0 ? (
               <a href="#guide-current-stock" className="btn-secondary mt-6">Compare current server RAM</a>
-            )}
+            ) : null}
             <div className="mt-10 grid gap-5">
               {guide.sections.map(([heading, body]) => (
                 <section key={heading} className="border-t pt-5" style={{ borderColor: "var(--border)" }}>
@@ -131,7 +133,7 @@ export default function Guides() {
             </div>
             {guideProducts.length > 0 ? (
               <section className="mt-10 border-t pt-8" style={{ borderColor: "var(--border)" }} aria-labelledby="guide-current-stock">
-                <h2 id="guide-current-stock" className="text-xl font-semibold">Current server RAM to compare by exact part number</h2>
+                <h2 id="guide-current-stock" className="text-xl font-semibold scroll-mt-20">Current server RAM to compare by exact part number</h2>
                 <p className="mt-2 text-[15px] leading-7" style={{ color: "var(--fg-muted)" }}>
                   Match the complete MPN, capacity, DDR generation, DIMM type, rank, and population rules before ordering. Stock can change, so open the product page for the current condition and quantity.
                 </p>

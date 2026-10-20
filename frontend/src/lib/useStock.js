@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { productsApi } from "@/lib/api";
-import { fetchAllCatalogProducts, isPublicServerRam } from "@/lib/catalog";
+import { fetchAllCatalogProducts, publicServerStock } from "@/lib/catalog";
 
 /**
  * Shared stock loader for the landing-page variants.
  * Splits live inventory into server memory (the lead line) and everything else.
  */
 export function useStock(limit = 12) {
-  const [products, setProducts] = useState([]);
+  const [stock, setStock] = useState({ catalog: [], products: [] });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -17,9 +17,9 @@ export function useStock(limit = 12) {
     )
       .then((r) => {
         if (!alive) return;
-        setProducts(r.filter(isPublicServerRam).slice(0, limit));
+        setStock(publicServerStock(r, limit));
       })
-      .catch(() => alive && setProducts([]))
+      .catch(() => alive && setStock({ catalog: [], products: [] }))
       .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
@@ -28,8 +28,10 @@ export function useStock(limit = 12) {
 
   return {
     loading,
-    products,
-    server: products,
+    products: stock.products,
+    // Every public server listing, for pickers that must not be limited to the few newest (home exact parts).
+    catalog: stock.catalog,
+    server: stock.products,
     consumer: [],
   };
 }

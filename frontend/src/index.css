@@ -395,6 +395,13 @@ html:not(.light) .pill-amber {
     background: rgba(255, 207, 36, 0.12);
     color: var(--brand-yellow);
 }
+/* A pill laid over a product photo sits on the photo's white tile in either theme, so it keeps the light-theme colours: the dark-theme
+   brand yellow on translucent yellow is about 1.4:1 against that tile. Three classes beat the dark rule's two whatever the order. */
+html .pill.pill-amber.pill-on-photo {
+    border-color: var(--brand-yellow-deep);
+    background: var(--brand-yellow-tint);
+    color: var(--brand-on-yellow);
+}
 .pill-blue {
     border-color: rgba(80, 130, 220, 0.3);
     background: rgba(120, 180, 255, 0.08);
@@ -585,6 +592,9 @@ html.light .section-label .num {
     background-size: 200% 100%;
     animation: shimmer 1.6s infinite linear;
     border-radius: 10px;
+}
+@media (prefers-reduced-motion: reduce) {
+    .skeleton { animation: none; }
 }
 
 @keyframes pulse-dot {

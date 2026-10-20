@@ -51,7 +51,7 @@ function FeaturedProduct({ p }) {
             decoding="async"
           />
         )}
-        <span className="absolute top-3 left-3 pill pill-amber text-[10px] py-0.5 px-2">Featured</span>
+        <span className="absolute top-3 left-3 pill pill-amber pill-on-photo text-[10px] py-0.5 px-2">Featured</span>
       </div>
       <div className="p-5 sm:p-6">
         <div className="mono text-[10px] sm:text-[11px] tracking-widest uppercase" style={{ color: "var(--fg-faint)" }}>
@@ -81,11 +81,11 @@ export default function Home() {
     description:
       "Tested Server RAM, including individual modules and small lots, shipped from Toronto.",
   });
-  const { loading, products } = useStock(6);
+  const { loading, products, catalog } = useStock(6);
   const publicProducts = products.filter(isPublicServerRam);
   const featured = pickFeatured(publicProducts);
   const rest = publicProducts.filter((p) => p !== featured);
-  const exactParts = pickHomeExactParts(publicProducts);
+  const exactParts = pickHomeExactParts(catalog);
 
   return (
     <>
@@ -130,7 +130,9 @@ export default function Home() {
               </div>
             </div>
 
-            {exactParts.length > 0 && (
+            {loading ? (
+              <div className="mt-12 skeleton rounded-xl h-[481px] md:h-[228px] lg:h-[188px]" aria-hidden="true" data-testid="home-exact-parts-loading" />
+            ) : exactParts.length > 0 && (
               <section className="mt-12" aria-labelledby="home-exact-parts">
                 <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
                   <div>
