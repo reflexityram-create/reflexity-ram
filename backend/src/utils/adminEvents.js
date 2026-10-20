@@ -79,6 +79,14 @@ async function recordAdminEvent(input, { Model = AdminEvent, emitter = bus, logg
   }
 }
 
+// For an alert that must not be lost (it carries a deadline, or it is the only trace of something that happened): recordAdminEvent never
+// throws and answers null both when the owner was already told and when the alert could not be written. This tells the two apart and
+// THROWS for the second, so a webhook answers 500 and the provider sends the event again.
+async function recordRequiredAdminEvent(input, { record = recordAdminEvent, exists = (key) => AdminEvent.exists({ dedupeKey: key }) } = {}) {
+  if (await record(input)) return;
+  if (!(await exists(input.dedupeKey))) throw new Error(`The "${input.type}" alert for ${input.dedupeKey} could not be recorded`);
+}
+
 // Registers for the next event right away (so nothing written between the caller's query and its wait is
 // missed), then waits up to `ms`. Resolves true when an event arrived, false on timeout or cancel().
 function eventWaiter(emitter = bus) {
@@ -115,4 +123,4 @@ const publicEvent = (event) => ({
   createdAt: event.createdAt,
 });
 
-module.exports = { recordAdminEvent, eventWaiter, publicEvent, describeOrder, orderPath, adminPath, clip, money, bus };
+module.exports = { recordAdminEvent, recordRequiredAdminEvent, eventWaiter, publicEvent, describeOrder, orderPath, adminPath, clip, money, bus };

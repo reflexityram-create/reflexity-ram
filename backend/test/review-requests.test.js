@@ -40,6 +40,7 @@ process.env.JWT_SECRET = 'review-request-test-secret';
 delete process.env.REVIEW_REQUEST_DELAY_DAYS;
 
 const Order = require('../src/models/Order');
+const { refundOrderStore } = require('./helpers/refundOrderStore');
 const Product = require('../src/models/Product');
 const Review = require('../src/models/Review');
 const User = require('../src/models/User');
@@ -496,9 +497,9 @@ test('a full Stripe refund cancels the review email that is still waiting to go 
   const refunded = order({
     statusHistory: [],
     reviewRequest: { emailId: 'email_waiting', scheduledFor: new Date(Date.now() + 5 * DAY) },
-    save: async () => undefined,
   });
-  stub(t, Order, { findOne: async () => refunded, updateOne: async () => ({ modifiedCount: 1 }) });
+  const orders = refundOrderStore(refunded);
+  stub(t, Order, { findOne: orders.findOne, findOneAndUpdate: orders.findOneAndUpdate, updateOne: async () => ({ modifiedCount: 1 }) });
 
   const payload = JSON.stringify({
     id: 'evt_review_refund',

@@ -24,8 +24,7 @@ const { holdStockForCheckout, releaseCheckoutHold, ownerKey, holdMinutes } = req
 const { ensureStripePrice, ensureBankDebitCoupon } = require('../utils/stripeSync');
 const { BANK_DEBIT, bankDebitEnabled, paymentMethodSettings, automaticTaxEnabled } = require('../utils/paymentMethods');
 const { isDisposableEmail } = require('../utils/disposableEmail');
-const { isFullyRefundedCharge } = require('../utils/refunds');
-const { cancelReviewRequest } = require('../utils/reviewRequests');
+const { isFullyRefundedCharge, recordRefundEvent } = require('../utils/refunds');
 const { recordDisputeEvent } = require('../utils/disputes');
 const { estimateDeliveryDate } = require('../utils/deliveryEstimate');
 const { shippingChoiceNote } = require('../utils/shippingChoice');
@@ -60,6 +59,7 @@ let stockHolder = holdStockForCheckout;
 let stockHoldReleaser = releaseCheckoutHold;
 let checkoutSessionExpirer = (sessionId) => stripe.checkout.sessions.expire(sessionId);
 let disputeRecorder = recordDisputeEvent;
+let refundRecorder = recordRefundEvent;
 let checkoutEmailDeliverer = deliverCheckoutEmail;
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -987,54 +987,9 @@ router.post('/webhook', async (req, res) => {
         break;
       }
 
-      // ── Charge refunded ───────────────────────────────────────────────────────
+      // ── Charge refunded (in full or in part): the order follows, the owner is told (utils/refunds.js) ──
       case 'charge.refunded': {
-        const charge = event.data.object;
-        const orderFilter = {
-          $or: [
-            { stripeChargeId: charge.id },
-            ...(charge.payment_intent ? [{ stripePaymentIntentId: charge.payment_intent }] : []),
-          ],
-        };
-        const order = await Order.findOne(orderFilter);
-
-        if (order) {
-          if (isFullyRefundedCharge(charge)) {
-            order.paymentStatus = 'refunded';
-            order.status = 'refunded';
-            order.statusHistory.push({
-              status: 'refunded',
-              note: 'Fully refunded via Stripe; inventory unchanged pending return inspection',
-              timestamp: new Date(),
-            });
-            await order.save();
-            console.log(`💸 Full refund processed for order ${order.orderNumber}`);
-            await recordAdminEvent({ type: 'order.refunded', title: 'Order refunded', body: describeOrder(order), priority: 'normal', order, dedupeKey: `order.refunded:${order._id}` });
-            // Don't ask a refunded buyer how the order went.
-            try {
-              if (await cancelReviewRequest(order)) {
-                console.log(`Cancelled the scheduled review email for order ${order.orderNumber}`);
-              }
-            } catch (reviewErr) {
-              console.error('Review email cancel failed:', reviewErr.message);
-            }
-          } else {
-            // A charge.refunded event also fires for partial refunds. Preserve
-            // the order/payment state and leave inventory alone because the
-            // refunded amount does not identify which item quantity returned.
-            order.statusHistory.push({
-              status: order.status,
-              note: `Partial Stripe refund recorded (${charge.amount_refunded || 0} minor currency units); inventory unchanged`,
-              timestamp: new Date(),
-            });
-            await order.save();
-            console.log(`💸 Partial refund recorded for order ${order.orderNumber}`);
-            await recordAdminEvent({ type: 'order.partial_refund', title: 'Partial refund recorded', body: describeOrder(order), priority: 'normal', order, dedupeKey: `order.partial_refund:${event.id}` });
-          }
-        } else {
-          // Fallback: try to find by PI if charge ID wasn't stored yet
-          console.warn(`⚠️  No order found for charge ${charge.id} — charge ID may not be stored`);
-        }
+        await refundRecorder(event);
         break;
       }
 
@@ -1074,6 +1029,7 @@ if (process.env.NODE_ENV === 'test') {
     releaseHold = async () => 0,
     expireSession = async () => ({}),
     recordDispute = recordDisputeEvent,
+    recordRefund = recordRefundEvent,
     deliverEmail = async () => ({ status: 'unchanged' }),
   } = {}) => {
     checkoutPriceEnsurer = ensurePrice;
@@ -1087,6 +1043,7 @@ if (process.env.NODE_ENV === 'test') {
     stockHoldReleaser = releaseHold;
     checkoutSessionExpirer = expireSession;
     disputeRecorder = recordDispute;
+    refundRecorder = recordRefund;
     checkoutEmailDeliverer = deliverEmail;
   };
   // The settlement steps are not routes of their own, so tests reach them here.
