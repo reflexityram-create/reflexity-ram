@@ -295,7 +295,7 @@ function OrderSheet({ orderId, onClose, onChanged }) {
 // One order as a card: the whole card opens it. Built for a thumb, so nothing here needs sideways scrolling.
 function OrderCard({ order, onOpen }) {
   const payment = paymentState(order);
-  const waitingOnYou = nextStep(order).key === 'collect' || nextStep(order).key === 'ship';
+  const waitingOnYou = ['collect', 'ship', 'review'].includes(nextStep(order).key);
   // While the bank is disputing or asking about the payment, or once the dispute is lost (the money is gone), the card does not
   // suggest shipping: the order is the owner's call.
   const underDispute = ['open', 'inquiry', 'lost'].includes(disputeState(order)?.key);
@@ -317,6 +317,7 @@ function OrderCard({ order, onOpen }) {
           {showPaymentLabel(order) && <span className={`pill ${TONE_CLASS[payment.tone]} text-[10px] py-0.5`} data-testid="order-card-payment-label">{payment.label}</span>}
           <DisputePill order={order} />
           {nextStep(order).key === 'ship' && !underDispute && <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">Ready to ship</span>}
+          {nextStep(order).key === 'review' && <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-300" data-testid="order-card-review">Check the payment first</span>}
           <ChevronRight size={16} className="ml-auto text-neutral-500" aria-hidden="true" />
         </div>
       </button>
