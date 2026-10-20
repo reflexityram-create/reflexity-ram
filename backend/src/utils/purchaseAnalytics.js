@@ -30,7 +30,7 @@ async function reportPaidOrderToGa4(order, {
     const claimed = await OrderModel.findOneAndUpdate(
       { _id: order._id, analyticsPurchaseSentAt: null },
       { $set: { analyticsPurchaseSentAt: new Date(now()) } },
-      { new: false },
+      { returnDocument: 'before' },
     ).select('+analyticsClientId +analyticsSessionId');
     if (!claimed) return false;
 

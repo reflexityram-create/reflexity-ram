@@ -99,7 +99,7 @@ const decrementStockForOrder = async (order) => {
       const full = await Product.findOneAndUpdate(
         { _id: item.product, stockQuantity: { $gte: item.qty } },
         { $inc: { stockQuantity: -item.qty } },
-        { new: false, session }
+        { returnDocument: 'before', session }
       );
 
       if (full) {
@@ -111,7 +111,7 @@ const decrementStockForOrder = async (order) => {
           [{ $set: { stockQuantity: { $max: [0, { $subtract: ['$stockQuantity', item.qty] }] } } }],
           // updatePipeline: Mongoose refuses an array update without it ("Cannot pass an array to query updates"). Every test stubbed
           // this call, so the clamp that is meant to catch an oversold payment threw on a real database instead.
-          { new: false, session, updatePipeline: true }
+          { returnDocument: 'before', session, updatePipeline: true }
         );
         const available = Math.max(0, pre?.stockQuantity ?? 0);
         item.decrementedQty = Math.min(available, item.qty);
@@ -194,7 +194,7 @@ const takeStockStrict = async (items, session, { holdOwner } = {}) => {
         ...(holdOwner !== undefined ? { $expr: freeForExpr(now, holdOwner, item.qty) } : {}),
       },
       { $inc: { stockQuantity: -item.qty } },
-      { new: false, session }
+      { returnDocument: 'before', session }
     );
     if (!taken) {
       const current = await Product.findById(item.product).select('+stockHolds stockQuantity').session(session).lean();

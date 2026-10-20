@@ -45,7 +45,7 @@ async function registerWholesaleMedia({ MediaModel, image, createdBy }) {
           createdBy,
         },
       },
-      { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true },
+      { upsert: true, returnDocument: 'after', runValidators: true, setDefaultsOnInsert: true },
     ));
     return { state: isAvailableExactMedia(media, image) ? 'registered' : 'conflict' };
   } catch (error) {
