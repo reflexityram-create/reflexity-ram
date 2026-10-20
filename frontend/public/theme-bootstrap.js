@@ -8,7 +8,9 @@
     }
   } catch (error) { /* Unavailable storage still follows the phone's appearance. */ }
   if (theme === "system") {
-    theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    var dark = false;
+    try { dark = window.matchMedia("(prefers-color-scheme: dark)").matches; } catch (error) { /* No media queries: keep the long-standing light default. */ }
+    theme = dark ? "dark" : "light";
   }
   document.documentElement.classList.remove("light", "dark");
   document.documentElement.classList.add(theme);

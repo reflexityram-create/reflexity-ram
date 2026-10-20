@@ -2,13 +2,9 @@ import { useEffect, useSyncExternalStore } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+import { subscribeSystemTheme, systemTheme } from "./systemTheme.js";
+
 const validTheme = (theme) => ["light", "dark", "system"].includes(theme);
-const systemTheme = () => window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-const subscribeSystemTheme = (notify) => {
-  const media = window.matchMedia("(prefers-color-scheme: dark)");
-  media.addEventListener("change", notify);
-  return () => media.removeEventListener("change", notify);
-};
 
 // Keep the existing storage key so returning visitors retain their choice.
 export const useTheme = create(

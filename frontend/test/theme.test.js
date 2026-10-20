@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 import test from "node:test";
+import { subscribeSystemTheme, systemTheme } from "../src/lib/systemTheme.js";
 
 const bootstrap = await readFile(new URL("../public/theme-bootstrap.js", import.meta.url), "utf8");
 function paint(saved, dark, blocked = false) {
@@ -31,4 +32,49 @@ test("invalid or unavailable storage falls back to phone theme", () => {
     assert.equal(paint(saved, true).theme, "dark");
   }
   assert.equal(paint(null, true, true).theme, "dark");
+});
+
+function paintWith(windowStub, saved = null) {
+  const classes = new Set();
+  vm.runInNewContext(bootstrap, {
+    localStorage: { getItem: () => saved },
+    window: windowStub,
+    document: {
+      documentElement: { classList: { add: x => classes.add(x), remove: (...xs) => xs.forEach(x => classes.delete(x)) } },
+      querySelector: () => ({ setAttribute() {} }),
+    },
+  });
+  return [...classes][0];
+}
+function withWindow(stub, run) {
+  const had = "window" in globalThis;
+  const previous = globalThis.window;
+  globalThis.window = stub;
+  try { return run(); } finally { if (had) globalThis.window = previous; else delete globalThis.window; }
+}
+
+test("a browser with no media queries, or whose matchMedia throws, still gets a theme before first paint", () => {
+  assert.equal(paintWith({}), "light");
+  assert.equal(paintWith({ matchMedia() { throw new Error("blocked"); } }), "light");
+  assert.equal(paintWith({}, JSON.stringify({ state: { theme: "dark" } })), "dark");
+});
+
+test("the phone's appearance resolves to light when matchMedia is missing or throws", () => {
+  assert.equal(withWindow({}, () => systemTheme()), "light");
+  assert.equal(withWindow({ matchMedia() { throw new Error("blocked"); } }, () => systemTheme()), "light");
+  assert.equal(withWindow({ matchMedia: () => ({ matches: true }) }, () => systemTheme()), "dark");
+});
+
+test("subscribing to the phone's appearance never throws, whatever the browser offers", () => {
+  assert.equal(typeof withWindow({}, () => subscribeSystemTheme(() => {})), "function");
+  const notify = () => {};
+  const events = [];
+  const modern = { matchMedia: () => ({ addEventListener: (type, fn) => events.push(["add", type, fn]), removeEventListener: (type, fn) => events.push(["remove", type, fn]) }) };
+  withWindow(modern, () => subscribeSystemTheme(notify))();
+  assert.deepEqual(events, [["add", "change", notify], ["remove", "change", notify]]);
+  // Safari before 14 has addListener/removeListener on a MediaQueryList and no addEventListener.
+  const legacyEvents = [];
+  const legacy = { matchMedia: () => ({ addListener: fn => legacyEvents.push(["add", fn]), removeListener: fn => legacyEvents.push(["remove", fn]) }) };
+  withWindow(legacy, () => subscribeSystemTheme(notify))();
+  assert.deepEqual(legacyEvents, [["add", notify], ["remove", notify]]);
 });
