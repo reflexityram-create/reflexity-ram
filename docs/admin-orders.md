@@ -62,6 +62,18 @@ number that was removed. **Nobody is emailed** (the buyer already has the shippe
 the sync stops asking Canada Post about it. Only a shipped order that carries a number is accepted (409 otherwise); changing a wrong number to a
 right one is not built.
 
+## A paid order with an unmatched Stripe item (blocked)
+
+When a paid Stripe line matches no product (for example one removed while the buyer was in checkout), the order keeps that line as a
+placeholder item (`STRIPE-<price id>`, the price and quantity Stripe charged), is saved with `fulfillmentBlocked: true`, and the owner gets a
+high-priority "needs you" alert that opens the order (a retry repeats it if the first attempt stopped before it, for up to an hour after the order was placed). While it is blocked the
+server answers 409 to a tracking number, "shipped" and "delivered", the label panel says why, and the Canada Post sync and the shipping
+emails leave it alone. After checking the payment in Stripe, `POST /api/admin/orders/:id/fulfillment-review` (optional `{ note }`, up to 300
+characters; the body itself is optional) releases it: the block is cleared only while the order is still blocked, paid and open (pending or
+processing; 409 for a cancelled, refunded or unpaid one), a history line names the admin who reviewed it, and the order then ships like any
+other. A second call answers 409. The admin page has no button for this yet. If the item cannot be sent, refund the payment in Stripe instead
+(a paid order cannot be cancelled here).
+
 ## On a phone
 
 Admins get a bottom tab bar (Orders, Products, Users, Security, Settings); everyone else keeps the old header. Products and Users are cards

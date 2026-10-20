@@ -1389,6 +1389,106 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
       assert.match(alerts[0].body, /^Paid 284\.00 CAD, Stripe checkout cs_nothing:/);
       assert.match(alerts[0].body, /preserved as blocked placeholders.*before shipping/);
       assert.ok(!alerts[0].body.includes('sam@example.com'), 'lock-screen text never carries the buyer\'s email');
+      assert.equal(alerts[0].path, `/admin/orders?order=${unmatched._id}`, 'tapping the "needs you" alert opens the blocked order, not the bare list');
+    } finally { stripeRouter.setCheckoutDependenciesForTest(); }
+  });
+
+  await root.test('review 2026-10-19: a stop right after a blocked order was saved still gives the owner its "needs you" alert on the retry', async () => {
+    await bankSetup();
+    const gone = { id: 'prod_gone', object: 'product', metadata: {} };
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async () => cardSession({ id: 'cs_blocked_stop', payment_intent: { id: 'pi_blocked_stop', status: 'succeeded', latest_charge: 'ch_blocked_stop' }, line_items: { data: [{ id: 'li_1', price: { id: 'price_gone', unit_amount: 13500, product: gone }, quantity: 2 }] } }) });
+    const { fulfillCheckoutSession } = stripeRouter.internalsForTest;
+    try {
+      const first = await fulfillCheckoutSession('cs_blocked_stop');
+      assert.equal(first.fulfillmentBlocked, true);
+      // The first attempt stopped between the insert and the alert (a crash, a deploy): the order exists, the alert does not.
+      await AdminEvent.deleteMany({ type: 'payment.unmatched' });
+      const retried = await fulfillCheckoutSession('cs_blocked_stop');   // Stripe redelivers the event / the buyer reopens the page
+      assert.equal(String(retried._id), String(first._id));
+      const alerts = await AdminEvent.find({ type: 'payment.unmatched' }).lean();
+      assert.equal(alerts.length, 1, 'the retry gives the owner the alert the first attempt did not');
+      assert.equal(alerts[0].priority, 'high');
+      assert.match(alerts[0].body, /^Paid 284\.00 CAD, Stripe checkout cs_blocked_stop: 1 line item\(s\) were preserved as blocked placeholders/);
+      assert.equal(alerts[0].path, `/admin/orders?order=${first._id}`);
+      await fulfillCheckoutSession('cs_blocked_stop');
+      assert.equal(await AdminEvent.countDocuments({ type: 'payment.unmatched' }), 1, 'and only once');
+    } finally { stripeRouter.setCheckoutDependenciesForTest(); }
+  });
+
+  await root.test('review 2026-10-19: an order blocked by an unmatched paid line is released by the owner\'s review, once, and can then ship', async () => {
+    await bankSetup();
+    const owner = await User.create({ email: 'owner@reflexity.example', firstName: 'Yusuf', lastName: 'Owner', role: 'admin', isEmailVerified: true });
+    const adminHeaders = { authorization: `Bearer ${generateAccessToken(owner._id, owner.authVersion)}` };
+    const gone = { id: 'prod_gone', object: 'product', metadata: {} };
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async () => cardSession({ id: 'cs_blocked_review', payment_intent: { id: 'pi_blocked_review', status: 'succeeded', latest_charge: 'ch_blocked_review' }, line_items: { data: [{ id: 'li_1', price: { id: 'price_gone', unit_amount: 13500, product: gone }, quantity: 2 }] } }) });
+    try {
+      const order = await stripeRouter.internalsForTest.fulfillCheckoutSession('cs_blocked_review');
+      assert.equal(order.fulfillmentBlocked, true);
+      const id = String(order._id);
+      await serve(async (call) => {
+        const ship = { headers: adminHeaders, body: { status: 'shipped', trackingNumber: 'CP123456789CA' } };
+        assert.equal((await call('PATCH', `/api/admin/orders/${id}/status`, ship)).status, 409, 'still blocked before the review');
+        assert.equal((await call('POST', `/api/admin/orders/${id}/fulfillment-review`, { body: { note: 'x' } })).status, 401, 'owner only');
+        const released = await call('POST', `/api/admin/orders/${id}/fulfillment-review`, { headers: adminHeaders, body: { note: 'Checked in Stripe: ship the 2 sticks' } });
+        assert.equal(released.status, 200, 'the review the 409 asks for exists');
+        assert.equal(released.body.order.fulfillmentBlocked, false);
+        assert.match(released.body.order.statusHistory.at(-1).note, /reviewed.*Checked in Stripe: ship the 2 sticks/);
+        assert.equal((await call('POST', `/api/admin/orders/${id}/fulfillment-review`, { headers: adminHeaders, body: {} })).status, 409, 'nothing left to release');
+        const shipped = await call('PATCH', `/api/admin/orders/${id}/status`, ship);
+        assert.equal(shipped.status, 200, 'a reviewed order ships like any other');
+        assert.equal(shipped.body.order.status, 'shipped');
+        assert.equal(shipped.body.shippingNotification.status, 'sent', 'and the buyer is told');
+      });
+    } finally { stripeRouter.setCheckoutDependenciesForTest(); }
+  });
+
+  await root.test('review 2026-10-20: a bare POST releases a blocked order and the history names the admin; a refunded or cancelled one is refused untouched', async () => {
+    await bankSetup();
+    const owner = await User.create({ email: 'owner@reflexity.example', firstName: 'Yusuf', lastName: 'Owner', role: 'admin', isEmailVerified: true });
+    const adminHeaders = { authorization: `Bearer ${generateAccessToken(owner._id, owner.authVersion)}` };
+    const gone = { id: 'prod_gone', object: 'product', metadata: {} };
+    const blocked = (suffix) => cardSession({ id: `cs_blocked_${suffix}`, payment_intent: { id: `pi_blocked_${suffix}`, status: 'succeeded', latest_charge: `ch_blocked_${suffix}` }, line_items: { data: [{ id: 'li_1', price: { id: 'price_gone', unit_amount: 13500, product: gone }, quantity: 2 }] } });
+    stripeRouter.setCheckoutDependenciesForTest({ deliverEmail: require('../src/utils/checkoutEmails').deliverCheckoutEmail, retrieveSession: async (id) => blocked(id.replace('cs_blocked_', '')) });
+    try {
+      const { fulfillCheckoutSession } = stripeRouter.internalsForTest;
+      const open = await fulfillCheckoutSession('cs_blocked_open');
+      const refunded = await fulfillCheckoutSession('cs_blocked_refunded');
+      const cancelled = await fulfillCheckoutSession('cs_blocked_cancelled');
+      await Order.updateOne({ _id: refunded._id }, { $set: { status: 'refunded', paymentStatus: 'refunded' } });
+      await Order.updateOne({ _id: cancelled._id }, { $set: { status: 'cancelled' } });
+      await serve(async (call) => {
+        const release = (order) => call('POST', `/api/admin/orders/${order._id}/fulfillment-review`, { headers: adminHeaders });   // no body at all
+        for (const order of [refunded, cancelled]) {
+          assert.equal((await release(order)).status, 409, 'an order that is no longer open is not released');
+          const after = await Order.findById(order._id).lean();
+          assert.equal(after.fulfillmentBlocked, true, 'the refused call changed nothing');
+          assert.ok(!after.statusHistory.some((entry) => /released for fulfillment/.test(entry.note || '')), 'and wrote no "released" line');
+        }
+        const bare = await release(open);
+        assert.equal(bare.status, 200, 'the note is optional, and so is the body');
+        assert.equal(bare.body.order.fulfillmentBlocked, false);
+        assert.equal(bare.body.order.statusHistory.at(-1).note, 'Unmatched Stripe item(s) reviewed by Yusuf and released for fulfillment');
+      });
+    } finally { stripeRouter.setCheckoutDependenciesForTest(); }
+  });
+
+  await root.test('review 2026-10-20: the retry alert is for a fresh blocked order only: an hour-old one and an ordinary one raise none', async () => {
+    await bankSetup();
+    const gone = { id: 'prod_gone', object: 'product', metadata: {} };
+    const { fulfillCheckoutSession } = stripeRouter.internalsForTest;
+    const deliverEmail = require('../src/utils/checkoutEmails').deliverCheckoutEmail;
+    try {
+      stripeRouter.setCheckoutDependenciesForTest({ deliverEmail, retrieveSession: async () => cardSession({ id: 'cs_blocked_old', payment_intent: { id: 'pi_blocked_old', status: 'succeeded', latest_charge: 'ch_blocked_old' }, line_items: { data: [{ id: 'li_1', price: { id: 'price_gone', unit_amount: 13500, product: gone }, quantity: 2 }] } }) });
+      const old = await fulfillCheckoutSession('cs_blocked_old');
+      await AdminEvent.deleteMany({ type: 'payment.unmatched' });
+      await Order.collection.updateOne({ _id: old._id }, { $set: { createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000) } });   // the timestamp plugin would refuse this through the model
+      await fulfillCheckoutSession('cs_blocked_old');                                                                              // a success link reopened two hours later
+      assert.equal(await AdminEvent.countDocuments({ type: 'payment.unmatched' }), 0, 'a months-old sale is not announced again');
+      stripeRouter.setCheckoutDependenciesForTest({ deliverEmail, retrieveSession: async () => cardSession({ id: 'cs_ordinary', payment_intent: { id: 'pi_ordinary', status: 'succeeded', latest_charge: 'ch_ordinary' } }) });
+      const ordinary = await fulfillCheckoutSession('cs_ordinary');
+      assert.notEqual(ordinary.fulfillmentBlocked, true);
+      await fulfillCheckoutSession('cs_ordinary');
+      assert.equal(await AdminEvent.countDocuments({ type: 'payment.unmatched' }), 0, 'an ordinary order never raises the blocked-order alert');
     } finally { stripeRouter.setCheckoutDependenciesForTest(); }
   });
 
