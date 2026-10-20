@@ -54,19 +54,34 @@ async function recordRefundEvent(event, {
 
   if (isFullyRefundedCharge(charge)) {
     // Only an order that is not refunded yet changes, so a redelivery (or an order that was born refunded) adds no second line.
-    const applied = await OrderModel.findOneAndUpdate(
-      { _id: order._id, paymentStatus: { $ne: 'refunded' } },
-      { $set: { paymentStatus: 'refunded', status: 'refunded' }, $push: { statusHistory: { status: 'refunded', note: FULL_REFUND_NOTE, timestamp: now() } } },
-      { returnDocument: 'after' },
-    );
-    const refunded = applied || order;
+    // Return the pre-update document so the stock warning is bound to the exact state that this atomic
+    // refund transition observed. The initial lookup above can be stale if fulfillment wins the race.
+    const refundFilter = { _id: order._id, paymentStatus: { $ne: 'refunded' } };
+    const refundUpdate = (recoveryRequired) => ({
+      $set: { paymentStatus: 'refunded', status: 'refunded', refundStockRecoveryRequired: recoveryRequired },
+      $push: { statusHistory: { status: 'refunded', note: FULL_REFUND_NOTE, timestamp: now() } },
+    });
+    // Two conditional branches make the pre-update stock fact durable without reading it outside the atomic transition.
+    let before = await OrderModel.findOneAndUpdate({ ...refundFilter, status: { $in: ['pending', 'processing'] }, stockDecremented: true }, refundUpdate(true), { returnDocument: 'before' });
+    if (!before) before = await OrderModel.findOneAndUpdate({ ...refundFilter, $or: [{ stockDecremented: { $ne: true } }, { status: { $nin: ['pending', 'processing'] } }] }, refundUpdate(false), { returnDocument: 'before' });
+    if (!before) {
+      const current = await OrderModel.findOne({ _id: order._id });
+      if (current?.paymentStatus !== 'refunded') throw new Error(`Full refund transition for order ${order.orderNumber} did not apply; retrying`);
+    }
+    const applied = Boolean(before);
+    // Read the after-state for the alert and review cancellation. The stock warning itself uses `before`,
+    // since that is the state proven by the conditional write rather than a later concurrent read.
+    const refunded = await OrderModel.findOne({ _id: order._id });
+    if (!refunded) throw new Error(`Refunded order ${order._id} disappeared while finishing the refund; retrying`);
     logger.log?.(applied ? `💸 Full refund processed for order ${order.orderNumber}` : `Full refund for order ${order.orderNumber} was already recorded`);
     // These two repeat harmlessly (the alert has a key, a cancelled email is skipped), so a delivery that stopped after the write above
     // still finishes them when Stripe sends it again.
     // Fulfillment can take stock just before Stripe's refund delivery wins the race. Keep the one keyed alert, but carry the urgent
     // recovery instruction here because a later fulfillment retry reuses this key and cannot create a second alert.
-    const stockWarning = refunded.stockDecremented ? ' · its stock was taken: put it back' : '';
-    await record({ type: 'order.refunded', title: 'Order refunded', body: `${describeOrder(refunded)} · do not ship${stockWarning}`, priority: refunded.stockDecremented ? 'high' : 'normal', order: refunded, dedupeKey: `order.refunded:${refunded._id}` });
+    const stockRecovery = refunded.refundStockRecoveryRequired === true
+      || (before?.stockDecremented === true && ['pending', 'processing'].includes(before.status));
+    const stockWarning = stockRecovery ? ' · its stock was taken: put it back' : '';
+    await record({ type: 'order.refunded', title: 'Order refunded', body: `${describeOrder(refunded)} · do not ship${stockWarning}`, priority: stockWarning ? 'high' : 'normal', order: refunded, dedupeKey: `order.refunded:${refunded._id}` });
     // Don't ask a refunded buyer how the order went.
     try {
       if (await cancelReview(refunded)) logger.log?.(`Cancelled the scheduled review email for order ${order.orderNumber}`);
