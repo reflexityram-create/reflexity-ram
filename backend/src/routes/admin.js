@@ -502,13 +502,16 @@ router.post('/orders/:id/fulfillment-review', [
   body('note').optional({ values: 'falsy' }).isString().trim().isLength({ max: 300 }),
 ], validate, async (req, res) => {
   try {
-    const current = await Order.findById(req.params.id).select('status fulfillmentBlocked');
+    const current = await Order.findById(req.params.id).select('status paymentStatus fulfillmentBlocked');
     if (!current) return res.status(404).json({ error: 'Order not found' });
     if (current.fulfillmentBlocked !== true) return res.status(409).json({ error: 'This order is not waiting for a payment review' });
-    const note = typeof req.body.note === 'string' && req.body.note ? `: ${req.body.note}` : '';
-    const order = await Order.findOneAndUpdate({ _id: req.params.id, status: current.status, fulfillmentBlocked: true }, {
+    // A cancelled, refunded or still unpaid order cannot ship whatever the flag says, and a "released" line on it would mislead.
+    if (current.paymentStatus !== 'paid' || !['pending', 'processing'].includes(current.status)) return res.status(409).json({ error: 'Only a paid order that is still open can be released for fulfillment' });
+    // `note` is optional and so is the body: a POST with none leaves req.body undefined.
+    const note = typeof req.body?.note === 'string' && req.body.note ? `: ${req.body.note}` : '';
+    const order = await Order.findOneAndUpdate({ _id: req.params.id, status: current.status, paymentStatus: 'paid', fulfillmentBlocked: true }, {
       $set: { fulfillmentBlocked: false },
-      $push: { statusHistory: { status: current.status, note: `Unmatched Stripe item(s) reviewed by the owner and released for fulfillment${note}`, timestamp: new Date() } },
+      $push: { statusHistory: { status: current.status, note: `Unmatched Stripe item(s) reviewed by ${req.user?.firstName || 'the owner'} and released for fulfillment${note}`.slice(0, 480), timestamp: new Date() } },
     }, { returnDocument: 'after' }).populate('user', 'firstName lastName email');
     if (!order) return res.status(409).json({ error: 'Order changed while this was being saved' });
     res.json({ order });

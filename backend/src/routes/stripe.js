@@ -424,7 +424,9 @@ const ensureCriticalFulfillmentEffects = async (order) => {
   // reopening an old success link must not tell the owner about a months-old sale again.
   if ((order.paymentStatus === 'paid' || order.paymentMethod === BANK_DEBIT) && Date.now() - new Date(order.createdAt).getTime() < 60 * 60 * 1000) await announceNewOrder(order);
   // The same for the alert that says the order is blocked: the first attempt can stop between the insert and that alert.
-  if (order.fulfillmentBlocked === true && Date.now() - new Date(order.createdAt).getTime() < 60 * 60 * 1000) await announceUnmatched(order);
+  if (order.fulfillmentBlocked === true && Date.now() - new Date(order.createdAt).getTime() < 60 * 60 * 1000) {
+    await announceUnmatched(order).catch((error) => console.error(`Unmatched payment alert could not be recorded for ${order.stripeCheckoutSessionId}:`, error.message));
+  }
 
   return order;
 };

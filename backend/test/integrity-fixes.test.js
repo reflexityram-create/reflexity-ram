@@ -367,6 +367,32 @@ test('the owner can release a blocked order after reviewing it, once, and its tr
   assert.equal(tracking.status, 200, 'the released order goes on through the normal shipping actions');
 });
 
+// The review of the release route (2026-10-20): a POST with no body at all threw on `req.body.note` and answered 500 although the note is
+// optional; a cancelled, refunded or unpaid order could be "released", writing a history line that said so.
+test('the release works without a body, refuses a bad note, and refuses an order that is no longer paid and open', async (t) => {
+  const { app, headers } = adminApp(t);
+  const url = `/api/admin/orders/${PRODUCT_ID}/fulfillment-review`;
+  let doc = orderDoc({ fulfillmentBlocked: true, statusHistory: [] });
+  const writes = [];
+  stub(t, Order, {
+    findById: () => query(doc),
+    findOneAndUpdate: (filter, update) => { writes.push({ filter, update }); doc = { ...doc, ...update.$set }; return query(doc); },
+  });
+  assert.equal((await request(app, 'POST', url, { note: 'x'.repeat(301) }, headers)).status, 400, 'a note is at most 300 characters');
+  assert.equal((await request(app, 'POST', url, { note: ['a'] }, headers)).status, 400, 'and text');
+  for (const closed of [{ status: 'cancelled' }, { status: 'refunded', paymentStatus: 'refunded' }, { status: 'pending', paymentStatus: 'pending' }, { status: 'shipped' }]) {
+    doc = orderDoc({ fulfillmentBlocked: true, statusHistory: [], ...closed });
+    assert.equal((await request(app, 'POST', url, {}, headers)).status, 409, `an order that is ${JSON.stringify(closed)} is not released`);
+  }
+  assert.equal(writes.length, 0, 'nothing was written for any refused call');
+  doc = orderDoc({ fulfillmentBlocked: true, statusHistory: [] });
+  const bare = await request(app, 'POST', url, undefined, headers);   // no body at all: the note is optional, so the body is too
+  assert.equal(bare.status, 200);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].filter.paymentStatus, 'paid', 'the write itself needs a paid order, not only the read before it');
+  assert.equal(writes[0].update.$push.statusHistory.note, 'Unmatched Stripe item(s) reviewed by the owner and released for fulfillment');
+});
+
 test('the Google callback refuses an unverified email with its own error code, and the page has a message for it', () => {
   const auth = fs.readFileSync(path.join(__dirname, '../src/routes/auth.js'), 'utf8');
   assert.match(auth, /if \(!profile\.email\) return fail\('no_email'\);\s+if \(profile\.verified_email === false \|\| profile\.email_verified === false\) return fail\('email_not_verified'\);/);
