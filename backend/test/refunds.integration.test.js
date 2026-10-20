@@ -85,7 +85,8 @@ test('refunds on a real MongoDB, through the signed webhook', { skip }, async (r
     assert.equal(after.total, before.total);
     assert.ok(after.updatedAt > before.updatedAt, 'the order was touched');
     const events = await alerts();
-    assert.deepEqual(events.map((e) => [e.type, e.dedupeKey, e.priority]), [['order.refunded', `order.refunded:${order._id}`, 'normal']]);
+    assert.deepEqual(events.map((e) => [e.type, e.dedupeKey, e.priority]), [['order.refunded', `order.refunded:${order._id}`, 'high']]);
+    assert.match(events[0].body, /do not ship · its stock was taken: put it back/);
     assert.equal(String(events[0].orderId), String(order._id));
     assert.equal(events[0].path, `/admin/orders?order=${order._id}`);
     for (const secret of ['Samantha', 'Privatename', 'private', 'example.com', '4165550123', 'Secret St']) assert.equal(`${events[0].title} ${events[0].body}`.includes(secret), false, secret);
