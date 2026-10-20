@@ -38,7 +38,7 @@ async function reconcileWholesaleMedia({ MediaModel, WholesaleLotModel, publicId
       await asLean(MediaModel.findOneAndUpdate(
         { _id: media._id, state: 'available' },
         { $set: { state: 'attached', lotId: reference._id } },
-        { new: true },
+        { returnDocument: 'after' },
       ));
       return getMedia(MediaModel, publicId);
     }
@@ -50,7 +50,7 @@ async function reconcileWholesaleMedia({ MediaModel, WholesaleLotModel, publicId
       await asLean(MediaModel.findOneAndUpdate(
         { _id: media._id, state: 'claiming', claimId: media.claimId },
         { $set: { state: 'attached', lotId: reference._id, claimId: null, claimExpiresAt: null } },
-        { new: true },
+        { returnDocument: 'after' },
       ));
       return getMedia(MediaModel, publicId);
     }
@@ -63,7 +63,7 @@ async function reconcileWholesaleMedia({ MediaModel, WholesaleLotModel, publicId
           claimExpiresAt: { $lte: now },
         },
         { $set: { state: 'available', lotId: null, claimId: null, claimExpiresAt: null } },
-        { new: true },
+        { returnDocument: 'after' },
       ));
       return getMedia(MediaModel, publicId);
     }
@@ -79,7 +79,7 @@ async function reconcileWholesaleMedia({ MediaModel, WholesaleLotModel, publicId
         ? { $set: { lotId: reference._id } }
         : { $set: { state: 'available', lotId: null } };
       await asLean(MediaModel.findOneAndUpdate(
-        { _id: media._id, state: 'attached', lotId: media.lotId }, update, { new: true },
+        { _id: media._id, state: 'attached', lotId: media.lotId }, update, { returnDocument: 'after' },
       ));
       return getMedia(MediaModel, publicId);
     }
@@ -101,7 +101,7 @@ async function claimWholesaleMedia({ MediaModel, WholesaleLotModel, image, lotId
         lotId: null,
       },
     },
-    { new: true },
+    { returnDocument: 'after' },
   ));
   return claimed ? { claimId, media: claimed } : null;
 }
@@ -110,7 +110,7 @@ async function finalizeWholesaleMediaClaim({ MediaModel, publicId, claimId, lotI
   const media = await asLean(MediaModel.findOneAndUpdate(
     { publicId, state: 'claiming', claimId },
     { $set: { state: 'attached', lotId, claimId: null, claimExpiresAt: null } },
-    { new: true },
+    { returnDocument: 'after' },
   ));
   return Boolean(media);
 }
@@ -119,7 +119,7 @@ async function releaseWholesaleMediaClaim({ MediaModel, publicId, claimId }) {
   const media = await asLean(MediaModel.findOneAndUpdate(
     { publicId, state: 'claiming', claimId },
     { $set: { state: 'available', lotId: null, claimId: null, claimExpiresAt: null } },
-    { new: true },
+    { returnDocument: 'after' },
   ));
   return Boolean(media);
 }
@@ -131,7 +131,7 @@ async function releaseAttachedWholesaleMedia({ MediaModel, WholesaleLotModel, pu
   const media = await asLean(MediaModel.findOneAndUpdate(
     { publicId, state: 'attached', lotId },
     { $set: { state: 'available', lotId: null } },
-    { new: true },
+    { returnDocument: 'after' },
   ));
   return Boolean(media);
 }
@@ -148,7 +148,7 @@ async function reserveWholesaleMediaDeletion({ MediaModel, WholesaleLotModel, pu
     const retried = await asLean(MediaModel.findOneAndUpdate(
       { _id: media._id, state: 'deleting', deleteId: media.deleteId, deleteExpiresAt: { $lte: now } },
       { $set: { deleteId, deleteExpiresAt: new Date(now.getTime() + DELETE_LEASE_MS) } },
-      { new: true },
+      { returnDocument: 'after' },
     ));
     return retried ? { state: 'reserved', deleteId } : { state: 'busy' };
   }
@@ -160,7 +160,7 @@ async function reserveWholesaleMediaDeletion({ MediaModel, WholesaleLotModel, pu
     await asLean(MediaModel.findOneAndUpdate(
       { _id: media._id, state: { $in: ['available', 'attached'] } },
       { $set: { state: 'attached', lotId: reference._id } },
-      { new: true },
+      { returnDocument: 'after' },
     ));
     return { state: 'attached' };
   }
@@ -169,7 +169,7 @@ async function reserveWholesaleMediaDeletion({ MediaModel, WholesaleLotModel, pu
   const reserved = await asLean(MediaModel.findOneAndUpdate(
     { _id: media._id, state: 'available' },
     { $set: { state: 'deleting', deleteId, deleteExpiresAt: new Date(now.getTime() + DELETE_LEASE_MS) } },
-    { new: true },
+    { returnDocument: 'after' },
   ));
   if (reserved) return { state: 'reserved', deleteId };
 
@@ -182,7 +182,7 @@ async function finishWholesaleMediaDeletion({ MediaModel, publicId, deleteId }) 
   const media = await asLean(MediaModel.findOneAndUpdate(
     { publicId, state: 'deleting', deleteId },
     { $set: { state: 'deleted', deleteId: null, deleteExpiresAt: null, deletedAt: new Date() } },
-    { new: true },
+    { returnDocument: 'after' },
   ));
   return Boolean(media);
 }
