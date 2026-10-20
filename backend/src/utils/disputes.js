@@ -10,7 +10,7 @@
 
 const Order = require('../models/Order');
 const AdminEvent = require('../models/AdminEvent');
-const { recordAdminEvent, describeOrder, money } = require('./adminEvents');
+const { recordAdminEvent, recordRequiredAdminEvent, describeOrder, money } = require('./adminEvents');
 const { cancelReviewRequest } = require('./reviewRequests');
 
 // What the bank said, in words for the owner (Stripe's categories: https://docs.stripe.com/disputes/categories).
@@ -122,12 +122,9 @@ function alertFor(facts, order) {
 async function recordDisputeEvent(event, {
   OrderModel = Order, record = recordAdminEvent, cancelReview = cancelReviewRequest, alertExists = (key) => AdminEvent.exists({ dedupeKey: key }), logger = console,
 } = {}) {
-  // recordAdminEvent never throws and answers null both when the owner was already told and when the alert could not be written.
-  // For this message (it has a deadline) the second must not pass for the first: the webhook fails, and Stripe sends the event again.
-  const announce = async (alert) => {
-    if (await record(alert)) return;
-    if (!(await alertExists(alert.dedupeKey))) throw new Error(`The "${alert.type}" alert for ${alert.dedupeKey} could not be recorded`);
-  };
+  // This message has a deadline: an alert that could not be written must not pass for one already sent. The webhook fails instead, and
+  // Stripe sends the event again (recordRequiredAdminEvent).
+  const announce = (alert) => recordRequiredAdminEvent(alert, { record, exists: alertExists });
   const dispute = event?.data?.object;
   if (!dispute?.id) {
     logger.warn?.(`Dispute event ${event?.id || ''} has no dispute: ignored`);

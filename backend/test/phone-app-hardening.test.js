@@ -14,6 +14,7 @@ process.env.JWT_SECRET ||= 'phone-app-hardening-unit-test-secret';
 process.env.STRIPE_SECRET_KEY ||= 'sk_test_phone_app_hardening';
 
 const { memoryModel } = require('./helpers/memoryModel');
+const { refundOrderStore } = require('./helpers/refundOrderStore');
 const User = require('../src/models/User');
 const AdminEvent = require('../src/models/AdminEvent');
 const Order = require('../src/models/Order');
@@ -445,10 +446,11 @@ test('a Stripe refund alert is sent once even when Stripe delivers the event aga
   const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
   process.env.STRIPE_WEBHOOK_SECRET = 'whsec_phone_hardening';
   const cap = captureEvents();
-  const refunded = (id) => paidOrder({ _id: id, statusHistory: [], reviewRequest: {}, save: async () => undefined });
-  const realFindOne = Order.findOne; const realUpdate = Order.updateOne;
-  const order = refunded(new mongoose.Types.ObjectId());
-  Order.findOne = async () => order;
+  const order = paidOrder({ statusHistory: [], reviewRequest: {} });
+  const orders = refundOrderStore(order);
+  const realFindOne = Order.findOne; const realFindOneAndUpdate = Order.findOneAndUpdate; const realUpdate = Order.updateOne;
+  Order.findOne = orders.findOne;
+  Order.findOneAndUpdate = orders.findOneAndUpdate;
   Order.updateOne = async () => ({ modifiedCount: 1 });
   const app = express();
   app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
@@ -471,11 +473,13 @@ test('a Stripe refund alert is sent once even when Stripe delivers the event aga
     assert.equal(await deliver('evt_full', full), 200, 'redelivered');
     assert.deepEqual(cap.saved.map((e) => e.type), ['order.refunded'], 'one alert');
     assertPrivate(cap.saved[0]);
+    assert.equal(order.statusHistory.length, 1, 'and one line in the history, however often Stripe sends the event');
     const partial = { id: 'ch_1', object: 'charge', refunded: false, payment_intent: 'pi_1', amount_refunded: 5000 };
     assert.equal(await deliver('evt_partial', partial), 200);
     assert.equal(await deliver('evt_partial', partial), 200);
     assert.deepEqual(cap.saved.map((e) => e.type), ['order.refunded', 'order.partial_refund']);
-  } finally { Order.findOne = realFindOne; Order.updateOne = realUpdate; cap.restore(); }
+    assert.equal(order.statusHistory.length, 2, 'the partial refund adds one line, once');
+  } finally { Order.findOne = realFindOne; Order.findOneAndUpdate = realFindOneAndUpdate; Order.updateOne = realUpdate; cap.restore(); }
 });
 
 test('the success page poll re-announces a fresh paid order whose first alert was lost, once, and never an old one', async () => {
