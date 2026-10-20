@@ -14,17 +14,27 @@ const getResend = () => {
 const DISPLAY_CURRENCY = CURRENCY.toUpperCase();
 
 // One place for a Resend failure. Provider body text is never copied into logs or thrown errors because it may contain recipient data.
-const SAFE_RESEND_NAMES = new Set(['validation_error', 'rate_limit_exceeded', 'missing_api_key', 'invalid_api_key', 'not_found', 'internal_server_error']);
+// Resend's documented error names are fixed provider categories. Keep the list explicit so arbitrary provider text or object fields never
+// become part of a log or persisted lastError. The two local names cover SDK failures that never return a Resend error object.
+const SAFE_RESEND_NAMES = new Set([
+  'application_error', 'concurrent_idempotent_requests', 'daily_quota_exceeded', 'internal_server_error',
+  'invalid_access', 'invalid_api_key', 'invalid_from_address', 'invalid_idempotent_request', 'invalid_parameter',
+  'invalid_idempotency_key', 'invalid_attachment', 'invalid_region', 'method_not_allowed', 'missing_api_key',
+  'missing_required_field', 'monthly_quota_exceeded', 'network_error',
+  'not_found', 'rate_limit_exceeded', 'restricted_api_key', 'security_error', 'validation_error',
+]);
 const errorField = (error, field) => {
   try { return error?.[field]; } catch { return undefined; }
 };
 function failSend(error, action = 'send') {
   const rawName = errorField(error, 'name');
-  const name = SAFE_RESEND_NAMES.has(rawName) ? rawName : 'unknown';
+  const name = SAFE_RESEND_NAMES.has(rawName) ? rawName
+    : ['AbortError', 'FetchError', 'TypeError'].includes(rawName) ? 'network_error'
+      : !process.env.RESEND_API_KEY ? 'missing_api_key' : 'unknown';
   const rawStatus = errorField(error, 'statusCode');
   const statusCode = Number.isFinite(rawStatus) && Number.isInteger(rawStatus) && rawStatus >= 100 && rawStatus <= 599 ? rawStatus : undefined;
   console.error(`Resend ${action} error detail:`, JSON.stringify({ name, ...(statusCode === undefined ? {} : { statusCode }) }));
-  throw new Error(`Email ${action} failed: provider rejected the message`);
+  throw new Error('Email ' + action + ' failed (' + name + (statusCode === undefined ? '' : ', ' + statusCode) + ')');
 }
 const sendEmail = async (message, options) => {
   try {
