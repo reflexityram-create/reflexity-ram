@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 import test from "node:test";
 import { subscribeSystemTheme, systemTheme } from "../src/lib/systemTheme.js";
+import { THEME_COLOR } from "../src/lib/themeColors.js";
 
 const bootstrap = await readFile(new URL("../public/theme-bootstrap.js", import.meta.url), "utf8");
 function paint(saved, dark, blocked = false) {
@@ -19,7 +20,7 @@ function paint(saved, dark, blocked = false) {
   return { theme: [...classes][0], chrome };
 }
 test("first visit follows phone theme before React loads", () => {
-  assert.deepEqual(paint(null, true), { theme: "dark", chrome: "#050505" });
+  assert.deepEqual(paint(null, true), { theme: "dark", chrome: THEME_COLOR.dark });
   assert.equal(paint(null, false).theme, "light");
 });
 test("returning visitors retain either existing explicit choice", () => {
@@ -77,4 +78,16 @@ test("subscribing to the phone's appearance never throws, whatever the browser o
   const legacy = { matchMedia: () => ({ addListener: fn => legacyEvents.push(["add", fn]), removeListener: fn => legacyEvents.push(["remove", fn]) }) };
   withWindow(legacy, () => subscribeSystemTheme(notify))();
   assert.deepEqual(legacyEvents, [["add", notify], ["remove", notify]]);
+});
+
+test("the browser chrome colour is the page background of the active theme", async () => {
+  const css = await readFile(new URL("../src/index.css", import.meta.url), "utf8");
+  const indexHtml = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  const dark = css.match(/:root\s*\{[^}]*?--bg:\s*(#[0-9a-fA-F]{6})/)?.[1].toLowerCase();
+  const light = css.match(/html\.light\s*\{[^}]*?--bg:\s*(#[0-9a-fA-F]{6})/)?.[1].toLowerCase();
+  assert.ok(dark && light, "both themes define --bg");
+  assert.equal(paint(null, true).chrome, dark, "bootstrap, dark");
+  assert.equal(paint(null, false).chrome, light, "bootstrap, light");
+  assert.deepEqual({ ...THEME_COLOR }, { light, dark }, "theme.jsx colours");
+  assert.equal(indexHtml.match(/<meta name="theme-color" content="(#[0-9a-fA-F]{6})"/)?.[1].toLowerCase(), light, "index.html default");
 });

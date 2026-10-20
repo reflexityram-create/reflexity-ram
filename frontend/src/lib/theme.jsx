@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import { subscribeSystemTheme, systemTheme } from "./systemTheme.js";
+import { THEME_COLOR } from "./themeColors.js";
 
 const validTheme = (theme) => ["light", "dark", "system"].includes(theme);
 
@@ -34,6 +35,6 @@ export function useApplyTheme() {
     root.classList.toggle("light", theme === "light");
     root.classList.toggle("dark", theme === "dark");
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", theme === "light" ? "#f4f4f6" : "#050505");
+    if (meta) meta.setAttribute("content", THEME_COLOR[theme]);
   }, [theme]);
 }
