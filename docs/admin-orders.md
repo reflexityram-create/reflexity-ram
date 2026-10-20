@@ -71,8 +71,10 @@ server answers 409 to a tracking number, "shipped" and "delivered", the label pa
 emails leave it alone. After checking the payment in Stripe, `POST /api/admin/orders/:id/fulfillment-review` (optional `{ note }`, up to 300
 characters; the body itself is optional) releases it: the block is cleared only while the order is still blocked, paid and open (pending or
 processing; 409 for a cancelled, refunded or unpaid one), a history line names the admin who reviewed it, and the order then ships like any
-other. A second call answers 409. The admin page has no button for this yet. If the item cannot be sent, refund the payment in Stripe instead
-(a paid order cannot be cancelled here).
+other. A second call answers 409. On the Orders screen the order is marked "Check the payment first" in the phone list, and its sheet shows
+"Next: check the payment, then release it" in place of the ship card: the unmatched item, a link to the payment in Stripe, an optional note and
+one confirmed button that makes this call. If the item cannot be sent, refund the payment in Stripe instead (a paid order cannot be cancelled
+here).
 
 ## On a phone
 

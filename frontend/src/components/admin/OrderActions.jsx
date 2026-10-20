@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { ExternalLink, PackageCheck, Truck } from 'lucide-react';
+import { ExternalLink, PackageCheck, ShieldAlert, Truck } from 'lucide-react';
 import { toast } from 'sonner';
 import { adminApi } from '@/lib/api';
-import { BUYER_EMAIL, canCancel, shipEmailLine, shipRequest } from '@/lib/adminOrders';
+import { BUYER_EMAIL, canCancel, orderMoney, shipEmailLine, shipRequest, unmatchedItems } from '@/lib/adminOrders';
 import ConfirmButton from '@/components/admin/ConfirmButton';
 import PaymentPanel from '@/components/admin/PaymentPanel';
+import { stripePaymentUrl } from '@/lib/orderPayment';
 
 const Heading = ({ icon: Icon, children }) => (
   <div className="text-neutral-500 text-[11px] uppercase tracking-widest mb-3 flex items-center gap-1.5">
@@ -72,6 +73,7 @@ export default function OrderActions({ order, step, onChanged }) {
     );
   }
 
+  if (step.key === 'review') return <ReviewCard order={order} onChanged={onChanged} />;
   if (step.key === 'ship') return <ShipCard order={order} busy={busy} changeStatus={changeStatus} onChanged={onChanged} />;
 
   if (step.key === 'deliver') {
@@ -127,6 +129,66 @@ export default function OrderActions({ order, step, onChanged }) {
   if (step.key === 'done') return <p className="text-[13px] text-neutral-400" data-testid="order-next-done">Delivered {when(order.deliveredAt)}. Nothing more to do.</p>;
   if (step.key === 'closed') return <p className="text-[13px] text-neutral-400" data-testid="order-next-closed">This order is closed. Nothing more to do.</p>;
   return null;
+}
+
+// A paid order with a Stripe line no product matched is held by the server: no tracking number, no "shipped", no label. One button records that
+// the owner checked the payment and releases it; after that the order ships like any other.
+function ReviewCard({ order, onChanged }) {
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const stripeUrl = stripePaymentUrl(order);
+  const unmatched = unmatchedItems(order);
+
+  const release = async () => {
+    setBusy(true);
+    try {
+      const { data } = await adminApi.reviewBlockedOrder(order._id, note.trim());
+      await onChanged(data.order);
+      toast.success('Released. It can be shipped now.');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'The order could not be released');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="glass rounded-xl p-4 space-y-3 text-[13px]" data-testid="order-next-review">
+      <Heading icon={ShieldAlert}>Next: check the payment, then release it</Heading>
+      <p className="text-neutral-300">
+        This order is paid, but {unmatched.length === 1 ? 'one item' : unmatched.length > 1 ? `${unmatched.length} items` : 'part of it'} matches no product, so shipping is on hold.
+        Open the payment in Stripe and check what the buyer bought and paid. If you can send it, release the order. If you cannot, refund it in Stripe instead.
+      </p>
+      {unmatched.length > 0 && (
+        <ul className="rounded-xl border p-3 space-y-1" style={{ borderColor: 'var(--border-strong)' }} data-testid="order-review-items">
+          {unmatched.map((item, index) => (
+            <li key={index} className="flex justify-between gap-3">
+              <span className="min-w-0 break-words">{item.qty} × {item.name}</span>
+              <span className="mono shrink-0">{orderMoney(item.price * item.qty)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {stripeUrl && (
+        <a className="inline-flex items-center gap-1 underline underline-offset-4 text-neutral-300" href={stripeUrl} target="_blank" rel="noopener noreferrer" data-testid="order-review-stripe">
+          See it in Stripe <ExternalLink size={12} />
+        </a>
+      )}
+      <label className="block">
+        <span className="admin-label">Note on the check (optional, only you see it)</span>
+        <input className="input" value={note} onChange={(event) => setNote(event.target.value)} maxLength={300} data-testid="order-review-note" />
+      </label>
+      <ConfirmButton
+        label="I checked it, release for shipping"
+        confirmLabel="Yes, release it"
+        message={`Release ${order.orderNumber} for shipping? No email is sent. The tracking and shipped buttons work after this.`}
+        busy={busy}
+        onConfirm={release}
+        className="w-full"
+        testId="order-review-release"
+      />
+    </section>
+  );
 }
 
 // Ship it: a tracking number, or "no tracking number" when the parcel goes untracked. The buyer is emailed the moment it is marked.
