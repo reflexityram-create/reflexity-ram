@@ -58,3 +58,9 @@ test("the jump link to the live stock lands below the fixed header instead of un
   assert.ok(headerUnits > 0, "the header height is a Tailwind h-* class");
   assert.ok(clearanceUnits > headerUnits, `the stock heading needs scroll-mt-* above the ${headerUnits * 4}px header (got "${target}")`);
 });
+
+test("the jump link reserves its space while the catalog loads so the guide text does not jump", async () => {
+  const guides = await readFile(new URL("../src/pages/Guides.jsx", import.meta.url), "utf8");
+  // Measured on production: the link appearing above the sections pushed the whole article down by about 74px (CLS 0.02-0.03 per guide).
+  assert.match(guides, /productsLoading \? \(\s*<span className="btn-secondary mt-6 invisible" aria-hidden="true">Compare current server RAM<\/span>\s*\) : guideProducts\.length > 0 \? \(\s*<a href="#guide-current-stock" className="btn-secondary mt-6">Compare current server RAM<\/a>/);
+});

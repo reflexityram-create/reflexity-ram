@@ -130,7 +130,9 @@ export default function Home() {
               </div>
             </div>
 
-            {exactParts.length > 0 && (
+            {loading ? (
+              <div className="mt-12 skeleton rounded-xl h-[481px] md:h-[228px] lg:h-[188px]" aria-hidden="true" data-testid="home-exact-parts-loading" />
+            ) : exactParts.length > 0 && (
               <section className="mt-12" aria-labelledby="home-exact-parts">
                 <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
                   <div>

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { pickHomeExactParts } from "../src/lib/homeProducts.js";
 import { publicServerStock } from "../src/lib/catalog.js";
@@ -60,4 +61,10 @@ test("home exact parts are chosen from the whole catalog, not only the few newes
   assert.deepEqual(pickHomeExactParts(products), []);
   assert.deepEqual(pickHomeExactParts(catalog).map(({ slug }) => slug), ["older-a", "older-b"]);
   assert.deepEqual(publicServerStock(null, 6), { catalog: [], products: [] });
+});
+
+test("home reserves the exact-parts section's height while the catalog loads so the rest of the page does not jump", async () => {
+  const home = await readFile(new URL("../src/pages/Home.jsx", import.meta.url), "utf8");
+  // Heights measured from the loaded section: 481px stacked on a 390px phone, 228px at md, 188px from lg (CLS 0.028 -> 0.097 on a 1440px home page).
+  assert.match(home, /loading \? \(\s*<div className="mt-12 skeleton rounded-xl h-\[481px\] md:h-\[228px\] lg:h-\[188px\]" aria-hidden="true" data-testid="home-exact-parts-loading" \/>\s*\) : exactParts\.length > 0 && \(/);
 });

@@ -118,9 +118,11 @@ export default function Guides() {
             <div className="section-label mb-5"><span className="num">GUIDE</span> RAM BUYING GUIDE</div>
             <h1 className="display-2 max-w-[22ch]">{guide.title}</h1>
             <p className="mt-5 text-[17px] max-w-[62ch]" style={{ color: "var(--fg-muted)" }}>{guide.description}</p>
-            {guideProducts.length > 0 && (
+            {productsLoading ? (
+              <span className="btn-secondary mt-6 invisible" aria-hidden="true">Compare current server RAM</span>
+            ) : guideProducts.length > 0 ? (
               <a href="#guide-current-stock" className="btn-secondary mt-6">Compare current server RAM</a>
-            )}
+            ) : null}
             <div className="mt-10 grid gap-5">
               {guide.sections.map(([heading, body]) => (
                 <section key={heading} className="border-t pt-5" style={{ borderColor: "var(--border)" }}>
