@@ -100,3 +100,11 @@ test("the theme toggle states its action in its name and does not also claim a p
   assert.match(source, /Switch to \$\{isDark \? "light" : "dark"\} mode/);
   assert.doesNotMatch(source, /aria-pressed/);
 });
+
+test("the React theme hook reads the phone's appearance only through the guarded helpers", async () => {
+  const source = await readFile(new URL("../src/lib/theme.jsx", import.meta.url), "utf8");
+  // theme.jsx runs during render: one unguarded matchMedia call there unmounts the whole app in a browser without it.
+  assert.match(source, /import \{ subscribeSystemTheme, systemTheme \} from "\.\/systemTheme\.js";/);
+  assert.match(source, /useSyncExternalStore\(subscribeSystemTheme, systemTheme, \(\) => "light"\)/);
+  assert.doesNotMatch(source, /matchMedia/);
+});

@@ -82,9 +82,20 @@ test("the Featured pill laid over the home product photo stays readable in dark 
   // The dark-theme pill is brand yellow on translucent yellow, made for dark surfaces; on the photo's white tile that is about 1.4:1.
   assert.ok(contrast(token("brand-yellow"), "#ffffff") < 3, "the dark-theme pill colour is unreadable on the white photo tile");
   assert.match(home, /className="absolute top-3 left-3 pill pill-amber pill-on-photo /);
-  const rule = css.match(/html \.pill-amber\.pill-on-photo\s*\{([^}]*)\}/)?.[1] ?? "";
+  const rule = css.match(/html \.pill\.pill-amber\.pill-on-photo\s*\{([^}]*)\}/)?.[1] ?? "";
   assert.match(rule, /color:\s*var\(--brand-on-yellow\)/);
   assert.match(rule, /background:\s*var\(--brand-yellow-tint\)/);
   assert.ok(contrast(token("brand-on-yellow"), token("brand-yellow-tint")) >= 4.5, "the on-photo pill meets AA");
-  assert.ok(css.indexOf("html .pill-amber.pill-on-photo") > css.indexOf("html:not(.light) .pill-amber"), "the override comes after the dark rule");
+  // The override must win by specificity, not by coming later in the file: classes (a `:not()` counts its argument), then element names.
+  const specificity = (selector) => [(selector.match(/\.[\w-]+/g) || []).length, (selector.match(/(?:^|[\s>+~])[a-z][\w-]*/g) || []).length];
+  const [override, dark] = [specificity("html .pill.pill-amber.pill-on-photo"), specificity("html:not(.light) .pill-amber")];
+  assert.ok(css.includes("html:not(.light) .pill-amber"), "the dark rule it has to beat still exists under this selector");
+  assert.ok(override[0] > dark[0] || (override[0] === dark[0] && override[1] > dark[1]), `the override (${override}) outranks the dark rule (${dark})`);
+  assert.match(home, /className="absolute top-3 left-3 pill pill-amber pill-on-photo /, "the pill carries all three classes the selector needs");
+});
+
+test("the loading skeletons stop shimmering for people who ask for reduced motion", async () => {
+  const css = await read("../src/index.css");
+  const block = css.match(/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.skeleton\s*\{([^}]*)\}/)?.[1] ?? "";
+  assert.match(block, /animation:\s*none/);
 });

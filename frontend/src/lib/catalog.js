@@ -21,9 +21,18 @@ export function isPublicServerRam(product) {
   return product?.line === "Server";
 }
 
-/** Public server listings, newest first: the whole catalog, and the first `limit` of it for pages that show only a few. */
+/** Public server listings, newest first: the whole catalog, and the first `limit` of it for pages that show only a few. The catalog is read
+ *  page by page, so a listing added meanwhile can arrive on two pages: each slug is kept once. */
 export function publicServerStock(products, limit) {
-  const catalog = (Array.isArray(products) ? products : []).filter(isPublicServerRam);
+  const seen = new Set();
+  const catalog = (Array.isArray(products) ? products : []).filter((product) => {
+    if (!isPublicServerRam(product)) return false;
+    if (product.slug) {
+      if (seen.has(product.slug)) return false;
+      seen.add(product.slug);
+    }
+    return true;
+  });
   return { catalog, products: catalog.slice(0, limit) };
 }
 
