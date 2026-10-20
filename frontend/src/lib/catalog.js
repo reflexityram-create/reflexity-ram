@@ -21,6 +21,12 @@ export function isPublicServerRam(product) {
   return product?.line === "Server";
 }
 
+/** Public server listings, newest first: the whole catalog, and the first `limit` of it for pages that show only a few. */
+export function publicServerStock(products, limit) {
+  const catalog = (Array.isArray(products) ? products : []).filter(isPublicServerRam);
+  return { catalog, products: catalog.slice(0, limit) };
+}
+
 // The stick shown large on the home page: the one the admin ticked "Feature on
 // the home page", else the highest-priced one in stock. Never a sold-out one.
 export function pickFeatured(products) {

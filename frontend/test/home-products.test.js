@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { pickHomeExactParts } from "../src/lib/homeProducts.js";
+import { publicServerStock } from "../src/lib/catalog.js";
 
 const product = (overrides = {}) => ({
   line: "Server", stock: "in", slug: "module", brand: "Samsung", capacityLabel: "32GB",
@@ -43,4 +44,20 @@ test("home exact parts requires trimmed exact fields and accepts only valid slug
     ]).map(({ slug }) => slug),
     ["valid-part"],
   );
+});
+
+test("home exact parts are chosen from the whole catalog, not only the few newest listings the page displays", () => {
+  const soldOut = (n) => product({ slug: `sold-out-${n}`, stock: "out", stockQuantity: 0 });
+  const listings = [1, 2, 3, 4, 5, 6].map(soldOut).concat([
+    product({ slug: "older-a" }),
+    product({ slug: "older-b", capacityLabel: "64GB", formFactor: "LRDIMM" }),
+    product({ slug: "desktop-stick", line: "Desktop" }),
+  ]);
+  const { catalog, products } = publicServerStock(listings, 6);
+  assert.deepEqual(products.map(({ slug }) => slug), ["sold-out-1", "sold-out-2", "sold-out-3", "sold-out-4", "sold-out-5", "sold-out-6"]);
+  assert.deepEqual(catalog.map(({ slug }) => slug), [...products.map(({ slug }) => slug), "older-a", "older-b"]);
+  // Choosing from the displayed few finds nothing although two modules are in stock.
+  assert.deepEqual(pickHomeExactParts(products), []);
+  assert.deepEqual(pickHomeExactParts(catalog).map(({ slug }) => slug), ["older-a", "older-b"]);
+  assert.deepEqual(publicServerStock(null, 6), { catalog: [], products: [] });
 });

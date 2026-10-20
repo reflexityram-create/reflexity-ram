@@ -81,11 +81,11 @@ export default function Home() {
     description:
       "Tested Server RAM, including individual modules and small lots, shipped from Toronto.",
   });
-  const { loading, products } = useStock(6);
+  const { loading, products, catalog } = useStock(6);
   const publicProducts = products.filter(isPublicServerRam);
   const featured = pickFeatured(publicProducts);
   const rest = publicProducts.filter((p) => p !== featured);
-  const exactParts = pickHomeExactParts(publicProducts);
+  const exactParts = pickHomeExactParts(catalog);
 
   return (
     <>
