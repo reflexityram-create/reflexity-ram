@@ -23,9 +23,10 @@ test('a blocked paid order is held for a payment check instead of being offered 
 });
 
 test('the card names the Stripe lines that matched no product, by the prefix the server gives them', async () => {
-  const stripe = await read('../../backend/src/routes/stripe.js');
-  const prefix = stripe.match(/const UNMATCHED_SLUG_PREFIX = '([^']+)';/)?.[1];
+  const [server, here] = await Promise.all([read('../../backend/src/utils/unmatchedItems.js'), read('../src/lib/orderItems.js')]);
+  const prefix = server.match(/const UNMATCHED_SLUG_PREFIX = '([^']+)';/)?.[1];
   assert.ok(prefix, 'the server names its placeholder items with one prefix');
+  assert.equal(here.match(/export const UNMATCHED_SLUG_PREFIX = '([^']+)';/)?.[1], prefix, 'and the front end uses the same one');
   const items = [{ slug: `${prefix}price_ABC`, name: 'Mystery module', qty: 1, price: 50 }, { slug: 'hynix-32gb', name: 'SK Hynix 32GB', qty: 1, price: 60 }, null, {}];
   assert.deepEqual(unmatchedItems({ items }).map((item) => item.name), ['Mystery module']);
   assert.deepEqual(unmatchedItems({ items: [{ slug: 'hynix-32gb' }] }), []);

@@ -118,6 +118,20 @@ test('an international order with no items cannot be marked ready', async () => 
   assert.match(result.fulfillment.reason, /no items/);
 });
 
+test('the "check the payment first" hold is only shown while there is something to ship', () => {
+  const blocked = { fulfillmentBlocked: true };
+  const hold = fulfilmentState({ ...blocked, paymentStatus: 'paid', status: 'processing' });
+  assert.equal(hold.state, 'blocked_payment_item_mapping');
+  assert.equal(fulfilmentState({ ...blocked, paymentStatus: 'paid', status: 'pending' }).state, 'blocked_payment_item_mapping');
+  // a refunded, cancelled, shipped or still-unpaid order says what is true about it, not "review before shipping"
+  assert.deepEqual(fulfilmentState({ ...blocked, paymentStatus: 'refunded', status: 'refunded' }), { canCreateLabel: false, reason: 'This order is cancelled or refunded.' });
+  assert.deepEqual(fulfilmentState({ ...blocked, paymentStatus: 'paid', status: 'cancelled' }), { canCreateLabel: false, reason: 'This order is cancelled or refunded.' });
+  assert.deepEqual(fulfilmentState({ ...blocked, paymentStatus: 'paid', status: 'shipped' }), { canCreateLabel: false, reason: 'This order is already shipped.' });
+  assert.deepEqual(fulfilmentState({ ...blocked, paymentStatus: 'pending', status: 'pending' }), { canCreateLabel: false, reason: 'A label should only be created after payment is confirmed.' });
+  // released (flag off) is an ordinary order again
+  assert.equal(fulfilmentState({ fulfillmentBlocked: false, paymentStatus: 'paid', status: 'processing' }).canCreateLabel, true);
+});
+
 test('non-fulfillable states are explicit', () => {
   assert.equal(fulfilmentState({ paymentStatus: 'pending', status: 'processing' }).canCreateLabel, false);
   assert.equal(fulfilmentState({ paymentStatus: 'paid', status: 'shipped' }).canCreateLabel, false);

@@ -286,6 +286,62 @@ test('the "needs you" alert for an unmatched paid line opens that order when tap
   assert.equal(alert.path, '/admin/orders?order=o1');
 });
 
+// The owner's two alerts for an order held for an unmatched line must say what is true about its money.
+function captureAdminEvents(t) {
+  const mongoose = require('mongoose');
+  const AdminEvent = require('../src/models/AdminEvent');
+  const saved = [];
+  const realCreate = AdminEvent.create;
+  const realState = Object.getOwnPropertyDescriptor(mongoose.connection, 'readyState');
+  AdminEvent.create = async (doc) => { saved.push(doc); return { ...doc, _id: 'event-1' }; };
+  Object.defineProperty(mongoose.connection, 'readyState', { get: () => 1, configurable: true });
+  t.after(() => {
+    AdminEvent.create = realCreate;
+    if (realState) Object.defineProperty(mongoose.connection, 'readyState', realState); else delete mongoose.connection.readyState;
+  });
+  return saved;
+}
+const unmatchedOnly = (extra = {}) => stripeSession({
+  currency: 'cad',
+  line_items: { data: [{ price: { id: 'price_gone', unit_amount: 5000, product: {} }, quantity: 1 }] },
+  amount_subtotal: 5000, amount_total: 5000, ...extra,
+});
+
+test('a paid order held for an unmatched line: the first alert says it is on hold, the "needs you" alert says Paid; an ordinary order is unchanged', async (t) => {
+  const saved = captureAdminEvents(t);
+  await fulfil(t, unmatchedOnly({ id: 'cs_held_alerts' }));
+  assert.equal(saved.find((event) => event.type === 'order.paid').title, 'New order, paid: on hold, needs a check');
+  const needsYou = saved.find((event) => event.type === 'payment.unmatched');
+  assert.equal(needsYou.title, 'Paid order contains unmatched Stripe item(s): needs you');
+  assert.equal(needsYou.body, 'Paid 50.00 CAD, Stripe checkout cs_held_alerts: 1 line item(s) were preserved as blocked placeholders. Review the payment before shipping.');
+  saved.length = 0;
+  await fulfil(t, stripeSession({ id: 'cs_ordinary_alerts', currency: 'cad' }));
+  assert.equal(saved.find((event) => event.type === 'order.paid').title, 'New order, paid');
+  assert.equal(saved.find((event) => event.type === 'payment.unmatched'), undefined, 'no "needs you" alert when every line matched');
+});
+
+test('a bank debit that is still clearing is not announced as Paid when it holds an unmatched line', async (t) => {
+  const saved = captureAdminEvents(t);
+  await fulfil(t, unmatchedOnly({
+    id: 'cs_held_debit', status: 'complete', payment_status: 'unpaid', payment_method_types: ['acss_debit'],
+    metadata: { userId: 'guest', cartSessionId: 'session_0123456789', paymentMethod: 'bank_debit' },
+    payment_intent: { id: 'pi_held_debit', status: 'processing', latest_charge: null },
+  }));
+  const needsYou = saved.find((event) => event.type === 'payment.unmatched');
+  assert.equal(needsYou.title, 'Bank debit order contains unmatched Stripe item(s): needs you');
+  assert.equal(needsYou.body, 'Bank debit of 50.00 CAD, still clearing, Stripe checkout cs_held_debit: 1 line item(s) were preserved as blocked placeholders. Review the payment before shipping.');
+  assert.equal(saved.find((event) => event.type === 'order.paid'), undefined, 'and it is not called a paid sale either');
+  assert.equal(saved.find((event) => event.type === 'order.bank_debit_pending').title, 'Bank debit order: payment processing');
+});
+
+test('a bank debit that clears while its item mapping is still held stays on hold in the cleared alert', async (t) => {
+  const saved = captureAdminEvents(t);
+  const order = { _id: 'o-held-cleared', orderNumber: 'RFX-HOLD', fulfillmentBlocked: true, paymentMethod: 'bank_debit', paymentStatus: 'paid', status: 'processing', items: [] };
+  await stripeRouter.internalsForTest.announceCleared(order);
+  assert.equal(order.fulfillmentBlocked, true, 'settlement does not release the mapping hold');
+  assert.equal(saved[0].title, 'Bank debit cleared: on hold, needs a check');
+});
+
 test('the note that says which service to buy names international services instead of showing Canada Post codes', async (t) => {
   const order = await fulfil(t, stripeSession({
     id: 'cs_intl',

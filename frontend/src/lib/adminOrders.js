@@ -5,6 +5,7 @@
 // Relative imports on purpose: the unit tests load this file straight from Node, which does not know the '@/' alias.
 import { paymentState } from './orderPayment.js';
 import { statusOptions } from './adminOrderStatus.js';
+import { unmatchedItems } from './orderItems.js';
 
 // Same names as the server's views (backend/src/utils/adminOrders.js).
 export const ORDER_VIEWS = Object.freeze([
@@ -35,9 +36,8 @@ export function nextStep(order) {
   return { key: 'unpaid', payment };
 }
 
-// The Stripe lines of a paid order that no product matched are kept as placeholder items (UNMATCHED_SLUG_PREFIX in backend/src/routes/stripe.js).
-const UNMATCHED_SLUG_PREFIX = 'stripe-unmatched-';
-export const unmatchedItems = (order) => (Array.isArray(order?.items) ? order.items : []).filter((item) => String(item?.slug || '').startsWith(UNMATCHED_SLUG_PREFIX));
+// The Stripe lines of a paid order that no product matched are kept as placeholder items (lib/orderItems.js).
+export { unmatchedItems };
 
 // An unpaid order can be cancelled by hand (its stock goes back); a paid one only through a refund.
 // (statusOptions lists the order's own status first, so an already cancelled order must not count itself.)
