@@ -5,8 +5,11 @@
   about one run in three then fails ONE random file with `Unable to deserialize cloned data due to invalid or unsupported version` (a framing error
   inside Node's runner, seen in `integrity-fixes`, `review-requests` and `phone-app-hardening`; each passes alone). Measured 2026-10-14: 2 failing runs
   out of 6 at the default, 0 out of 6 at 3. CI's own runners have fewer cores, so the cap changes nothing there.
-- **Not run in CI**: `backend/test/payments-mongo.integration.test.js` and `admin-orders.integration.test.js` need a replica-set MongoDB
-  (`MONGODB_TEST_URI=mongodb://127.0.0.1:27019/x?directConnection=true`, a `mongo:7 --replSet rs0` container). Run them after touching orders, stock or payments.
+- **Not run in CI**: `backend/test/payments-mongo.integration.test.js`, `admin-orders.integration.test.js`,
+  `disputes.integration.test.js` and `refunds.integration.test.js` need a disposable MongoDB (payments require a replica set)
+  (`MONGODB_TEST_URI=mongodb://127.0.0.1:27019/x?directConnection=true`, a `mongo:7 --replSet rs0` container). Run them after touching orders, stock or payments. Use a unique task-owned database: these suites drop it.
+  Refund coverage exercises the signed webhook, repeated/concurrent deliveries, partial/full ordering,
+  unmatched owner alerts and required-alert failure/retry.
 - **Not in this repository**: the real-browser walkthroughs (Playwright against the isolated local stack with a stand-in for Stripe, Resend and Canada Post).
   They live in the owner's project notes (`.ai/artifacts/payments-2026-10-13/e2e/`) and are the only proof of behaviour that needs a browser: the
   back/forward-cache restore of the checkout page (`walk-checkout-fixes.cjs`; Playwright turns that cache OFF by default, the script turns it on),

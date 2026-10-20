@@ -77,6 +77,21 @@ bank debits). A card order has no `paidAt` and is judged by its creation, exactl
    there; if it is not, nothing changes and the owner sends the money back.
 4. A paid e-Transfer order is refunded by sending the money back by e-Transfer, then "Record a refund" (no stock change, like a Stripe refund).
 
+## Refund webhooks
+
+`charge.refunded` records Stripe refunds; it never initiates a refund or restores stock.
+A full refund atomically marks the order refunded and adds one history line. Partial refunds
+retain the payment/fulfillment state and add one line per cumulative refunded amount.
+Conditional database writes prevent duplicate history on redelivery or concurrent delivery;
+a delayed partial event cannot change a fully refunded order back to paid.
+
+When no order matches the charge or PaymentIntent, the owner receives a deduplicated
+`payment.refund_unmatched` alert. If that required alert cannot be persisted, the webhook
+returns 500 so Stripe retries. A full-refund delivery also attempts to cancel a scheduled
+review email. Ordinary matched-order alerts and review cancellation keep their existing
+best-effort behavior. An order recorded after its refund follows the existing checkout
+reconciliation path and is created already refunded.
+
 ## Alerts
 
 `order.etransfer_pending`, `order.etransfer_expired`, `order.bank_debit_pending`, `order.bank_debit_paid`, `order.payment_failed`,
