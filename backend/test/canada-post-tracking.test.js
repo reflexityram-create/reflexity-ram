@@ -136,6 +136,32 @@ test('a failed email is released so the next run retries it', async () => {
   });
 });
 
+test('a retried tracking email carries the same idempotency key, so a lost answer cannot email the buyer twice', async () => {
+  const outTracking = canadaPost.normalizeTracking({}, { significantEvents: DELIVERED_EVENTS.slice(2) });
+  await withFakeOrders([shippedOrder()], async (fake) => {
+    const keys = [];
+    const deps = {
+      trackParcel: async () => outTracking,
+      sendEmail: async (message) => { keys.push(message.idempotencyKey); if (keys.length === 1) throw new Error('answer lost after Resend accepted it'); },
+      now: () => new Date('2026-09-24T18:00:00Z'),
+    };
+    await syncShippedOrders(deps);
+    fake.store[0].trackingLatest.checkedAt = undefined;
+    await syncShippedOrders(deps);
+    assert.deepEqual(keys, ['tracking-email:o1:outForDelivery', 'tracking-email:o1:outForDelivery']);
+  });
+  await withFakeOrders([shippedOrder({ _id: 'o2' })], async () => {
+    const keys = [];
+    const deps = {
+      trackParcel: async () => canadaPost.normalizeTracking(DELIVERED_SUMMARY, { significantEvents: DELIVERED_EVENTS }),
+      sendEmail: async (message) => { keys.push(message.idempotencyKey); },
+      now: () => new Date('2026-09-24T20:00:00Z'),
+    };
+    await syncShippedOrders(deps);
+    assert.deepEqual(keys, ['tracking-email:o2:delivered'], 'each kind of update has its own key');
+  });
+});
+
 test('the sync endpoint needs the shared token', async () => {
   const app = express();
   app.use('/api/tracking', trackingRouter);

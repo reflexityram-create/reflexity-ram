@@ -323,7 +323,7 @@ const TRACKING_EMAILS = {
   },
 };
 
-const sendTrackingUpdateEmail = async ({ email, firstName, order, kind }) => {
+const sendTrackingUpdateEmail = async ({ email, firstName, order, kind, idempotencyKey }) => {
   const copy = TRACKING_EMAILS[kind];
   if (!copy) throw new Error(`Unknown tracking email: ${kind}`);
   const orderUrl = orderAccessUrl(FRONTEND_URL, order, email);
@@ -351,7 +351,7 @@ const sendTrackingUpdateEmail = async ({ email, firstName, order, kind }) => {
       </body>
       </html>
     `,
-  });
+  }, idempotencyKey ? { idempotencyKey } : undefined);
   if (error) failSend(error);
   return data;
 };
