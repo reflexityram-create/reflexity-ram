@@ -1561,4 +1561,36 @@ test('payments on a real MongoDB replica set', { skip }, async (root) => {
     assert.equal(tried[2], String(orders[2]._id), 'the one not tried yet goes first in the next run');
     assert.deepEqual(new Set(tried), new Set(orders.map((o) => String(o._id))), 'every notice was tried');
   });
+
+  await root.test('review 2026-10-22: Google sign-in over a never-confirmed password registration leaves the registrant nothing on the stored account', async () => {
+    await reset();
+    const { resolveGoogleUser } = require('../src/routes/auth');
+    const { authenticate } = require('../src/middleware/auth');
+    const registered = await User.create({
+      email: 'victim@example.com', password: 'Registrant1pw', firstName: 'Reg', lastName: 'Istrant',
+      emailVerificationToken: 'hash-of-link', emailVerificationExpires: new Date(Date.now() + HOUR),
+      passwordResetToken: 'hash-of-reset', passwordResetExpires: new Date(Date.now() + HOUR),
+      addresses: [{ line1: '9 Planted St' }], defaultAddress: { line1: '9 Planted St' },
+    });
+    const registrantToken = generateAccessToken(registered._id, registered.authVersion);
+    const attempt = (token) => new Promise((resolve) => {
+      const res = { status(code) { this.code = code; return this; }, json() { resolve(this.code); } };
+      authenticate({ headers: { authorization: `Bearer ${token}` }, cookies: {} }, res, () => resolve(200));
+    });
+    assert.equal(await attempt(registrantToken), 200, 'before the owner arrives, the registrant is signed in');
+
+    const user = await resolveGoogleUser({ id: 'g-9', email: 'victim@example.com', verified_email: true }, 'general');
+    assert.equal(String(user._id), String(registered._id));
+
+    const stored = await User.findById(registered._id).select('+password +emailVerificationToken +emailVerificationExpires +passwordResetToken +passwordResetExpires').lean();
+    for (const field of ['password', 'emailVerificationToken', 'emailVerificationExpires', 'passwordResetToken', 'passwordResetExpires', 'defaultAddress']) {
+      assert.equal(stored[field], undefined, `${field} is gone from the database`);
+    }
+    assert.deepEqual(stored.addresses, []);
+    assert.equal(stored.googleId, 'g-9');
+    assert.equal(stored.isEmailVerified, true);
+    assert.equal(stored.authVersion, 1);
+    assert.equal(await attempt(registrantToken), 401, 'the registrant\'s old session no longer opens the account');
+    assert.equal(await attempt(generateAccessToken(stored._id, stored.authVersion)), 200, 'the owner\'s new session does');
+  });
 });

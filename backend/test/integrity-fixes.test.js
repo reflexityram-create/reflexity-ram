@@ -199,6 +199,49 @@ test('a Google profile whose email Google reports as unverified resolves to no a
   assert.equal(touched.filter(([kind]) => kind === 'findOne').length, 2);
 });
 
+// ── 4b. Google proves the address, so what a never-confirmed password registration holds does not survive it ──────────────────
+// Signup logs the registrant in at once, so someone can register a victim's address first and keep the password, the session and a
+// planted shipping address after the real owner arrives with "Continue with Google".
+const registration = (overrides = {}) => {
+  const doc = {
+    _id: 'u1', email: 'victim@example.com', role: 'customer', isActive: true, isEmailVerified: false, authVersion: 3,
+    password: 'hash-of-the-registrants-password', emailVerificationToken: 'v1', emailVerificationExpires: new Date(), passwordResetToken: 'r1', passwordResetExpires: new Date(),
+    addresses: [{ line1: '9 Planted St' }], defaultAddress: { line1: '9 Planted St' }, saves: 0,
+    async save() { this.saves += 1; },
+    ...overrides,
+  };
+  return doc;
+};
+const googleProfile = { id: 'g-9', email: 'victim@example.com', verified_email: true };
+
+test('Google sign-in over an unconfirmed password registration strips the registrant of password, tokens, sessions and addresses', async () => {
+  const stale = registration();
+  const UserModel = { findOne: async () => stale, create: async () => assert.fail('the existing account is used, none is created') };
+  const user = await resolveGoogleUser(googleProfile, 'general', { UserModel });
+  assert.equal(user, stale);
+  assert.equal(stale.googleId, 'g-9');
+  assert.equal(stale.isEmailVerified, true);
+  assert.equal(stale.password, undefined, 'the registrant password no longer opens the account');
+  assert.equal(stale.authVersion, 4, 'sessions the registrant already holds stop working');
+  assert.equal(stale.emailVerificationToken, undefined);
+  assert.equal(stale.passwordResetToken, undefined);
+  assert.deepEqual(stale.addresses, []);
+  assert.equal(stale.defaultAddress, undefined);
+  assert.equal(stale.saves, 1);
+});
+
+test('Google sign-in over an account whose address was confirmed, or an admin account, keeps what it holds', async () => {
+  for (const overrides of [{ isEmailVerified: true }, { role: 'admin' }]) {
+    const account = registration(overrides);
+    const UserModel = { findOne: async () => account, create: async () => assert.fail('no account is created') };
+    await resolveGoogleUser(googleProfile, 'general', { UserModel });
+    assert.equal(account.googleId, 'g-9');
+    assert.equal(account.password, 'hash-of-the-registrants-password');
+    assert.equal(account.authVersion, 3);
+    assert.deepEqual(account.addresses, [{ line1: '9 Planted St' }]);
+  }
+});
+
 // ── 5. a paid line item no product matches is put on the order, not just in a log ─────────────
 const stripeSession = (overrides = {}) => ({
   id: 'cs_fulfil', payment_status: 'paid',

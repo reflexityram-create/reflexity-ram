@@ -76,6 +76,20 @@ async function resolveGoogleUser(profile, purpose, { UserModel = User, now = () 
 
   let user = await UserModel.findOne(identityFilter);
   if (user) {
+    // Google has just shown that this person owns the address. A password account that holds it without ever confirming it may
+    // have been registered by someone else ahead of time (signup logs the registrant in at once), so what that registration holds
+    // ends here: its password, its pending link and reset tokens, the sessions already issued, and the addresses it saved
+    // (a planted default shipping address). An admin account is made by the owner, never by signup, and is left alone.
+    if (!user.isEmailVerified && user.role !== 'admin') {
+      user.password = undefined;
+      user.emailVerificationToken = undefined;
+      user.emailVerificationExpires = undefined;
+      user.passwordResetToken = undefined;
+      user.passwordResetExpires = undefined;
+      user.authVersion = (user.authVersion || 0) + 1;
+      user.addresses = [];
+      user.defaultAddress = undefined;
+    }
     if (!user.googleId) user.googleId = profile.id;
     if (!user.avatar && profile.picture) user.avatar = profile.picture;
     if (!user.isEmailVerified) user.isEmailVerified = true;
