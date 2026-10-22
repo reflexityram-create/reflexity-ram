@@ -21,7 +21,7 @@ process.env.FRONTEND_URL = 'https://reflexityram.com';
 
 const { trackingUrlFor, CANADA_POST_TRACKING_PAGE } = require('../src/utils/tracking');
 const { customerOrderResponse } = require('../src/utils/customerOrders');
-const { sendShippingNotificationEmail } = require('../src/utils/email');
+const { sendShippingNotificationEmail, sendTrackingUpdateEmail } = require('../src/utils/email');
 
 const hrefs = (html) => [...html.matchAll(/<a href="([^"]*)"[^>]*>([^<]*)<\/a>/g)].map(([, href, text]) => [text.trim(), href]);
 
@@ -70,4 +70,13 @@ test('a shipping email without a tracking number offers the order page only', as
     order: { _id: '6ac2d644ce61cd9a8fb13b53', orderNumber: 'RFX-RETRY', trackingNumber: 'CP123' },
     idempotencyKey: 'shipment/6ac2d644ce61cd9a8fb13b53' });
   assert.deepEqual(sendOptions.at(-1), { idempotencyKey: 'shipment/6ac2d644ce61cd9a8fb13b53' });
+});
+
+test('tracking update retry keys reach Resend instead of being discarded by the email wrapper', async () => {
+  await sendTrackingUpdateEmail({ email: 'buyer@example.com', firstName: 'Buyer', kind: 'delivered',
+    order: { _id: '6ac2d644ce61cd9a8fb13b54', orderNumber: 'RFX-DELIVERED', trackingNumber: 'CP123' },
+    idempotencyKey: 'tracking-email:6ac2d644ce61cd9a8fb13b54:delivered' });
+  assert.deepEqual(sendOptions.at(-1), { idempotencyKey: 'tracking-email:6ac2d644ce61cd9a8fb13b54:delivered' });
+  await sendTrackingUpdateEmail({ email: 'buyer@example.com', firstName: 'Buyer', kind: 'pickup', order: { _id: 'x', orderNumber: 'RFX-NOKEY' } });
+  assert.equal(sendOptions.at(-1), undefined, 'a caller without a key sends exactly as before');
 });

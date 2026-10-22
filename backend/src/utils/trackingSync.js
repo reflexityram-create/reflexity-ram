@@ -32,7 +32,8 @@ const recipientFor = (order) => ({
 });
 
 // Claim the order's once-only flag, then send. A failed send releases the
-// claim so the next run tries again.
+// claim so the next run tries again; the idempotency key keeps that retry from
+// emailing the buyer twice when the first send was accepted but its answer was lost.
 const sendOnce = async (order, flag, kind, deps) => {
   const { email, firstName } = recipientFor(order);
   if (!email) return false;
@@ -40,7 +41,7 @@ const sendOnce = async (order, flag, kind, deps) => {
   const claimed = await Order.findOneAndUpdate({ _id: order._id, paymentStatus: 'paid', status: { $in: ['shipped', 'delivered'] }, [flag]: null }, { $set: { [flag]: now } });
   if (!claimed) return false;
   try {
-    await deps.sendEmail({ email, firstName, order, kind });
+    await deps.sendEmail({ email, firstName, order, kind, idempotencyKey: `tracking-email:${order._id}:${kind}` });
     return true;
   } catch (err) {
     await Order.updateOne({ _id: order._id, [flag]: now }, { $unset: { [flag]: '' } });
