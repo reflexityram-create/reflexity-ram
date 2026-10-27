@@ -361,6 +361,64 @@ html.light .callout-brand .callout-body {
     border-bottom: 1px solid var(--border);
 }
 
+/* Phone header: the logo and one useful destination form a deliberate rhythm;
+   the utility icons stay in their own quiet cluster. */
+.mobile-shop-shortcut {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    min-height: 44px;
+    margin-left: 0;
+    margin-right: 3px;
+    padding: 0 9px;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    color: var(--fg-muted);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+.mobile-shop-shortcut:hover,
+.mobile-shop-shortcut:focus-visible {
+    color: var(--fg-strong);
+    border-color: var(--border-hover);
+    background: var(--glass-bg-soft);
+}
+@media (min-width: 1024px) {
+    .mobile-shop-shortcut { display: none; }
+}
+@media (min-width: 390px) and (max-width: 1023px) {
+    .mobile-shop-shortcut { margin-right: 7px; padding-inline: 10px; }
+}
+@media (max-width: 359px) {
+    .mobile-shop-shortcut { display: none; }
+    .theme-toggle-label { display: none; }
+}
+
+/* Header utilities need their own light-theme states: dark utility classes
+   otherwise leave white hover fills and a dark account popover on pale paper. */
+html.light .header-account-dropdown {
+    background: rgba(255, 255, 255, 0.98) !important;
+    border-color: var(--border-strong) !important;
+    box-shadow: 0 18px 42px rgba(23, 24, 26, 0.14);
+}
+html.light .header-account-dropdown .text-white,
+html.light .header-account-dropdown .text-neutral-300,
+html.light .header-account-dropdown .text-neutral-500 {
+    color: var(--fg) !important;
+}
+html.light .header-account-dropdown .border-white\/5 {
+    border-color: var(--border) !important;
+}
+html.light .hover\:text-white:hover { color: var(--fg-strong) !important; }
+html.light .hover\:bg-white\/\[0\.05\]:hover { background: rgba(15, 15, 20, 0.05) !important; }
+html.light .cart-count-badge {
+    background: var(--brand-yellow) !important;
+    color: var(--brand-on-yellow) !important;
+}
+
 /* Tag/pill */
 .pill {
     display: inline-flex;
