@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import {
   ShoppingCart, User, Menu, X,
   ChevronDown, LayoutDashboard, LogOut, Settings as SettingsIcon,
+  ArrowUpRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import ReflexityMark from "@/components/ReflexityMark";
@@ -72,6 +73,17 @@ export default function Header() {
             </div>
           </Link>
 
+          {/* A single high-signal shortcut keeps the phone header useful without
+              turning it into a cramped row of tiny icons. */}
+          <Link
+            to="/categories"
+            className="mobile-shop-shortcut lg:hidden"
+            aria-label="Shop RAM"
+            data-testid="mobile-shop-shortcut"
+          >
+            Shop <ArrowUpRight size={13} aria-hidden="true" />
+          </Link>
+
           {/* ── Desktop nav ────────────────────────────── */}
           <nav className="hidden lg:flex items-center gap-0.5 flex-1" data-testid="header-nav">
             {NAV.map((n) => (
@@ -115,7 +127,7 @@ export default function Header() {
 
               {accountOpen && (
                 <div
-                  className="absolute right-0 mt-1.5 w-48 bg-neutral-900/98 backdrop-blur border border-white/10 rounded-xl shadow-2xl overflow-hidden z-40"
+                  className="header-account-dropdown absolute right-0 mt-1.5 w-48 bg-neutral-900/98 backdrop-blur border border-white/10 rounded-xl shadow-2xl overflow-hidden z-40"
                   data-testid="header-account-dropdown"
                 >
                   {isAuthenticated() ? (
@@ -179,7 +191,7 @@ export default function Header() {
               <ShoppingCart size={17} className="text-neutral-300" />
               {itemCount > 0 && (
                 <span
-                  className="absolute -top-0.5 -right-0.5 min-w-[17px] h-[17px] px-1 rounded-full bg-white text-black text-[9px] font-bold flex items-center justify-center"
+                  className="cart-count-badge absolute -top-0.5 -right-0.5 min-w-[17px] h-[17px] px-1 rounded-full bg-white text-black text-[9px] font-bold flex items-center justify-center"
                   data-testid="header-cart-count"
                 >
                   {itemCount}
