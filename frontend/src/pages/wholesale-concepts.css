@@ -58,7 +58,7 @@ html.dark .wholesale-simple {
   height: 680px;
   pointer-events: none;
   position: absolute;
-  right: -140px;
+  right: 0;
   top: -210px;
   width: 680px;
 }
@@ -193,6 +193,8 @@ html.dark .wholesale-simple-shell :is(a,button):focus-visible { outline-color: #
 }
 
 @media (max-width: 720px) {
+  /* Keep the decorative glow inside the mobile viewport for touch navigation. */
+  .ws-glow { height: 460px; max-width: 100vw; right: 0; width: 100vw; }
   .ws-container { width: min(100% - 30px,1180px); }
   .ws-market { padding: 82px 0 58px; }
   .ws-market-head { align-items: start; grid-template-columns: 1fr; }

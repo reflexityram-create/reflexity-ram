@@ -19,8 +19,8 @@ function paint(saved, dark, blocked = false) {
   });
   return { theme: [...classes][0], chrome };
 }
-test("first visit follows phone theme before React loads", () => {
-  assert.deepEqual(paint(null, true), { theme: "dark", chrome: THEME_COLOR.dark });
+test("first visit uses the branded light theme before React loads", () => {
+  assert.deepEqual(paint(null, true), { theme: "light", chrome: THEME_COLOR.light });
   assert.equal(paint(null, false).theme, "light");
 });
 test("returning visitors retain either existing explicit choice", () => {
@@ -28,11 +28,11 @@ test("returning visitors retain either existing explicit choice", () => {
     assert.equal(paint(JSON.stringify({ state: { theme }, version: 0 }), theme !== "dark").theme, theme);
   }
 });
-test("invalid or unavailable storage falls back to phone theme", () => {
+test("invalid or unavailable storage falls back to branded light theme", () => {
   for (const saved of ["bad json", '{"state":{"theme":"invalid"}}', '{"state":{"theme":"system"}}']) {
-    assert.equal(paint(saved, true).theme, "dark");
+    assert.equal(paint(saved, true).theme, "light");
   }
-  assert.equal(paint(null, true, true).theme, "dark");
+  assert.equal(paint(null, true, true).theme, "light");
 });
 
 function paintWith(windowStub, saved = null) {
@@ -54,13 +54,13 @@ function withWindow(stub, run) {
   try { return run(); } finally { if (had) globalThis.window = previous; else delete globalThis.window; }
 }
 
-test("a browser with no media queries, or whose matchMedia throws, still gets a theme before first paint", () => {
+test("a browser without media queries still gets a light theme before first paint", () => {
   assert.equal(paintWith({}), "light");
   assert.equal(paintWith({ matchMedia() { throw new Error("blocked"); } }), "light");
   assert.equal(paintWith({}, JSON.stringify({ state: { theme: "dark" } })), "dark");
 });
 
-test("the phone's appearance resolves to light when matchMedia is missing or throws", () => {
+test("the guarded system-theme helper remains safe for legacy callers", () => {
   assert.equal(withWindow({}, () => systemTheme()), "light");
   assert.equal(withWindow({ matchMedia() { throw new Error("blocked"); } }, () => systemTheme()), "light");
   assert.equal(withWindow({ matchMedia: () => ({ matches: true }) }, () => systemTheme()), "dark");
@@ -86,7 +86,7 @@ test("the browser chrome colour is the page background of the active theme", asy
   const dark = css.match(/:root\s*\{[^}]*?--bg:\s*(#[0-9a-fA-F]{6})/)?.[1].toLowerCase();
   const light = css.match(/html\.light\s*\{[^}]*?--bg:\s*(#[0-9a-fA-F]{6})/)?.[1].toLowerCase();
   assert.ok(dark && light, "both themes define --bg");
-  assert.equal(paint(null, true).chrome, dark, "bootstrap, dark");
+  assert.equal(paint(JSON.stringify({ state: { theme: "dark" } }), false).chrome, dark, "bootstrap, dark");
   assert.equal(paint(null, false).chrome, light, "bootstrap, light");
   assert.deepEqual({ ...THEME_COLOR }, { light, dark }, "theme.jsx colours");
   assert.equal(indexHtml.match(/<meta name="theme-color" content="(#[0-9a-fA-F]{6})"/)?.[1].toLowerCase(), light, "index.html default");
@@ -99,12 +99,12 @@ test("the theme toggle states its action in its name and does not also claim a p
   assert.match(source, /aria-label=\{label\}/);
   assert.match(source, /Switch to \$\{isDark \? "light" : "dark"\} mode/);
   assert.doesNotMatch(source, /aria-pressed/);
+  assert.match(source, /theme-toggle-label/);
 });
 
-test("the React theme hook reads the phone's appearance only through the guarded helpers", async () => {
+test("the React theme hook uses the explicit persisted light/dark choice", async () => {
   const source = await readFile(new URL("../src/lib/theme.jsx", import.meta.url), "utf8");
-  // theme.jsx runs during render: one unguarded matchMedia call there unmounts the whole app in a browser without it.
-  assert.match(source, /import \{ subscribeSystemTheme, systemTheme \} from "\.\/systemTheme\.js";/);
-  assert.match(source, /useSyncExternalStore\(subscribeSystemTheme, systemTheme, \(\) => "light"\)/);
-  assert.doesNotMatch(source, /matchMedia/);
+  assert.match(source, /theme: "light"/);
+  assert.match(source, /return useTheme\(\(s\) => s\.theme\)/);
+  assert.doesNotMatch(source, /useSyncExternalStore/);
 });

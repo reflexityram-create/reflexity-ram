@@ -1,31 +1,28 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-import { subscribeSystemTheme, systemTheme } from "./systemTheme.js";
 import { THEME_COLOR } from "./themeColors.js";
 
-const validTheme = (theme) => ["light", "dark", "system"].includes(theme);
+const validTheme = (theme) => ["light", "dark"].includes(theme);
 
 // Keep the existing storage key so returning visitors retain their choice.
 export const useTheme = create(
   persist(
     (set) => ({
-      theme: "system",
-      setTheme: (theme) => set({ theme: validTheme(theme) ? theme : "system" }),
+      theme: "light",
+      setTheme: (theme) => set({ theme: validTheme(theme) ? theme : "light" }),
     }),
     {
       name: "reflexity-theme",
       partialize: ({ theme }) => ({ theme }),
-      merge: (saved, current) => ({ ...current, theme: validTheme(saved?.theme) ? saved.theme : "system" }),
+      merge: (saved, current) => ({ ...current, theme: validTheme(saved?.theme) ? saved.theme : "light" }),
     },
   ),
 );
 
 export function useResolvedTheme() {
-  const theme = useTheme((s) => s.theme);
-  const system = useSyncExternalStore(subscribeSystemTheme, systemTheme, () => "light");
-  return theme === "system" ? system : theme;
+  return useTheme((s) => s.theme);
 }
 
 export function useApplyTheme() {
