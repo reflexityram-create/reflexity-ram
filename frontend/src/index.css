@@ -211,6 +211,7 @@ html,
 body {
     margin: 0;
     padding: 0;
+    overflow-x: clip;
     background-color: var(--bg);
     color: var(--fg);
     font-family: "Instrument Sans", -apple-system, BlinkMacSystemFont, sans-serif;
@@ -835,6 +836,21 @@ html.light .text-neutral-500 {
 html.light .text-neutral-600,
 html.light .text-neutral-700 {
     color: #666670 !important;
+}
+
+/* Dark muted utility text needs a little more lift on the near-black cards.
+   The stock Tailwind neutral-600 is designed for light paper and falls below
+   a comfortable reading contrast against --bg-elev, most noticeably in the
+   product metadata/detail rows on phones. Keep the hierarchy subtle while
+   making labels and notes readable in both breakpoints. */
+html.dark .text-neutral-500 {
+    color: #85878d !important;
+}
+html.dark .text-neutral-600 {
+    color: #73757c !important;
+}
+html.dark .text-neutral-700 {
+    color: #65676e !important;
 }
 
 html.light .border-white\/5,
