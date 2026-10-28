@@ -101,9 +101,9 @@ const CATEGORIES = [
 
 export default function Categories() {
   useSEO({
-    title: "Shop RAM — Reflexity RAM",
+    title: "Server RAM Categories — Reflexity RAM",
     description:
-      "Browse tested Server memory from Reflexity RAM.",
+      "Browse tested Server RAM by DDR generation, form factor, and capacity.",
   });
 
   return (

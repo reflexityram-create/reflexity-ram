@@ -269,8 +269,22 @@ export function injectProductMetadata(html, product, requestedSlug) {
   const formFactor = normalizeText(product.formFactor, 40);
   const schema = buildProductSchema(product, { url: metadata.canonicalUrl, description: metadata.description, images: [metadata.imageUrl] });
   output = insertBeforeHeadClose(output, `<script type="application/ld+json" data-edge-product>${safeJson(schema)}</script>`);
-  const details = [generation, formFactor, normalizeText(product.capacityLabel, 40), normalizeText(product.speedLabel, 40)].filter(Boolean).join(" · ");
-  const body = `<div id="root"><main data-edge-content="product"><nav><a href="/">Reflexity RAM</a> · <a href="/shop">Shop tested RAM</a> · <a href="/guides">Compatibility guides</a></nav><article><h1>${escapeHtml(name)}</h1><p>${escapeHtml(metadata.description)}</p>${details ? `<p>${escapeHtml(details)}</p>` : ""}${sku ? `<p>SKU: ${escapeHtml(sku)}</p>` : ""}<p><a href="${escapeHtml(metadata.canonicalUrl)}">View product details</a> · <a href="/support">Ask about compatibility</a></p></article></main></div>`;
+  // The description snippet is intentionally short; the initial document must also contain
+  // the actual catalog description and offer, even before the client loads.
+  const description = normalizeText(product.description, 12000) || metadata.description;
+  const specifications = [
+    ["Generation", generation], ["Form factor", formFactor],
+    ["Capacity", product.capacityLabel], ["Speed", product.speedLabel],
+    ["Manufacturer part number", product.mpn], ["SKU", sku],
+    ["Condition", product.condition], ["Warranty", product.warranty],
+    ["CAS latency", product.cas],
+    ["ECC", typeof product.ecc === "boolean" ? (product.ecc ? "Yes" : "No") : ""],
+  ].map(([label, value]) => [label, normalizeText(value, 160)]).filter(([, value]) => value);
+  const details = specifications.map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`).join("");
+  const hasPrice = product.price !== null && product.price !== undefined && product.price !== "" && Number.isFinite(Number(product.price)) && Number(product.price) >= 0;
+  const price = hasPrice ? `<p>Price: CA$${Number(product.price).toFixed(2)}</p>` : "";
+  const availability = { in: "In stock", low: "Low stock", out: "Out of stock" }[product.stock];
+  const body = `<div id="root"><main data-edge-content="product"><nav><a href="/">Reflexity RAM</a> · <a href="/shop">Shop tested RAM</a> · <a href="/guides">Compatibility guides</a></nav><article><h1>${escapeHtml(name)}</h1><img src="${escapeHtml(metadata.imageUrl)}" alt="${escapeHtml(name)}" /><p>${escapeHtml(description)}</p>${price}${availability ? `<p>${availability}</p>` : ""}<h2>Product specifications</h2><dl>${details}</dl><p><a href="/shipping">Shipping information</a> · <a href="/returns">Returns policy</a> · <a href="/warranty">Warranty coverage</a></p><p><a href="/support">Ask about compatibility</a> · <a href="/guides/ecc-rdimm-udimm-explained">ECC, RDIMM and LRDIMM guide</a></p></article></main></div>`;
   return output.replace(/<div\s+id=(['"])root\1\s*><\/div>/i, () => body);
 }
 

@@ -581,3 +581,14 @@ test("product edge text containing $ sequences is injected verbatim (String.repl
   assert.match(html, /content="Only \$135 each — save \$1 on a pair, \$&amp; more, \$\$ total"/);
   assert.match(html, /<h1>Kit costs \$1 less than \$2<\/h1>/);
 });
+
+
+test("excluded policy and category pages offer useful initial HTML without client JavaScript", async () => {
+  for (const [path, expected] of [["/shipping", /Tracking and delivery issues/], ["/international", /Import taxes and duties/], ["/categories", /Match the complete manufacturer part number/]]) {
+    const response = await renderStaticPage({ request: new Request(`https://reflexityram.com${path}`), next: async () => new Response(PRODUCT_SHELL, { headers: { "Content-Type": "text/html" } }) });
+    const body = (await response.text()).split("<body>")[1];
+    assert.match(body, expected, path);
+  }
+  const response = await renderStaticPage({ request: new Request("https://reflexityram.com/categories"), next: async () => new Response(PRODUCT_SHELL, { headers: { "Content-Type": "text/html" } }) }, { fetchImpl: async () => Response.json({ products: [{ slug: "server-part", name: "Server RAM", line: "Server", mpn: "PART-123", stock: "in", stockQuantity: 2, price: 20 }] }) });
+  assert.match(await response.text(), /href="\/shop\/server-part"/);
+});
