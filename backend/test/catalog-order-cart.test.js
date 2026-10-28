@@ -523,6 +523,7 @@ test('sitemap includes every indexable public storefront route', () => {
   const expectedPaths = [
     '/',
     '/shop',
+    '/categories',
     '/guides',
     '/guides/ddr4-vs-ddr5',
     '/guides/ecc-rdimm-udimm-explained',

@@ -106,3 +106,26 @@ test("the page uses the shared builders and no longer carries its own copy of th
   assert.doesNotMatch(source, /priceValidUntil/);
   assert.doesNotMatch(source, /schema\.org\/UsedCondition/);
 });
+
+
+test("initial product body includes the full catalog description and offer rather than only a search snippet", () => {
+  const product = { ...LIVE[1], description: "Catalog opening. " + "Module details. ".repeat(20) + "Important final compatibility detail.", images: ["https://example.com/ram.jpg"] };
+  const html = injectProductMetadata('<html><head></head><body><div id="root"></div></body></html>', product, product.slug);
+  const body = html.split("<body>")[1];
+  assert.match(body, /Important final compatibility detail/);
+  assert.match(body, /Price: CA\$135\.00/);
+  assert.match(body, /Low stock|In stock/);
+  assert.match(body, /<dt>Manufacturer part number<\/dt><dd>HMA82GR7DJR8N-XN<\/dd>/);
+  assert.match(body, /<dt>Condition<\/dt><dd>Open Box — Tested<\/dd>/);
+  assert.match(body, /src="https:\/\/example.com\/ram.jpg"/);
+  assert.match(body, /href="\/shipping"/);
+});
+
+test("initial product content escapes catalog values and does not invent an absent offer", () => {
+  const product = { ...LIVE[0], description: '<b>Details</b> & <script>alert(1)</script>', mpn: '<img onerror="bad">', price: null, stock: undefined };
+  const html = injectProductMetadata('<html><head></head><body><div id="root"></div></body></html>', product, product.slug);
+  const body = html.split("<body>")[1];
+  assert.doesNotMatch(body, /<script|<img onerror|Price:|In stock/);
+  assert.match(body, /Details &amp;/);
+  assert.doesNotMatch(body, /onerror/);
+});

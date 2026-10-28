@@ -38,7 +38,9 @@ const PAGES = {
   "/categories": {
     title: "Server RAM Categories — Reflexity RAM",
     description: "Browse tested Server RAM by DDR generation, form factor, and capacity.",
-    heading: "Browse Server RAM",
+    body: "Browse tested enterprise memory, including individual modules and small lots. Match the complete manufacturer part number, DDR generation, form factor and capacity to your server before ordering.",
+    productList: { inStockOnly: true, strictServer: true, includeMpn: true },
+    heading: "Shop RAM",
     links: [["Shop all tested RAM", "/shop"], ["How to identify RAM", "/guides/how-to-identify-ram"]],
   },
   "/guides": {
@@ -104,15 +106,25 @@ const PAGES = {
     links: [["Contact support", "/support"], ["Shop tested RAM", "/shop"]],
   },
   "/shipping": {
-    title: "Shipping Information — Reflexity RAM",
+    title: "Shipping — Reflexity RAM",
     description: "Shipping rates, destinations, handling, tracking, and delivery information for Reflexity RAM orders.",
-    heading: "Shipping information",
+    heading: "Shipping",
+    sections: [
+      ["Shipping locations", "Orders ship from Toronto with Canada Post. Check the product page and checkout for the shipping options and price available for your order."],
+      ["Processing and packaging", "Memory modules are packaged to protect them during transit. See the shipping policy for processing and estimated delivery times; delivery estimates are not guaranteed."],
+      ["Tracking and delivery issues", "Tracking information is provided after dispatch when available through the selected carrier. For delivery questions, contact reflexityram@gmail.com with your order details."],
+    ],
     links: [["International orders", "/international"], ["Contact support", "/support"]],
   },
   "/international": {
-    title: "International RAM Orders — Reflexity RAM",
+    title: "International orders. — Reflexity RAM",
     description: "Ship Reflexity RAM abroad with Canada Post: tracked, at Canada Post's price at checkout, with US import duties prepaid where the United States is offered.",
-    heading: "International RAM orders",
+    heading: "International orders.",
+    sections: [
+      ["Checking out from outside Canada", "Choose Another country at checkout to see the tracked Canada Post services available for your destination, with the price for your parcel."],
+      ["Import taxes and duties", "Outside the United States, destination import taxes and duties are not included and may be collected on arrival. When US delivery is offered at checkout, its import duties and customs fees are prepaid in the order total."],
+      ["Countries not listed", "If your country is not listed, email reflexityram@gmail.com with the products you want and your destination country to request a shipping quote."],
+    ],
     links: [["Contact support", "/support"], ["Shop tested RAM", "/shop"]],
   },
   "/returns": {
@@ -242,7 +254,8 @@ export function injectStaticPage(html, page, pathname, { products = null } = {})
   }
   const links = page.links.map(([label, href]) => `<li><a href="${escapeHtml(href)}">${escapeHtml(label)}</a></li>`).join("");
   const productBlock = listed.length ? `<h2>Current server RAM by exact part number</h2>${productListHtml(listed, productOptions)}` : "";
-  const body = `<div id="root"><main data-edge-content="static"><nav><a href="/">Reflexity RAM</a> · <a href="/shop">Shop</a> · <a href="/guides">Guides</a></nav><article><h1>${escapeHtml(page.heading)}</h1><p>${escapeHtml(page.body || page.description)}</p>${productBlock}<ul>${links}</ul></article></main></div>`;
+  const sections = (page.sections || []).map(([heading, text]) => `<section><h2>${escapeHtml(heading)}</h2><p>${escapeHtml(text)}</p></section>`).join("");
+  const body = `<div id="root"><main data-edge-content="static"><nav><a href="/">Reflexity RAM</a> · <a href="/shop">Shop</a> · <a href="/guides">Guides</a></nav><article><h1>${escapeHtml(page.heading)}</h1><p>${escapeHtml(page.body || page.description)}</p>${sections}${productBlock}<ul>${links}</ul></article></main></div>`;
   return output.replace(/<div\s+id=(['"])root\1\s*><\/div>/i, () => body);
 }
 
