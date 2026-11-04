@@ -17,8 +17,8 @@ export default function ThemeToggle() {
       data-theme={theme}
       data-testid="theme-toggle"
     >
-      {isDark ? <Moon size={19} aria-hidden="true" /> : <Sun size={19} aria-hidden="true" />}
-      <span className="theme-toggle-label" aria-hidden="true">{isDark ? "Dark" : "Light"}</span>
+      {isDark ? <Sun size={19} aria-hidden="true" /> : <Moon size={19} aria-hidden="true" />}
+      <span className="theme-toggle-label" aria-hidden="true">{isDark ? "Light mode" : "Dark mode"}</span>
     </button>
   );
 }
