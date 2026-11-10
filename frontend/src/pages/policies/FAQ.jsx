@@ -6,10 +6,11 @@ const DEFAULT_HTML = `<p>Can't find what you're looking for? Email reflexityram@
 <h2>Compatibility</h2>
 <h3>Will this RAM work in my motherboard?</h3>
 <p>Every product page lists known-compatible platforms. For DDR5 above 6000 MT/s, always cross-reference your motherboard's official QVL — compatibility is board-and-CPU-dependent at high speeds.</p>
+<p>Matching key technical specifications does not guarantee that third-party memory, including SK hynix RAM, will be compatible with your specific system. See our <a href="/terms">Terms of service</a> and <a href="/returns">Returns policy</a> for incompatibility returns.</p>
 <h3>Can I mix kits?</h3>
 <p>We don't recommend mixing different kits even if specs match. Even modules from the same SKU pulled separately can have different binning. For best stability, buy a single kit at the capacity you need.</p>
 <h3>Will DDR5-6000 boot if my CPU is rated for DDR5-4800?</h3>
-<p>Yes. All EXPO/XMP kits boot at the JEDEC base speed without the profile enabled. You enable the rated speed in BIOS.</p>
+<p>Memory may run at a lower JEDEC speed supported by your system without an EXPO/XMP profile enabled. Boot support and available speeds depend on the motherboard, CPU, BIOS, and memory configuration; check your system specifications before purchasing.</p>
 <h2>Orders &amp; shipping</h2>
 <h3>How fast do orders ship?</h3>
 <p>Orders typically ship within 1–3 business days after purchase. Standard delivery is estimated within 3–6 business days after dispatch. Business days exclude weekends and public holidays; delivery estimates are not guaranteed.</p>

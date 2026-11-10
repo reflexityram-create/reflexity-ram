@@ -5,7 +5,10 @@ import EditablePolicyPage from "@/components/EditablePolicyPage";
 const DEFAULT_HTML = `<p>We want customers to feel confident when purchasing memory products from Reflexity RAM.</p>
 <h2>Return eligibility</h2>
 <p>Standard retail purchases may be returned within 30 calendar days after delivery, provided the item is returned in its original condition and protective packaging. Contact us before sending anything back so we can provide return instructions.</p>
-<p>Wholesale, specially sourced, or custom international orders are final sale unless the quote or product listing says otherwise. Items damaged through misuse, improper installation, modification, or incompatible operation are not eligible for a change-of-mind return.</p>
+<p>For reasons other than incompatibility, wholesale, specially sourced, or custom international orders are final sale unless the quote or product listing says otherwise. Items damaged through misuse, improper installation, modification, or incompatible operation are not eligible for a change-of-mind return.</p>
+<h2>Third-party memory compatibility</h2>
+<p>Third-party memory, including SK hynix RAM, may match a system's key technical specifications without being compatible with that specific system. We cannot guarantee compatibility with your specific system.</p>
+<p>If the RAM is incompatible, we accept a return within 30 days of delivery. A 15% restocking fee applies, and return shipping is the buyer's responsibility. All modules must be returned in their original condition. The refund will be processed once the returned RAM has been received and inspected.</p>
 <h2>Dead-on-arrival (DOA) items</h2>
 <p>If a product arrives defective or fails initial testing, contact reflexityram@gmail.com with your order details and a brief description of the issue.</p>
 <p>Compatibility information such as motherboard model, CPU, BIOS version, or memory test results may help speed up troubleshooting.</p>
