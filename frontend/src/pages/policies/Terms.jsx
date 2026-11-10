@@ -22,6 +22,19 @@ export default function Terms() {
           ],
         },
         {
+          heading: "Third-party memory compatibility",
+          body: [
+            "Third-party memory, including SK hynix RAM, may match a system's key technical specifications without being compatible with that specific system. We cannot guarantee compatibility with your specific system. Please verify your system's memory requirements before purchasing.",
+          ],
+        },
+        {
+          heading: "Returns for incompatible memory",
+          body: [
+            "If the RAM is incompatible with your system, we accept a return within 30 days of delivery. A 15% restocking fee applies, and return shipping is the buyer's responsibility. All modules must be returned in their original condition.",
+            "The refund will be processed once the returned RAM has been received and inspected. Contact reflexityram@gmail.com before shipping a return. See our Returns policy for the full return process. Nothing in this policy limits your rights under applicable consumer protection laws.",
+          ],
+        },
+        {
           heading: "Orders & payment",
           body: [
             "We reserve the right to refuse or cancel orders for any reason, including suspected fraud or stocking errors.",
