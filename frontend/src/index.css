@@ -7,7 +7,7 @@
    ============================================================ */
 /* ============================================================
    REFLEXITY BRAND TOKENS
-   Palette lifted from reflexity.io:
+   Storefront palette:
      ink #17181A · ink-soft #55585E · ink-muted #A6A8AD
      yellow #FFCF24 · yellow-deep #E5B400 · on-yellow #5C4A00
      base #FAFAF7 · paper #FFFFFF · alt #F4F4F0
@@ -284,7 +284,7 @@ html.light .callout-brand .callout-body {
     color: var(--brand-on-yellow);
 }
 
-/* Marker-highlight behind headline text, as on reflexity.io */
+/* Marker-highlight behind headline text */
 .hl {
     position: relative;
     white-space: nowrap;
@@ -608,7 +608,7 @@ html.dark .pill-red {
 html.light .section-label .num {
     color: #6f5800;
 }
-/* Yellow dash before an eyebrow label, as on reflexity.io */
+/* Yellow dash before an eyebrow label */
 .section-label::before {
     content: "";
     width: 20px;
