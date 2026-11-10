@@ -67,9 +67,6 @@ export default function Header() {
                 reflexity<span className="brand-dot">.</span>
                 <span className="brand-sub">RAM</span>
               </div>
-              <div className="brand-eyebrow hidden sm:block">
-                by reflexity.io
-              </div>
             </div>
           </Link>
 
