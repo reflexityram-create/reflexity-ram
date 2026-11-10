@@ -42,15 +42,19 @@ function offerShippingDetails(product) {
   };
 }
 
-const MERCHANT_RETURN_POLICY = {
-  "@type": "MerchantReturnPolicy",
-  applicableCountry: RETURN_POLICY_COUNTRIES,
-  returnPolicyCategory: "https://schema.org/MerchantReturnFiniteReturnWindow",
-  merchantReturnDays: RETURN_WINDOW_DAYS,
-  returnMethod: "https://schema.org/ReturnByMail",
-  returnFees: "https://schema.org/ReturnShippingFees",
-  merchantReturnLink: `${STOREFRONT_ORIGIN}/returns`,
-};
+// Split the full market list to respect Google's 50-country limit per policy.
+const MERCHANT_RETURN_POLICIES = Array.from(
+  { length: Math.ceil(RETURN_POLICY_COUNTRIES.length / 50) },
+  (_, index) => ({
+    "@type": "MerchantReturnPolicy",
+    applicableCountry: RETURN_POLICY_COUNTRIES.slice(index * 50, (index + 1) * 50),
+    returnPolicyCategory: "https://schema.org/MerchantReturnFiniteReturnWindow",
+    merchantReturnDays: RETURN_WINDOW_DAYS,
+    returnMethod: "https://schema.org/ReturnByMail",
+    returnFees: "https://schema.org/ReturnFeesCustomerResponsibility",
+    merchantReturnLink: `${STOREFRONT_ORIGIN}/returns`,
+  }),
+);
 
 function itemConditionFor(condition) {
   if (condition === "New") return "https://schema.org/NewCondition";
@@ -153,12 +157,13 @@ export function buildProductSchema(product, { url, description, images, now = Da
       url: canonical,
       priceCurrency: "CAD",
       price: Number(product?.price || 0),
+      validFrom: new Date(now).toISOString().slice(0, 10),
       priceValidUntil: new Date(now + 30 * 86400000).toISOString().slice(0, 10),
       availability: product?.stock === "out" ? "https://schema.org/OutOfStock" : "https://schema.org/InStock",
       itemCondition: itemConditionFor(product?.condition),
       seller: { "@type": "Organization", name: SITE_NAME, url: STOREFRONT_ORIGIN },
       shippingDetails: offerShippingDetails(product),
-      hasMerchantReturnPolicy: MERCHANT_RETURN_POLICY,
+      hasMerchantReturnPolicy: MERCHANT_RETURN_POLICIES,
     },
     additionalProperty: properties.length ? properties : undefined,
   };

@@ -64,8 +64,8 @@ test("the Product schema carries shipping, returns, price validity, the item con
   assert.equal(offer.itemCondition, "https://schema.org/RefurbishedCondition");     // the feed says refurbished; the page used to say Used
   assert.equal(offer.shippingDetails["@type"], "OfferShippingDetails");
   assert.equal(offer.shippingDetails.shippingRate.value, 14);
-  assert.equal(offer.hasMerchantReturnPolicy["@type"], "MerchantReturnPolicy");
-  assert.equal(offer.hasMerchantReturnPolicy.merchantReturnDays, 30);
+  assert.equal(offer.hasMerchantReturnPolicy[0]["@type"], "MerchantReturnPolicy");
+  assert.equal(offer.hasMerchantReturnPolicy[0].merchantReturnDays, 30);
   assert.equal(offer.availability, "https://schema.org/InStock");
   assert.deepEqual(schema.additionalProperty.map((x) => x.name), ["Generation", "Form Factor", "Capacity", "Speed", "CAS Latency", "ECC"]);
   assert.equal(schema.brand.name, "SK hynix");
@@ -128,4 +128,25 @@ test("initial product content escapes catalog values and does not invent an abse
   assert.doesNotMatch(body, /<script|<img onerror|Price:|In stock/);
   assert.match(body, /Details &amp;/);
   assert.doesNotMatch(body, /onerror/);
+});
+
+
+test("merchant offers cover all countries within Google's per-policy limit and describe customer-paid postage", () => {
+  const offer = buildProductSchema(LIVE[0], { now: Date.UTC(2026, 10, 9) }).offers;
+  assert.equal(offer.validFrom, "2026-11-09");
+  const countries = offer.hasMerchantReturnPolicy.flatMap(policy => {
+    assert.ok(policy.applicableCountry.length > 0 && policy.applicableCountry.length <= 50);
+    assert.equal(policy.returnFees, "https://schema.org/ReturnFeesCustomerResponsibility");
+    assert.equal(policy.returnShippingFeesAmount, undefined, "do not invent a merchant postage charge");
+    return policy.applicableCountry;
+  });
+  assert.equal(countries.length, 53);
+  assert.equal(new Set(countries).size, 53);
+  for (const country of ["CA", "TW", "UA", "VN"]) assert.ok(countries.includes(country));
+});
+
+
+test("public license text stays accessible but is excluded from search", async () => {
+  const headers = await read("../public/_headers");
+  assert.match(headers, /\n\/LICENSE\.txt\n  X-Robots-Tag: noindex(?:\n|$)/);
 });

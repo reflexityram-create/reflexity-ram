@@ -36,6 +36,10 @@
 https://:project.pages.dev/*
   X-Robots-Tag: noindex
 
+# Legal license text is public, but is not a storefront search landing page.
+/LICENSE.txt
+  X-Robots-Tag: noindex
+
 # The OCR engine (Tesseract compiled to WebAssembly) reads "Made in" off label photos on the admin page.
 # WebAssembly needs 'wasm-unsafe-eval', which no other path gets: this block REPLACES the site-wide policy
 # for /ocr/ only (a worker takes the policy of its own script's response, not the page's). Keep it last: rules

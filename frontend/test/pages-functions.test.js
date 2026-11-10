@@ -240,7 +240,7 @@ test("product edge structured data carries the real shipping and return commitme
   assert.deepEqual(shipping.shippingDestination.map((region) => region.addressCountry), ["CA"]);
   assert.deepEqual([shipping.deliveryTime.handlingTime.minValue, shipping.deliveryTime.handlingTime.maxValue], [1, 3]);
   assert.deepEqual([shipping.deliveryTime.transitTime.minValue, shipping.deliveryTime.transitTime.maxValue], [3, 6]);
-  const returns = standard.offers.hasMerchantReturnPolicy;
+  const returns = standard.offers.hasMerchantReturnPolicy[0];
   assert.equal(returns.merchantReturnDays, 30);
   assert.equal(returns.returnPolicyCategory, "https://schema.org/MerchantReturnFiniteReturnWindow");
   assert.equal(returns.merchantReturnLink, "https://reflexityram.com/returns");
