@@ -592,3 +592,28 @@ test("excluded policy and category pages offer useful initial HTML without clien
   const response = await renderStaticPage({ request: new Request("https://reflexityram.com/categories"), next: async () => new Response(PRODUCT_SHELL, { headers: { "Content-Type": "text/html" } }) }, { fetchImpl: async () => Response.json({ products: [{ slug: "server-part", name: "Server RAM", line: "Server", mpn: "PART-123", stock: "in", stockQuantity: 2, price: 20 }] }) });
   assert.match(await response.text(), /href="\/shop\/server-part"/);
 });
+
+
+test("private client routes are noindex on initial GET and HEAD without hiding public pages", async () => {
+  const ctx = (path, method) => ({
+    request: new Request(`https://reflexityram.com${path}`, { method }),
+    next: async () => new Response(PRODUCT_SHELL, { status: 200, headers: { "Content-Type": "text/html" } }),
+  });
+  const privatePaths = [
+    "/cart", "/cart/?coupon=example", "/checkout", "/checkout/e-transfer", "/order/success",
+    "/order/ORD-123", "/account", "/reset-password", "/verify-email", "/auth/callback",
+    "/review", "/admin", "/admin/orders",
+  ];
+  for (const path of privatePaths) {
+    for (const method of ["GET", "HEAD"]) {
+      const response = await renderStaticPage(ctx(path, method));
+      assert.equal(response.status, 200, path);
+      assert.equal(response.headers.get("X-Robots-Tag"), "noindex, nofollow", `${method} ${path}`);
+      assert.equal(await response.text(), method === "HEAD" ? "" : PRODUCT_SHELL, path);
+      assert.equal(response.headers.get("Content-Security-Policy"), STOREFRONT_SECURITY_HEADERS["Content-Security-Policy"]);
+    }
+  }
+  for (const path of ["/", "/shop", "/categories", "/guides", "/shipping"]) {
+    assert.equal((await renderStaticPage(ctx(path, "GET"))).headers.get("X-Robots-Tag"), null, path);
+  }
+});
