@@ -297,11 +297,15 @@ function responseWithHeaders(response, body, source, status = response.status) {
   return new Response(body, { status, statusText: status === response.status ? response.statusText : "Not Found", headers });
 }
 
+// Transaction/account screens remain usable, but are never search landing pages.
+const PRIVATE_CLIENT_ROUTE_PATTERNS = [
+  /^\/(?:cart|checkout|checkout\/e-transfer|order\/success|account|reset-password|verify-email|auth\/callback|review)$/, /^\/order\/[^/]+$/,
+  /^\/admin(?:\/(?:products|wholesale|orders|users|visitors|security|more))?$/,
+];
 const CLIENT_ROUTE_PATTERNS = [
   /^\/shop\/[^/]+$/, /^\/wholesale\/[^/]+$/,
-  /^\/(?:cart|checkout|checkout\/e-transfer|order\/success|account|reset-password|verify-email|auth\/callback|review)$/, /^\/order\/[^/]+$/,
+  ...PRIVATE_CLIENT_ROUTE_PATTERNS,
   /^\/(?:shipping|returns|warranty|privacy|terms|support|faq|international|business-info)$/,
-  /^\/admin(?:\/(?:products|wholesale|orders|users|visitors|security|more))?$/,
 ];
 
 function isKnownClientRoute(pathname) {
@@ -334,6 +338,11 @@ export async function renderStaticPage(context, { fetchImpl = null, logger = con
   const listResult = listRequest ? settleWithin(listRequest, listFetchBudgetMs) : null;
   const shell = await context.next();
   const knownClientRoute = isKnownClientRoute(pathname);
+  if ((method === "GET" || method === "HEAD") && PRIVATE_CLIENT_ROUTE_PATTERNS.some((pattern) => pattern.test(pathname))) {
+    const response = responseWithHeaders(shell, method === "HEAD" ? null : shell.body, "private-client-route");
+    response.headers.set("X-Robots-Tag", "noindex, nofollow");
+    return response;
+  }
   if (method === "HEAD" && !knownClientRoute && shell.ok) return responseWithHeaders(shell, null, "static-not-found", 404);
   if (method !== "GET") return responseWithHeaders(shell, method === "HEAD" ? null : shell.body, "spa-pass-through");
   if (!knownClientRoute && shell.ok && (shell.headers.get("Content-Type") || "").toLowerCase().includes("text/html")) {
