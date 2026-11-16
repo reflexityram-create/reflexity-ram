@@ -8,7 +8,7 @@ import useCartStore from '@/lib/cartStore';
 import useAuthStore from '@/lib/authStore';
 import { paymentsApi } from '@/lib/api';
 import { useSEO } from '@/lib/seo';
-import { formatStorePrice, standardShippingDescription, SIGNATURE_PRICE, STORE_CURRENCY_CODE } from '@/lib/currency';
+import { formatStorePrice, STANDARD_SHIPPING_TRACKING_NOTE, SIGNATURE_PRICE, STORE_CURRENCY_CODE } from '@/lib/currency';
 import { ETRANSFER, PROVINCES, discountFor, etransferSizeProblem, normalizePostalCode, offeredMethods, validateEtransferForm } from '@/lib/paymentMethods';
 import { ecommerceItem, readGaIdentifiers, trackEvent } from '@/lib/analytics';
 import { SUPPORT_EMAIL } from '@/lib/contact';
@@ -236,7 +236,7 @@ export default function CheckoutEtransfer() {
                     </div>
                   )}
                   <div className="flex justify-between gap-4">
-                    <dt className="text-neutral-400">Shipping <span className="block text-[13px]">{faster ? 'Canada Post Xpresspost, tracked' : delivery.signature ? 'Canada Post' : standardShippingDescription(shipping)}{delivery.signature ? ', signature on delivery' : ''}</span></dt>
+                    <dt className="text-neutral-400">Shipping <span className="block text-[13px]">{faster ? 'Canada Post Xpresspost, tracked' : 'Canada Post, standard shipping'}{delivery.signature ? ', signature on delivery' : ''}</span><span className="block text-[12px] mt-1">{STANDARD_SHIPPING_TRACKING_NOTE}</span></dt>
                     <dd className="mono">{formatStorePrice(shippingAmount)}</dd>
                   </div>
                   <div className="flex justify-between gap-4">

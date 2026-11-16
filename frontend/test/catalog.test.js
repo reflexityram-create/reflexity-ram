@@ -219,5 +219,5 @@ test("the home page features the admin's pick, else the highest-priced stick in 
   assert.match(home, /const featured = pickFeatured\(publicProducts\);/);
   assert.match(home, /const rest = publicProducts\.filter\(\(p\) => p !== featured\);/);
   assert.match(home, /data-testid="home-featured"/);
-  assert.match(home, /Ships from Toronto to Canada and 70\+ countries, tracked\./);
+  assert.match(home, /Ships from Toronto to Canada and 70\+ countries\./);
 });

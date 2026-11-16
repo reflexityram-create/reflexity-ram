@@ -129,7 +129,7 @@ export function productSeoDescription(product, maxLength = 160) {
     `${manufacturerOf(product)} ${spec} server memory${product?.mpn ? `, part number ${product.mpn}` : ""}.`,
     product?.condition ? `${product.condition}.` : "",
     product?.warranty ? `${product.warranty} warranty.` : "",
-    "Tracked shipping from Toronto, Canada.",
+    "Ships from Toronto, Canada.",
   ].filter(Boolean).join(" "), maxLength);
 }
 

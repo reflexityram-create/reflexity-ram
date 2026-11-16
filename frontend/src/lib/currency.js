@@ -41,10 +41,4 @@ export function formatStorePriceWithCode(value, fractionDigits = 2) {
   return formatted === "—" ? formatted : `${formatted} ${STORE_CURRENCY_CODE}`;
 }
 
-// Copy only: the server still prices shipping. Other listing-specific rates
-// do not imply a tracking service solely because of their amount.
-export function standardShippingDescription(price) {
-  if (Number(price) === STANDARD_SHIPPING_PRICE) return 'Canada Post, untracked';
-  if (Number(price) === LARGE_ORDER_SHIPPING_PRICE) return 'Canada Post, tracked';
-  return 'Canada Post, standard shipping';
-}
+export const STANDARD_SHIPPING_TRACKING_NOTE = "$14 standard shipping is untracked; $25 standard and Faster shipping include tracking.";

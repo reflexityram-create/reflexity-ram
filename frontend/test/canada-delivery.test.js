@@ -71,11 +71,11 @@ test('the numbers the page shows match the server\'s (backend/src/config/shippin
 
 test('the Shipping policy tells buyers about Faster shipping (the saved page and the built-in copy say the same)', async () => {
   const policy = await read('../src/pages/policies/Shipping.jsx');
-  assert.match(policy, /If you would like it sooner, choose Faster shipping at checkout \(Canada Post Xpresspost, typically 1–3 business days after dispatch\) for \$12 more on orders of up to 6 sticks; a signature on delivery can be added to any order for \$2\./);
+  assert.match(policy, /If you would like it sooner, choose Faster shipping at checkout \(Canada Post Xpresspost with tracking, typically 1–3 business days after dispatch\) for \$12 more on orders of up to 6 sticks; a signature on delivery can be added to any order for \$2\./);
   assert.doesNotMatch(policy, /postal code at checkout|Xpresspost or Priority/);
 });
 
 test('the product page tells buyers about Faster shipping before checkout', async () => {
   const product = await read('../src/pages/Product.jsx');
-  assert.match(product, /Want it sooner\? Faster shipping is \+\$\{formatStorePriceWithCode\(FASTER_SHIPPING_UPCHARGE, 0\)\} at checkout\./);
+  assert.match(product, /Want it sooner\? Faster shipping is \+\$\{formatStorePriceWithCode\(FASTER_SHIPPING_UPCHARGE, 0\)\} at checkout and includes tracking\./);
 });

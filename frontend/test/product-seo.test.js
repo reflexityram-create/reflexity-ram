@@ -50,7 +50,7 @@ test("descriptions end on a whole sentence, fit a snippet, and prefer what the o
   assert.equal(productSeoDescription({ ...LIVE[1], metaDescription: "Stored text." }), "Stored text.");
   assert.equal(
     productSeoDescription({ ...LIVE[2], description: "", metaDescription: "" }),
-    "Samsung 64GB DDR4-3200 ECC LRDIMM server memory, part number M386A8K40DM2-CWEZY. Used. 30 Days warranty. Tracked shipping from Toronto, Canada.",
+    "Samsung 64GB DDR4-3200 ECC LRDIMM server memory, part number M386A8K40DM2-CWEZY. Used. 30 Days warranty. Ships from Toronto, Canada.",
   );
   assert.equal(productSeoDescription({}), "", "nothing to say, nothing invented");
 });

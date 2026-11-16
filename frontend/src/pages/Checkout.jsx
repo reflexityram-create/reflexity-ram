@@ -9,7 +9,7 @@ import { stripeApi, shippingApi, paymentsApi } from '@/lib/api';
 import CountryPicker from '@/components/CountryPicker';
 import { useSEO } from '@/lib/seo';
 import { imageUrl } from '@/lib/imageUrl';
-import { formatStorePrice, standardShippingDescription, FASTER_SHIPPING_MAX_STICKS, SIGNATURE_PRICE, STORE_CURRENCY_CODE, STORE_CURRENCY_NAME } from '@/lib/currency';
+import { formatStorePrice, STANDARD_SHIPPING_TRACKING_NOTE, FASTER_SHIPPING_MAX_STICKS, SIGNATURE_PRICE, STORE_CURRENCY_CODE, STORE_CURRENCY_NAME } from '@/lib/currency';
 import { ACCEPTED_PAYMENTS_SENTENCE } from '@/lib/payments';
 import { BANK_DEBIT, CARD, ETRANSFER, discountFor, etransferSizeProblem, offeredMethods, savingsLabel } from '@/lib/paymentMethods';
 import { HANDOFF_PATIENCE_MS, onRestoredFromCache } from '@/lib/pageShow';
@@ -372,8 +372,9 @@ export default function Checkout() {
                       <div className="mt-3 space-y-3" data-testid="checkout-canada-delivery">
                         <fieldset className="space-y-2" data-testid="checkout-delivery-speed">
                           <legend className="text-[13px] text-neutral-400 mb-1">Shipping</legend>
+                          <p className="text-[12px] text-neutral-500">{STANDARD_SHIPPING_TRACKING_NOTE}</p>
                           <SpeedRow selected={!useFaster} onSelect={() => setFaster(false)} title="Standard"
-                            detail={`${standardShippingDescription(shipping)} · 3–6 business days after dispatch`} price={Number(shipping || 0)} testId="checkout-speed-standard" />
+                            detail="Canada Post · 3–6 business days after dispatch" price={Number(shipping || 0)} testId="checkout-speed-standard" />
                           {canFaster && (
                             <SpeedRow selected={useFaster} onSelect={() => setFaster(true)} title="Faster shipping"
                               detail="Canada Post Xpresspost, tracked · typically 1–3 business days after dispatch" price={shippingFaster} testId="checkout-speed-faster" />
@@ -421,7 +422,7 @@ export default function Checkout() {
                           ? `Canada Post Xpresspost${signature ? ' + signature' : ''}`
                           : signature
                             ? 'Canada Post, with signature on delivery'
-                            : standardShippingDescription(shipping)}</span></dt>
+                            : 'Canada Post, standard shipping'}</span></dt>
                       <dd className="mono">{shippingAmount === undefined ? '—' : formatStorePrice(shippingAmount)}</dd>
                     </div>
                     {paymentDiscount > 0 && (
