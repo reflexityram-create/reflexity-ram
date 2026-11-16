@@ -82,7 +82,7 @@ export default function Shop() {
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Server RAM</h1>
             <p className="text-[13px] text-neutral-500 mt-1.5">
               {loading ? "Loading…" : `${publicProducts.length} ${publicProducts.length === 1 ? "product" : "products"} available`}
-              {" · "}Ships from Toronto, tracked, across Canada and abroad
+              {" · "}Ships from Toronto across Canada and abroad
             </p>
           </div>
 

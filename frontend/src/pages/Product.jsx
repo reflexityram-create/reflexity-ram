@@ -859,7 +859,7 @@ function deliveryTiles(p) {
     {
       icon: "🍁",
       title: "Canada",
-      body: `${canada} flat rate${large}. Tracked, ESD-safe packing, estimated 3–6 business days after dispatch. Want it sooner? Faster shipping is +${formatStorePriceWithCode(FASTER_SHIPPING_UPCHARGE, 0)} at checkout.`,
+      body: `${canada} flat rate${large}. The $14 standard rate is untracked; the $25 rate for 3+ sticks includes tracking. ESD-safe packing, estimated 3–6 business days after dispatch. Want it sooner? Faster shipping is +${formatStorePriceWithCode(FASTER_SHIPPING_UPCHARGE, 0)} at checkout and includes tracking.`,
     },
     {
       icon: "🌍",

@@ -40,3 +40,11 @@ export function formatStorePriceWithCode(value, fractionDigits = 2) {
   const formatted = formatStorePrice(value, fractionDigits);
   return formatted === "—" ? formatted : `${formatted} ${STORE_CURRENCY_CODE}`;
 }
+
+// Copy only: the server still prices shipping. Other listing-specific rates
+// do not imply a tracking service solely because of their amount.
+export function standardShippingDescription(price) {
+  if (Number(price) === STANDARD_SHIPPING_PRICE) return 'Canada Post, untracked';
+  if (Number(price) === LARGE_ORDER_SHIPPING_PRICE) return 'Canada Post, tracked';
+  return 'Canada Post, standard shipping';
+}
