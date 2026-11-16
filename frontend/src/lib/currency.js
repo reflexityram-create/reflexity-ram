@@ -40,3 +40,5 @@ export function formatStorePriceWithCode(value, fractionDigits = 2) {
   const formatted = formatStorePrice(value, fractionDigits);
   return formatted === "—" ? formatted : `${formatted} ${STORE_CURRENCY_CODE}`;
 }
+
+export const STANDARD_SHIPPING_TRACKING_NOTE = "$14 standard shipping is untracked; $25 standard and Faster shipping include tracking.";

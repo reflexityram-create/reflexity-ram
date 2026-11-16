@@ -14,6 +14,8 @@ const DEFAULT_HTML = `<p>Can't find what you're looking for? Email reflexityram@
 <h2>Orders &amp; shipping</h2>
 <h3>How fast do orders ship?</h3>
 <p>Orders typically ship within 1–3 business days after purchase. Standard delivery is estimated within 3–6 business days after dispatch. Business days exclude weekends and public holidays; delivery estimates are not guaranteed.</p>
+<h3>Is shipping tracked?</h3>
+<p>Within Canada, $14 CAD standard shipping for 1–2 sticks is untracked. The $25 CAD standard rate for 3 or more sticks and Faster shipping include tracking. International checkout services are tracked.</p>
 <h3>Do you ship internationally?</h3>
 <p>International shipping availability may vary by region. Any duties, taxes, or import fees are the responsibility of the customer.</p>
 <h3>Can I change my order after placing it?</h3>

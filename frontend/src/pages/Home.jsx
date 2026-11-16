@@ -22,7 +22,7 @@ import { pickHomeExactParts } from "@/lib/homeProducts";
  * stick on the right (the admin's "Feature on the home page" pick, else the
  * highest-priced stick in stock), then the rest of the inventory.
  */
-const TRUST = ["Tested or factory sealed", "Ships in 1–3 business days, tracked", "30-day returns", "Secure checkout by Stripe"];
+const TRUST = ["Tested or factory sealed", "Ships in 1–3 business days", "30-day returns", "Secure checkout by Stripe"];
 
 function FeaturedProduct({ p }) {
   const image = p.images?.[0];
@@ -102,7 +102,7 @@ export default function Home() {
                   Memory that's been <span className="hl">tested first.</span>
                 </h1>
                 <p className="mt-5 text-[15px] max-w-[34rem]" style={{ color: "var(--fg-muted)" }}>
-                  Ships from Toronto to Canada and 70+ countries, tracked.{" "}
+                  Ships from Toronto to Canada and 70+ countries.{" "}
                   {formatStorePriceWithCode(STANDARD_SHIPPING_PRICE, 0)} flat in Canada ({formatStorePriceWithCode(LARGE_ORDER_SHIPPING_PRICE, 0)} for {LARGE_ORDER_MIN_STICKS}+ sticks); abroad, Canada Post's price at checkout.
                 </p>
                 <div className="mt-6 flex flex-wrap gap-3">

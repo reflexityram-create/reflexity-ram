@@ -4,7 +4,7 @@ import EditablePolicyPage from "@/components/EditablePolicyPage";
 // the Edit button (persisted server-side); this stays as the fallback.
 const DEFAULT_HTML = `<p>How we pack, process, and dispatch orders.</p>
 <h2>Shipping locations</h2>
-<p>We ship from Toronto with Canada Post, tracked, across Canada and to many countries abroad. Within Canada, shipping is a flat $14 CAD for 1–2 sticks and $25 CAD for 3 or more sticks, shown at checkout. If you would like it sooner, choose Faster shipping at checkout (Canada Post Xpresspost, typically 1–3 business days after dispatch) for $12 more on orders of up to 6 sticks; a signature on delivery can be added to any order for $2. A small number of listings ship at their own flat rate, which is shown on the product page and at checkout before you pay.</p>
+<p>We ship from Toronto with Canada Post across Canada and to many countries abroad. Within Canada, standard shipping is $14 CAD without tracking for 1–2 sticks, or $25 CAD with tracking for 3 or more sticks, shown at checkout. If you would like it sooner, choose Faster shipping at checkout (Canada Post Xpresspost with tracking, typically 1–3 business days after dispatch) for $12 more on orders of up to 6 sticks; a signature on delivery can be added to any order for $2. A small number of listings ship at their own flat rate, which is shown on the product page and at checkout before you pay.</p>
 <p>We also ship to many countries outside Canada with Canada Post, tracked. Choose "Another country" at checkout to see Canada Post's current price and delivery time for your parcel. Import taxes and duties are not included; if your country charges them, they are collected when the parcel arrives. The United States is the exception: when it is listed at checkout, its import duties and customs fees are prepaid in your total, so nothing is due on delivery. If the United States or another country is not listed at checkout, email us at reflexityram@gmail.com with the product(s) you'd like and your country, and we'll send a shipping quote. See our International Orders page for details.</p>
 <h2>Processing & packaging</h2>
 <p>Orders are typically processed and shipped within 1–3 business days of purchase.</p>
@@ -13,7 +13,7 @@ const DEFAULT_HTML = `<p>How we pack, process, and dispatch orders.</p>
 <h2>Estimated delivery</h2>
 <p>Standard delivery is estimated within 3–6 business days after dispatch. This is in addition to the 1–3 business day processing time. Business days exclude weekends and public holidays. Delivery estimates are not guaranteed.</p>
 <h2>Tracking information</h2>
-<p>Tracking information will be provided after dispatch when available through the selected carrier.</p>
+<p>The $14 CAD standard option does not include a tracking number or online delivery updates. The $25 CAD standard option and Faster shipping include tracking; we send the tracking number after dispatch.</p>
 <h2>Delays or delivery issues</h2>
 <p>Delivery times are estimates only and may vary depending on destination, carrier performance, customs processing, weather conditions, and other factors outside our control.</p>
 <p>If your tracking information has not updated for several business days after dispatch, please contact reflexityram@gmail.com. We'll work with the carrier to investigate the shipment status and assist where possible.</p>

@@ -179,8 +179,9 @@ test('the product page, checkout and shipping policies state the stick-count shi
   assert.match(currency, /export const LARGE_ORDER_MIN_STICKS = 3;/);
   assert.match(currency, /export const LARGE_ORDER_SHIPPING_PRICE = 25;/);
   assert.match(product, /hasOwnShippingPrice\(p\)\s*\? ""\s*: ` \(\$\{formatStorePriceWithCode\(LARGE_ORDER_SHIPPING_PRICE, 0\)\} for \$\{LARGE_ORDER_MIN_STICKS\}\+ sticks\)`/);
-  assert.match(checkout, /\$14 for 1–2 sticks, \$25 for 3 or more/);
-  for (const policy of [shipping, international]) assert.match(policy, /\$14 CAD for 1–2 sticks and \$25 CAD for 3 or more/);
+  assert.match(checkout, /STANDARD_SHIPPING_TRACKING_NOTE/);
+  assert.match(shipping, /\$14 CAD without tracking for 1–2 sticks, or \$25 CAD with tracking for 3 or more/);
+  assert.match(international, /\$14 CAD for 1–2 sticks and \$25 CAD for 3 or more/);
 });
 
 // Canada Post tracking sync stores the latest scan on the order; buyers see it under the tracking number.
@@ -263,7 +264,7 @@ test('product cards are compact, full-opacity and say nothing about shipping onl
   assert.match(card, /imageUrl\(image, \{ width: 640, trim: true \}\)/);
   assert.match(card, /aspect-\[2\/1\] bg-white/);
   assert.match(card, /line-clamp-3 sm:line-clamp-2/);
-  assert.match(shop, /Ships from Toronto, tracked, across Canada and abroad/);
+  assert.match(shop, /Ships from Toronto across Canada and abroad/);
   assert.match(home, /grid grid-cols-2 lg:grid-cols-3/);
 });
 
