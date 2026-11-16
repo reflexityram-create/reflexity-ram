@@ -81,7 +81,12 @@ const normalizeTracking = (summary = {}, details = {}) => {
   // Newest first. "Photo available" is logged with the delivery scan; the
   // delivery itself is the useful line for the buyer.
   const latest = events.find((e) => !/photo available/i.test(e.eventDescription || '')) || events[0];
-  const delivered = Boolean(summary.actualDeliveryDate);
+  // Some delivered services (observed code 1498) omit actualDeliveryDate.
+  // Trust the latest explicit delivery scan; estimates, attempts and pickup
+  // notices must not become delivery confirmations.
+  const deliveryScan = latest && /^Delivered(?:$| to\b)/i.test((latest.eventDescription || '').trim()) ? latest : null;
+  const deliveredOn = summary.actualDeliveryDate || deliveryScan?.eventDate || null;
+  const delivered = Boolean(deliveredOn);
   // A label or electronic declaration is not proof the parcel was handed over.
   const physicalScan = (e) => e && !/electronic|label|information submitted|shipping details|expected/i.test(e.eventDescription || '')
     && (['1302', '0174', '1701', '1421'].includes(e.eventIdentifier)
@@ -93,9 +98,9 @@ const normalizeTracking = (summary = {}, details = {}) => {
   const isOut = (e) => e && (e.eventIdentifier === '0174' || OUT_FOR_DELIVERY.test(e.eventDescription || ''));
   return {
     hasShipped: delivered || Boolean(accepted) || summaryPhysical,
-    shippedOn: accepted?.eventDate || (summaryPhysical ? summary.eventDate : null) || summary.actualDeliveryDate || null,
+    shippedOn: accepted?.eventDate || (summaryPhysical ? summary.eventDate : null) || deliveredOn || null,
     delivered,
-    deliveredOn: summary.actualDeliveryDate || null,
+    deliveredOn,
     expectedDeliveryDate: details.changedExpectedDate || details.expectedDeliveryDate || summary.expectedDeliveryDate || null,
     outForDelivery: !delivered && isOut(latest),
     readyForPickup: !delivered && Boolean(latest && READY_FOR_PICKUP.test(latest.eventDescription || '')),

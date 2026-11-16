@@ -182,3 +182,29 @@ test('the sync endpoint needs the shared token', async () => {
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+// The November 12 production scan had no summary actualDeliveryDate.
+test('a delivered scan is authoritative when the summary omits actualDeliveryDate', async () => {
+  const tracking = canadaPost.normalizeTracking({ expectedDeliveryDate: '2026-11-12' }, { significantEvents: [
+    { eventIdentifier: '1498', eventDescription: 'Delivered', eventDate: '2026-11-12', eventTime: '14:45:53' },
+    { eventIdentifier: '0174', eventDescription: 'Item out for delivery', eventDate: '2026-11-12' },
+  ] });
+  assert.equal(tracking.delivered, true);
+  assert.equal(tracking.deliveredOn, '2026-11-12');
+  await withFakeOrders([shippedOrder()], async (fake) => {
+    const sent = [];
+    const deps = { trackParcel: async () => tracking, sendEmail: async m => sent.push(m.kind), recordEvent: async () => {}, now: () => new Date('2026-11-12T21:00:00Z') };
+    await syncShippedOrders(deps);
+    fake.store[0].trackingLatest.checkedAt = undefined;
+    await syncShippedOrders(deps);
+    assert.equal(fake.store[0].status, 'delivered');
+    assert.deepEqual(sent, ['delivered']);
+  });
+});
+
+test('delivery estimates, pickup and unsuccessful attempts do not mean delivered', () => {
+  for (const description of ['Expected delivery', 'Item out for delivery', 'Delivery attempted', 'Notice card left', 'Item not delivered', 'Delivered scan cancelled']) {
+    const tracking = canadaPost.normalizeTracking({}, { significantEvents: [{ eventIdentifier: '0174', eventDescription: description, eventDate: '2026-11-12' }] });
+    assert.equal(tracking.delivered, false, description);
+  }
+});
