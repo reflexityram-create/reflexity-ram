@@ -76,14 +76,12 @@ test("the public catalog authority is the exact Server line, not a form-factor h
 });
 
 test("the restored storefront applies the Server-only authority at every public catalog surface", async () => {
-  const source = await Promise.all(["Home", "Categories", "Shop", "Product"].map(
+  const source = await Promise.all(["Home", "Shop", "Product"].map(
     (page) => readFile(new URL(`../src/pages/${page}.jsx`, import.meta.url), "utf8"),
   ));
-  const [home, categories, shop, product] = source;
+  const [home, shop, product] = source;
 
   assert.match(home, /isPublicServerRam/);
-  assert.match(categories, /const CATEGORIES = \[\s*\{[\s\S]*id: "server"/);
-  assert.doesNotMatch(categories, /id: "desktop"|id: "laptop"/);
   assert.match(shop, /products\.filter\(isPublicServerRam\)/);
   assert.doesNotMatch(shop, /@\/lib\/shopFilters/);
   assert.match(product, /if \(!isPublicServerRam\(product\)\)/);
@@ -105,6 +103,45 @@ test("the restored navigation and account flow retain the original ITAD, commerc
   for (const route of ["/liquidators", "/cart", "/checkout", "/account", "/shop", "/wholesale", "/wholesale/:lotId"]) {
     assert.match(app, new RegExp(route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
+});
+
+// 2026-11-17: the shop sells server RAM only, so the one-card category page was a dead step between "Shop RAM" and the store.
+test("Shop RAM opens the store itself and the old category address redirects there", async () => {
+  const [header, app, guides] = await Promise.all(["../src/components/Header.jsx", "../src/App.jsx", "../src/pages/Guides.jsx"]
+    .map((path) => readFile(new URL(path, import.meta.url), "utf8")));
+  assert.match(header, /\{ to: "\/shop", label: "Shop RAM" \}/);
+  assert.match(header, /<Link\s+to="\/shop"\s+className="mobile-shop-shortcut/);
+  assert.doesNotMatch(header, /to: "\/categories"|to="\/categories"/);
+  assert.match(app, /<Route path="\/categories" element=\{<Navigate to="\/shop" replace \/>\} \/>/);
+  assert.doesNotMatch(app, /import\("@\/pages\/Categories"\)/);
+  assert.doesNotMatch(guides, /to: "\/categories"/);
+  await assert.rejects(readFile(new URL("../src/pages/Categories.jsx", import.meta.url), "utf8"), { code: "ENOENT" });
+});
+
+// Account and Cart sit side by side, so they are one matched pair: same icon size, label, type and hover.
+test("the header's Account and Cart are a matched pair", async () => {
+  const [header, css] = await Promise.all(["../src/components/Header.jsx", "../src/index.css"]
+    .map((path) => readFile(new URL(path, import.meta.url), "utf8")));
+  // Each control's markup: from its opening tag to its closing tag (the account button's onClick holds a "=>").
+  const element = (testId, tag) => {
+    const at = header.indexOf(`data-testid="${testId}"`);
+    const start = header.lastIndexOf(`<${tag}`, at);
+    const end = header.indexOf(`</${tag}>`, at);
+    return at > 0 && start >= 0 && end > at ? [header.slice(start, end), header.slice(at, end)] : null;
+  };
+  const account = element("header-account-btn", "button");
+  const cart = element("header-cart-link", "Link");
+  assert.ok(account && cart, "both controls were found");
+  assert.match(account[0], /className="header-utility"\s/);
+  assert.match(cart[0], /className="header-utility header-cart"/);
+  assert.match(account[1], /<User size=\{16\}/);
+  assert.match(cart[1], /<ShoppingCart size=\{16\}/);
+  assert.match(account[1], /className="header-utility-label/);
+  assert.match(cart[1], /className="header-utility-label"[^>]*>Cart</);
+  assert.ok(header.indexOf('data-testid="header-account-btn"') < header.indexOf('data-testid="header-cart-link"'), "cart comes last");
+  assert.match(css, /\.header-utility \{[^}]*font-size: 13px;[^}]*font-weight: 600;/);
+  assert.match(css, /\.header-utility:hover,\s*\.header-utility\[aria-expanded="true"\]\s*\{/);
+  assert.doesNotMatch(css, /html\.light \.bg-white\.text-black/, "no light-only badge override left behind");
 });
 
 test("the public server catalog is a full-width inventory grid without redundant discovery controls", async () => {

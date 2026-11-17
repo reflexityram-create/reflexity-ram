@@ -3,31 +3,39 @@ import { Link } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowRight,
-  CheckCircle2,
+  Check,
   Cpu,
-  Loader2,
-  Mail,
   PackageOpen,
   Plus,
   Settings2,
-  ShieldCheck,
-  ShoppingBag,
 } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import EmptyState from "@/components/EmptyState";
+import SectionLabel from "@/components/SectionLabel";
 import { wholesaleApi } from "@/lib/api";
 import useAuthStore from "@/lib/authStore";
 import { useSEO } from "@/lib/seo";
 import { buildWholesaleEmailUrl, publishedWholesaleLots } from "@/lib/wholesaleLots";
 import { formatStorePrice, STORE_CURRENCY_CODE } from "@/lib/currency";
 import { imageSrcSet, imageUrl } from "@/lib/imageUrl";
-import "@/pages/wholesale-concepts.css";
+
+// Built from the same parts as the rest of the shop (2026-11-17): section label, display heading, glass boxes,
+// pill buttons and the shop's product-card layout. No page-only fonts, colours, grid lines or glows.
 
 const WHOLESALE_GMAIL_URL = buildWholesaleEmailUrl();
+
+const SOURCING_CHECKLIST = [
+  "Part number and exact specification",
+  "Quantity and condition preference",
+  "Destination and required date",
+];
 
 function WholesaleLotCard({ badgeLabel, detailBasePath = "/wholesale", index = 0, lot }) {
   const isEcc = /\bECC\b/i.test(`${lot.title} ${lot.notes || ""}`);
   const priorityImage = index < 3;
+  const badge = lot.badgeLabel || badgeLabel;
+  const specs = [lot.generation, lot.formFactor, lot.capacityLabel, lot.speedLabel, lot.rank, isEcc ? "ECC" : null].filter(Boolean);
   return (
     <Link
       aria-label={`View wholesale lot ${lot.title}`}
@@ -36,50 +44,36 @@ function WholesaleLotCard({ badgeLabel, detailBasePath = "/wholesale", index = 0
       style={{ animationDelay: `${(index % 8) * 0.04}s` }}
       to={`${detailBasePath}/${encodeURIComponent(lot.id)}`}
     >
-      <div className="relative aspect-[5/4] bg-gradient-to-b from-white/[0.03] to-transparent overflow-hidden">
+      <div className="relative aspect-[2/1] bg-white overflow-hidden px-3 py-4 sm:px-5 sm:py-5">
         {lot.imageUrl ? (
           <img
             alt={lot.imageAlt || lot.title}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-contain"
             decoding="async"
             fetchPriority={priorityImage ? "high" : "auto"}
             loading={priorityImage ? "eager" : "lazy"}
             sizes="(min-width: 1024px) 30vw, (min-width: 640px) 45vw, 92vw"
-            src={imageUrl(lot.imageUrl, { width: 480 })}
-            srcSet={imageSrcSet(lot.imageUrl)}
-            width="640"
-            height="512"
+            src={imageUrl(lot.imageUrl, { width: 640, trim: true })}
+            srcSet={imageSrcSet(lot.imageUrl, undefined, { trim: true })}
+            width="960"
+            height="300"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center"><Cpu aria-hidden="true" className="text-neutral-700" size={36} /></div>
+          <div className="w-full h-full flex items-center justify-center"><Cpu aria-hidden="true" className="text-neutral-400" size={32} /></div>
         )}
-        <div className="absolute top-3 left-3 flex gap-1.5">
-          <span className="pill text-[10px] py-1 px-2">{lot.generation}</span>
-          <span className="pill text-[10px] py-1 px-2">{lot.formFactor}</span>
-          {(lot.badgeLabel || badgeLabel) && <span className="pill pill-amber text-[10px] py-1 px-2">{lot.badgeLabel || badgeLabel}</span>}
-        </div>
-        <div className="absolute top-3 right-3">
-          <span className="pill pill-accent text-[10px] py-1 px-2"><span className="dot dot-green" />{lot.quantityAvailable} available</span>
-        </div>
-        <div className="absolute bottom-3 left-3">
-          <span className="pill text-[10px] py-1 px-2 bg-black/50 backdrop-blur-sm">🇨🇦 🇺🇸 CA &amp; US</span>
-        </div>
+        {badge && <span className="pill pill-amber pill-on-photo absolute top-3 left-3 text-[10px] py-1 px-2">{badge}</span>}
       </div>
-      <div className="p-5 flex flex-col flex-1">
-        <div className="mono text-[10px] text-neutral-500 tracking-widest mb-2">{lot.mpn}</div>
-        <h3 className="text-[15px] font-semibold tracking-tight text-white leading-snug mb-2">{lot.title}</h3>
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          <span className="pill text-[10px] py-0.5">{lot.capacityLabel}</span>
-          <span className="pill text-[10px] py-0.5">{lot.speedLabel}</span>
-          {lot.rank && <span className="pill text-[10px] py-0.5">{lot.rank}</span>}
-          {isEcc && <span className="pill pill-accent text-[10px] py-0.5">ECC</span>}
+      <div className="p-4 flex flex-col flex-1">
+        <div className="mono text-[10px] text-neutral-500 tracking-widest uppercase mb-1.5">{specs.join(" · ")}</div>
+        <h3 className="text-[15px] font-semibold tracking-tight text-white leading-snug line-clamp-2 mb-1">{lot.title}</h3>
+        <div className="mono text-[10px] text-neutral-500 mb-3 break-all">{lot.mpn}</div>
+        <div className="mt-auto text-xl font-bold tracking-tight">
+          {lot.unitPriceCad ? formatStorePrice(lot.unitPriceCad) : "Request quote"}
+          {lot.unitPriceCad && <span className="text-[10px] font-medium text-neutral-500"> {STORE_CURRENCY_CODE}</span>}
         </div>
-        <div className="mt-auto flex items-end gap-3">
-          <div className="text-2xl font-bold tracking-tight">
-            {lot.unitPriceCad ? formatStorePrice(lot.unitPriceCad) : "Request quote"}
-            {lot.unitPriceCad && <span className="text-[10px] font-medium text-neutral-500"> {STORE_CURRENCY_CODE}</span>}
-          </div>
-          <div className="ml-auto mb-1 mono text-[10px] text-emerald-300 inline-flex items-center gap-1">View details <ArrowRight aria-hidden="true" size={13} /></div>
+        <div className="mt-1 flex items-center justify-between gap-2 text-[12px] text-neutral-500">
+          <span className="inline-flex items-center gap-1.5"><span className="dot dot-green" />{lot.quantityAvailable} available</span>
+          <span className="inline-flex items-center gap-1">View details <ArrowRight aria-hidden="true" size={13} /></span>
         </div>
       </div>
     </Link>
@@ -99,51 +93,48 @@ function WholesaleInventory({
   stockLoading,
 }) {
   return (
-    <section className="ws-inventory" aria-labelledby="wholesale-stock-title">
-      <div className="ws-inventory-head">
+    <section className="min-w-0 flex flex-col" aria-labelledby="wholesale-stock-title">
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
         <div>
-          <p>{inventoryEyebrow}</p>
-          <h2 id="wholesale-stock-title">Posted wholesale stock</h2>
+          {inventoryEyebrow && <div className="section-label mb-2">{inventoryEyebrow}</div>}
+          <h2 id="wholesale-stock-title" className="text-xl sm:text-2xl font-semibold tracking-tight">Posted lots</h2>
         </div>
-        <div className="ws-inventory-tools">
+        <div className="flex flex-wrap items-center gap-2">
           {adminControls}
-          <div className="ws-stock-count"><strong>{lots.length}</strong><span>live lot{lots.length === 1 ? "" : "s"}</span></div>
+          {!stockLoading && !stockError && lots.length > 0 && (
+            <span className="pill" data-testid="wholesale-lot-count">{lots.length} live lot{lots.length === 1 ? "" : "s"}</span>
+          )}
         </div>
       </div>
 
-      {inventoryNote && !stockError && <p className="ws-preview-note">{inventoryNote}</p>}
+      {inventoryNote && !stockError && <p className="text-[13px] text-neutral-500 leading-relaxed mb-4 max-w-2xl">{inventoryNote}</p>}
 
       {stockLoading ? (
-        <div className="ws-empty is-loading" role="status">
-          <div className="ws-empty-icon"><Loader2 aria-hidden="true" className="animate-spin" size={28} /></div>
-          <div>
-            <p>CHECKING LIVE INVENTORY</p>
-            <h3>Loading posted stock.</h3>
-            <span>Only published wholesale lots will appear here.</span>
-          </div>
-        </div>
+        <div className="skeleton rounded-2xl flex-1 min-h-[240px]" role="status" aria-label="Loading posted lots" />
       ) : stockError ? (
-        <div className="ws-empty is-error" role="status">
-          <div className="ws-empty-icon"><AlertTriangle aria-hidden="true" size={28} /></div>
-          <div>
-            <p>{errorEyebrow}</p>
-            <h3>{errorTitle}</h3>
-            <span>{stockError}</span>
-          </div>
-        </div>
+        <EmptyState
+          as="h3"
+          className="flex-1 justify-center max-sm:!px-6 max-sm:!py-9"
+          description={stockError}
+          eyebrow={errorEyebrow}
+          icon={AlertTriangle}
+          role="status"
+          testId="wholesale-error"
+          title={errorTitle}
+        />
       ) : lots.length ? (
-        <div className="grid sm:grid-cols-2 gap-4 mt-6" data-testid="wholesale-grid">
+        <div className="grid sm:grid-cols-2 gap-3 sm:gap-4" data-testid="wholesale-grid">
           {lots.map((lot, index) => <WholesaleLotCard badgeLabel={badgeLabel} detailBasePath={detailBasePath} index={index} key={lot.id} lot={lot} />)}
         </div>
       ) : (
-        <div className="ws-empty">
-          <div className="ws-empty-icon"><PackageOpen aria-hidden="true" size={28} /></div>
-          <div>
-            <p>NO LIVE WHOLESALE LOTS</p>
-            <h3>No stock is posted right now.</h3>
-            <span>Send the exact requirement to the sourcing desk beside this inventory.</span>
-          </div>
-        </div>
+        <EmptyState
+          as="h3"
+          className="flex-1 justify-center max-sm:!px-6 max-sm:!py-9"
+          description="Send the exact part number and quantity, and we'll check sourcing."
+          icon={PackageOpen}
+          testId="wholesale-empty"
+          title="No lots posted right now"
+        />
       )}
     </section>
   );
@@ -154,10 +145,10 @@ export function WholesaleMarket({
   stockError = null,
   badgeLabel = null,
   detailBasePath = "/wholesale",
-  inventoryEyebrow = "AVAILABLE NOW",
+  inventoryEyebrow = null,
   inventoryNote = null,
-  errorEyebrow = "STOCK DATA UNAVAILABLE",
-  errorTitle = "The stock list is safely empty.",
+  errorEyebrow = null,
+  errorTitle = "Posted lots couldn't load",
   adminControls = null,
   stockLoading = false,
   seoTitle = "Wholesale DDR4 & DDR5 RAM | Reflexity",
@@ -168,73 +159,73 @@ export function WholesaleMarket({
     description: seoDescription,
   });
 
+  // With lots posted the sourcing box stays put beside a long list; with none, the two boxes share one height.
+  const hasLots = !stockLoading && !stockError && postedLots.length > 0;
+
   return (
-    <div className="wholesale-simple-shell">
+    <>
       <Header />
-      <main className="wholesale-simple">
-        <section className="ws-market">
-          <div className="ws-glow" aria-hidden="true" />
-          <div className="ws-grid-lines" aria-hidden="true" />
-          <div className="ws-container">
-            <header className="ws-market-head">
-              <div>
-                <p className="ws-eyebrow"><span /> REFLEXITY WHOLESALE</p>
-                <h1>Wholesale RAM.<br /><em>Ready stock or sourced.</em></h1>
-              </div>
-              <div className="ws-market-intro">
-                <p>Choose a verified posted lot, or send the exact part number and quantity you need.</p>
-                <div className="ws-market-facts">
-                  <span><ShieldCheck aria-hidden="true" size={15} /> Quote-confirmed inventory</span>
-                  <span>Toronto · Domestic &amp; international</span>
-                </div>
-              </div>
-            </header>
+      <main className="page" data-testid="wholesale-page">
+        <div className="container-tight pt-12 pb-16">
+          <SectionLabel num="02">Wholesale</SectionLabel>
+          <h1 className="display-2 display-grad mt-4 mb-4">Wholesale RAM</h1>
+          <p className="text-neutral-400 max-w-2xl leading-relaxed">
+            Choose a posted lot, or send the exact part number and quantity you need. Ships from Toronto to Canada and abroad.
+          </p>
 
-            <div className="ws-market-grid">
-              <WholesaleInventory
-                errorEyebrow={errorEyebrow}
-                errorTitle={errorTitle}
-                inventoryEyebrow={inventoryEyebrow}
-                inventoryNote={inventoryNote}
-                lots={postedLots}
-                stockError={stockError}
-                stockLoading={stockLoading}
-                badgeLabel={badgeLabel}
-                detailBasePath={detailBasePath}
-                adminControls={adminControls}
-              />
+          <div className={`mt-12 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px] ${hasLots ? "items-start" : "items-stretch"}`}>
+            <WholesaleInventory
+              errorEyebrow={errorEyebrow}
+              errorTitle={errorTitle}
+              inventoryEyebrow={inventoryEyebrow}
+              inventoryNote={inventoryNote}
+              lots={postedLots}
+              stockError={stockError}
+              stockLoading={stockLoading}
+              badgeLabel={badgeLabel}
+              detailBasePath={detailBasePath}
+              adminControls={adminControls}
+            />
 
-              <aside className="ws-coming" aria-labelledby="wholesale-desk-title">
-                <div className="ws-coming-top">
-                  <span>NEED A SPECIFIC SKU?</span>
-                  <div>DIRECT SOURCING</div>
-                </div>
-                <div className="ws-coming-icon"><Mail aria-hidden="true" size={27} /></div>
-                <h2 id="wholesale-desk-title">Tell us the SKU and quantity.</h2>
-                <p>If it is not posted, send the exact requirement and we&apos;ll check sourcing.</p>
-                <div className="ws-coming-list">
-                  <span><CheckCircle2 aria-hidden="true" size={16} /> Part number and exact specification</span>
-                  <span><CheckCircle2 aria-hidden="true" size={16} /> Quantity and condition preference</span>
-                  <span><CheckCircle2 aria-hidden="true" size={16} /> Destination and required date</span>
-                </div>
-                <a
-                  className="ws-contact-link"
-                  href={WHOLESALE_GMAIL_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Get bulk pricing <ArrowRight aria-hidden="true" size={16} />
-                </a>
-                <Link className="ws-sell-link" to="/liquidators">
-                  <ShoppingBag aria-hidden="true" size={15} /> Selling stock to Reflexity?
-                </Link>
-              </aside>
-            </div>
+            <aside
+              className={`glass rounded-2xl p-6 md:p-7 flex flex-col ${hasLots ? "lg:sticky lg:top-20" : ""}`}
+              aria-labelledby="wholesale-desk-title"
+              data-testid="wholesale-sourcing"
+            >
+              <div className="mono text-[10px] text-neutral-500 tracking-widest">NEED A SPECIFIC SKU?</div>
+              <h2 id="wholesale-desk-title" className="mt-3 text-xl font-semibold tracking-tight">Tell us the SKU and quantity.</h2>
+              <p className="mt-2 text-[14px] text-neutral-400 leading-relaxed">
+                If it is not posted, send the exact requirement and we&apos;ll check sourcing.
+              </p>
+              <ul className="mt-5 flex flex-col gap-2.5 text-[13px]" style={{ color: "var(--fg-muted)" }}>
+                {SOURCING_CHECKLIST.map((item) => (
+                  <li key={item} className="inline-flex items-center gap-2">
+                    <Check aria-hidden="true" size={14} style={{ color: "var(--brand-yellow-deep)" }} /> {item}
+                  </li>
+                ))}
+              </ul>
+              <a
+                className="btn-primary mt-6 w-full"
+                href={WHOLESALE_GMAIL_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="wholesale-quote-btn"
+              >
+                Get bulk pricing <ArrowRight aria-hidden="true" size={15} />
+              </a>
+              <Link
+                className="mt-4 self-center min-h-11 inline-flex items-center text-[13px] underline underline-offset-4"
+                style={{ color: "var(--fg-muted)" }}
+                to="/liquidators"
+              >
+                Selling stock to Reflexity?
+              </Link>
+            </aside>
           </div>
-        </section>
+        </div>
       </main>
       <Footer />
-    </div>
+    </>
   );
 }
 
@@ -258,7 +249,7 @@ export default function Wholesale() {
         setInventory({
           lots: [],
           loading: false,
-          error: "Posted inventory could not be loaded. Send the exact SKU to our sourcing desk while we reconnect.",
+          error: "Try again in a moment, or send the exact SKU and quantity for a quote.",
         });
       });
 
@@ -269,9 +260,9 @@ export default function Wholesale() {
   }, []);
 
   const adminControls = user?.role === "admin" ? (
-    <div className="ws-admin-actions" aria-label="Wholesale admin actions">
-      <Link to="/admin/products#wholesale"><Settings2 aria-hidden="true" size={13} /> Manage</Link>
-      <Link className="is-primary" to="/admin/products?newLot=1#wholesale"><Plus aria-hidden="true" size={13} /> Add listing</Link>
+    <div className="flex items-center gap-2" aria-label="Wholesale admin actions">
+      <Link className="btn-secondary !py-2 !px-3 text-[12px]" to="/admin/products#wholesale"><Settings2 aria-hidden="true" size={13} /> Manage</Link>
+      <Link className="btn-primary !py-2 !px-3 text-[12px]" to="/admin/products?newLot=1#wholesale"><Plus aria-hidden="true" size={13} /> Add listing</Link>
     </div>
   ) : null;
 

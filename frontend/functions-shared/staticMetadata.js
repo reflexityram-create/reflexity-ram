@@ -32,16 +32,8 @@ const PAGES = {
     title: "Shop Tested DDR4 Server RAM in Canada — Reflexity RAM",
     description: "Shop tested DDR4 ECC RDIMM and LRDIMM server memory in Canada. Search exact part numbers, check condition and warranty, with shipping from Toronto.",
     heading: "Shop tested Server RAM",
-    links: [["Browse RAM categories", "/categories"], ["RAM compatibility guides", "/guides"]],
+    links: [["How to identify RAM", "/guides/how-to-identify-ram"], ["RAM compatibility guides", "/guides"]],
     productList: true,
-  },
-  "/categories": {
-    title: "Server RAM Categories — Reflexity RAM",
-    description: "Browse tested Server RAM by DDR generation, form factor, and capacity.",
-    body: "Browse tested enterprise memory, including individual modules and small lots. Match the complete manufacturer part number, DDR generation, form factor and capacity to your server before ordering.",
-    productList: { inStockOnly: true, strictServer: true, includeMpn: true },
-    heading: "Shop RAM",
-    links: [["Shop all tested RAM", "/shop"], ["How to identify RAM", "/guides/how-to-identify-ram"]],
   },
   "/guides": {
     title: "RAM Compatibility & Buying Guides — Reflexity RAM",
@@ -54,7 +46,7 @@ const PAGES = {
     description: "Compare DDR4 and DDR5 compatibility, speed, price, and upgrade value before buying desktop or laptop memory.",
     heading: "DDR4 or DDR5: which memory should you buy?",
     body: "DDR4 and DDR5 are not interchangeable. Your motherboard and processor determine which generation fits; capacity usually matters more than a small speed increase.",
-    links: [["Browse RAM categories", "/categories"], ["Shop tested RAM", "/shop"]],
+    links: [["Shop tested RAM", "/shop"], ["All RAM guides", "/guides"]],
     productList: { inStockOnly: true, strictServer: true, includeMpn: true },
   },
   "/guides/ecc-rdimm-udimm-explained": {
@@ -78,7 +70,7 @@ const PAGES = {
     description: "Choose RAM capacity for office work, gaming, content creation, virtual machines, workstations, and servers.",
     heading: "How much RAM do you need?",
     body: "Sixteen gigabytes is a practical everyday baseline, 32GB adds headroom, and professional or server workloads may need 64GB or more.",
-    links: [["Browse RAM categories", "/categories"], ["Shop tested RAM", "/shop"]],
+    links: [["Shop tested RAM", "/shop"], ["All RAM guides", "/guides"]],
     productList: { inStockOnly: true, strictServer: true, includeMpn: true },
   },
   "/wholesale": {

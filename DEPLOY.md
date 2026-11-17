@@ -112,8 +112,9 @@ frontend/functions/sitemap.xml.js
 `/shop/:slug` and `/wholesale/:lotId` supply canonical product metadata. Public
 catalog, feed, and sitemap entries are limited to exact `line === "Server"`
 products; consumer and laptop records remain available to authorized admin
-users. `/shop`, `/categories`, `/liquidators`, `/support`, `/business-info`,
+users. `/shop`, `/liquidators`, `/support`, `/business-info`,
 `/cart`, `/checkout`, and `/account` remain public application routes.
+`/categories` answers 308 to `/shop` (removed 2026-11-17: only server RAM is sold).
 
 For a local Pages probe after a production build:
 
@@ -135,7 +136,7 @@ or replace the source merely to clear a stale dashboard warning.
 ```bash
 curl -fsSI https://reflexityram.com/
 curl -sSI https://reflexityram.com/shop
-curl -sSI https://reflexityram.com/categories
+curl -sSI https://reflexityram.com/categories   # expect 308 -> /shop
 curl -sSI https://reflexityram.com/liquidators
 curl -sSI https://reflexityram.com/support
 curl -sSI https://reflexityram.com/business-info

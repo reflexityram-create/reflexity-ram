@@ -53,7 +53,7 @@ test("phones get a comfortable hit area on the header logo, the back links and t
   assert.match(header, /className="tap-min flex items-center gap-2 sm:gap-3 shrink-0 mr-2 sm:mr-8"\s+data-testid="header-logo-link"/);
   assert.match(footer, /className="tap-list flex flex-col gap-2\.5 text-\[13px\]"/);
   assert.match(product, /className="tap-target inline-flex[^"]*"\s+data-testid="product-back-link"/);
-  assert.match(shop, /className="tap-target inline-flex[^"]*"\s+data-testid="shop-back-to-categories"/);
+  assert.doesNotMatch(shop, /\/categories|shop-back-to-categories/, "the store has no category page to go back to");
   assert.match(guides, /<Link to="\/guides" className="tap-target inline-flex/);
   assert.doesNotMatch(css, /@media \(min-width[^)]*\)\s*\{[^}]*\.tap-/, "desktop is untouched");
 });

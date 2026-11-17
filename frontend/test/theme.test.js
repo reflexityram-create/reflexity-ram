@@ -92,6 +92,19 @@ test("the browser chrome colour is the page background of the active theme", asy
   assert.equal(indexHtml.match(/<meta name="theme-color" content="(#[0-9a-fA-F]{6})"/)?.[1].toLowerCase(), light, "index.html default");
 });
 
+// 2026-11-17: on the old off-white page (#fafaf7) the white "Dark mode" pill and the white cards read as glowing patches.
+// Light mode is now one white surface; boxes are told apart by their 1px border, not by a brighter fill.
+test("light mode is one white surface: page, cards and header controls share the same white", async () => {
+  const css = await readFile(new URL("../src/index.css", import.meta.url), "utf8");
+  const light = css.match(/html\.light\s*\{([^}]*)\}/)?.[1] ?? "";
+  const token = (name) => light.match(new RegExp(`${name}:\\s*([^;]+);`))?.[1].trim().toLowerCase();
+  assert.equal(token("--bg"), "#ffffff");
+  assert.equal(token("--bg-elev"), token("--bg"), "cards and the theme pill use the page colour");
+  assert.equal(token("--grain-opacity"), "0", "no grain tint over the white page");
+  assert.match(token("--card-border") ?? "", /^#[0-9a-f]{6}$/, "boxes keep a real border");
+  assert.match(css, /\.theme-toggle-btn\s*\{[^}]*background:\s*var\(--bg-elev\)/);
+});
+
 test("the theme toggle states its action in its name and does not also claim a pressed state", async () => {
   const source = await readFile(new URL("../src/components/ThemeToggle.jsx", import.meta.url), "utf8");
   // The name already says which theme is active and what a press does ("Theme: dark. Switch to light mode"). With aria-pressed as well,

@@ -13,7 +13,7 @@ inventory but are not publicly exposed.
 The primary public routes are:
 
 - `/shop` and `/shop/:slug` — tested Server RAM catalog and product details
-- `/categories` — the public Server RAM category
+- `/categories` — redirects (308) to `/shop`; only server RAM is sold
 - `/wholesale` and `/wholesale/:lotId` — small and bulk lot quote requests
 - `/liquidators` — IT asset liquidation and ITAD intake
 - `/guides`, `/support`, and policy routes — buyer information and support

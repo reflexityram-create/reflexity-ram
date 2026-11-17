@@ -10,7 +10,9 @@
    Storefront palette:
      ink #17181A · ink-soft #55585E · ink-muted #A6A8AD
      yellow #FFCF24 · yellow-deep #E5B400 · on-yellow #5C4A00
-     base #FAFAF7 · paper #FFFFFF · alt #F4F4F0
+     base #FFFFFF · paper #FFFFFF · alt #F4F4F0
+   Light mode is one white surface (2026-11-17): white controls and cards on an
+   off-white page read as glowing white patches. Boxes keep their 1px border.
    ============================================================ */
 :root {
     /* Native controls (a <select>'s dropdown list, date pickers, scrollbars, autofill) follow the theme; without this they stay
@@ -131,13 +133,13 @@
 
 html.light {
     color-scheme: light;
-    --bg: #fafaf7;
+    --bg: #ffffff;
     --bg-elev: #ffffff;
     --glass-bg: rgba(255, 255, 255, 0.94);
     --glass-bg-hover: #ffffff;
     --glass-bg-soft: rgba(255, 255, 255, 0.82);
-    --header-bg: rgba(250, 250, 247, 0.88);
-    --grain-opacity: 0.12;
+    --header-bg: rgba(255, 255, 255, 0.9);
+    --grain-opacity: 0;
 
     --border: #e4e4df;
     --border-strong: rgba(23, 24, 26, 0.16);
@@ -415,9 +417,49 @@ html.light .header-account-dropdown .border-white\/5 {
 }
 html.light .hover\:text-white:hover { color: var(--fg-strong) !important; }
 html.light .hover\:bg-white\/\[0\.05\]:hover { background: rgba(15, 15, 20, 0.05) !important; }
-html.light .cart-count-badge {
-    background: var(--brand-yellow) !important;
-    color: var(--brand-on-yellow) !important;
+
+/* Account and Cart: one matched pair beside the theme pill, same type as its label
+   (13px, 600), cart last with its count in a brand-yellow badge. */
+.header-utility {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    height: 36px;
+    padding: 0 12px;
+    border-radius: 999px;
+    color: var(--fg);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    transition: color 0.15s ease, background 0.15s ease;
+}
+.header-utility svg { flex: none; }
+.header-utility:hover,
+.header-utility[aria-expanded="true"] {
+    color: var(--fg-strong);
+    background: var(--btn-secondary-bg-hover);
+}
+.cart-count-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--brand-yellow);
+    color: var(--btn-primary-fg);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+}
+/* Phones keep the compact icon-only cart; the account lives in the menu. */
+@media (max-width: 767px) {
+    .header-cart { position: relative; width: 36px; padding: 0; }
+    .header-cart .header-utility-label { display: none; }
+    .header-cart .cart-count-badge { position: absolute; top: -2px; right: -2px; min-width: 17px; height: 17px; padding: 0 4px; font-size: 9px; }
 }
 
 /* Tag/pill */
@@ -876,12 +918,6 @@ html.light .bg-black\/85,
 html.light .bg-black\/90,
 html.light .bg-\[\#0a0a0c\] {
     background-color: var(--bg-elev) !important;
-}
-
-/* Make cart-badge inverse in light */
-html.light .bg-white.text-black {
-    background-color: #0a0a0c !important;
-    color: #ffffff !important;
 }
 
 /* One-tap appearance control, with a full phone-sized touch target. */

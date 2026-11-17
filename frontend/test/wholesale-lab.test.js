@@ -90,31 +90,42 @@ test("the live route uses the API while the demo adapter remains on a developmen
   assert.doesNotMatch(local, /useStock|productsApi|\/api\/products|stockQuantity|cartApi|checkoutApi/);
 });
 
-test("the combined wholesale page makes inventory primary and exact sourcing secondary", async () => {
+// 2026-11-17: the page had its own fonts, colours, grid lines and glow ("looks fancy weird"). It is now built from the
+// shop's shared parts, like the Support page: section label, display heading, glass boxes, pill buttons, EmptyState.
+test("the wholesale page is built from the site's shared parts, inventory first and sourcing beside it", async () => {
   const page = await readFile(new URL("../src/pages/Wholesale.jsx", import.meta.url), "utf8");
-  const css = await readFile(new URL("../src/pages/wholesale-concepts.css", import.meta.url), "utf8");
+  const support = await readFile(new URL("../src/pages/policies/Support.jsx", import.meta.url), "utf8");
 
   const stockIndex = page.indexOf("<WholesaleInventory");
-  const sourcingIndex = page.indexOf('<aside className="ws-coming"');
+  const sourcingIndex = page.indexOf('data-testid="wholesale-sourcing"');
   assert.ok(stockIndex >= 0 && sourcingIndex > stockIndex);
-  assert.match(page, /Wholesale RAM\.<br \/><em>Ready stock or sourced\.<\/em>/);
-  assert.match(page, /<h2 id="wholesale-stock-title">Posted wholesale stock<\/h2>/);
+  // The same page frame and heading as the Support page.
+  for (const part of ['<main className="page"', '<div className="container-tight pt-12 pb-16">', 'className="display-2 display-grad mt-4 mb-4"']) {
+    assert.ok(support.includes(part) && page.includes(part), part);
+  }
+  assert.match(page, /<SectionLabel num="02">Wholesale<\/SectionLabel>/);
+  assert.match(page, />Wholesale RAM<\/h1>/);
+  assert.match(page, />Posted lots<\/h2>/);
   assert.match(page, /NEED A SPECIFIC SKU\?/);
   assert.match(page, /Tell us the SKU and quantity\./);
-  assert.match(page, /Get bulk pricing/);
+  assert.match(page, /className="btn-primary mt-6 w-full"[\s\S]*?Get bulk pricing/);
   assert.match(page, /Selling stock to Reflexity\?/);
+  assert.match(page, /lg:grid-cols-\[minmax\(0,1fr\)_360px\]/);
+  assert.match(page, /hasLots \? "lg:sticky lg:top-20" : ""/);
+  assert.match(page, /grid sm:grid-cols-2 gap-3 sm:gap-4/);
+  // Empty and failed states use the shared EmptyState box.
+  assert.match(page, /<EmptyState[\s\S]*?testId="wholesale-empty"/);
+  assert.match(page, /<EmptyState[\s\S]*?testId="wholesale-error"/);
+  // No page-only stylesheet, class family, font or decoration.
+  assert.doesNotMatch(page, /wholesale-concepts\.css|className="ws-|\bws-glow|ws-grid-lines|<em>/);
+  await assert.rejects(readFile(new URL("../src/pages/wholesale-concepts.css", import.meta.url), "utf8"), { code: "ENOENT" });
   assert.doesNotMatch(page, /DON&apos;T SEE WHAT YOU NEED\?|Send the requirement\./);
-  assert.match(css, /grid-template-columns: minmax\(0,1\.65fr\) minmax\(350px,\.72fr\)/);
-  assert.match(css, /\.ws-coming \{[^}]*position: sticky/s);
-  assert.match(page, /grid sm:grid-cols-2 gap-4/);
-  assert.doesNotMatch(css, /#b4eb62|--wl-green|current public catalog/i);
 });
 
 test("wholesale cards open a dedicated detail route like regular shop products", async () => {
   const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
   const page = await readFile(new URL("../src/pages/Wholesale.jsx", import.meta.url), "utf8");
   const detail = await readFile(new URL("../src/pages/WholesaleLot.jsx", import.meta.url), "utf8");
-  const css = await readFile(new URL("../src/pages/wholesale-concepts.css", import.meta.url), "utf8");
 
   assert.match(app, /path="\/wholesale\/:lotId" element=\{<WholesaleLot \/>\}/);
   assert.match(page, /detailBasePath = "\/wholesale"/);
@@ -123,9 +134,18 @@ test("wholesale cards open a dedicated detail route like regular shop products",
   assert.match(page, /formatStorePrice\(lot\.unitPriceCad\)/);
   assert.match(page, /STORE_CURRENCY_CODE/);
   assert.doesNotMatch(page, /<p className="ws-lot-note">/);
-  assert.match(page, /className="glass card-hover rounded-xl overflow-hidden flex flex-col fade-up"/);
-  assert.match(page, /className="relative aspect-\[5\/4\] bg-gradient-to-b from-white\/\[0\.03\] to-transparent overflow-hidden"/);
-  assert.match(page, /className="p-5 flex flex-col flex-1"/);
+  // A lot card is the shop's product card: same box, same white photo panel, same spec line.
+  const productCard = await readFile(new URL("../src/components/ProductCard.jsx", import.meta.url), "utf8");
+  for (const part of [
+    'className="glass card-hover rounded-xl overflow-hidden flex flex-col fade-up"',
+    'className="relative aspect-[2/1] bg-white overflow-hidden px-3 py-4 sm:px-5 sm:py-5"',
+    'className="w-full h-full object-contain"',
+    'className="mono text-[10px] text-neutral-500 tracking-widest uppercase mb-1.5"',
+  ]) {
+    assert.ok(page.includes(part), `lot card: ${part}`);
+    assert.ok(productCard.includes(part.replace("text-[10px]", "text-[9px] sm:text-[10px]")) || productCard.includes(part), `product card: ${part}`);
+  }
+  assert.doesNotMatch(page, /🇨🇦|🇺🇸|bg-black\/50|backdrop-blur/);
   assert.match(detail, /export function WholesaleLotDetail/);
   assert.match(detail, /WholesaleLotDetail lot=\{state\.lot\}/);
   assert.match(detail, /className="grid lg:grid-cols-\[1\.1fr_1fr\] gap-10 lg:gap-14"/);
@@ -171,7 +191,6 @@ test("the local demo detail reuses the production quantity experience without th
 test("the official wholesale shell reads only the fail-closed public API", async () => {
   const page = await readFile(new URL("../src/pages/Wholesale.jsx", import.meta.url), "utf8");
   const local = await readFile(new URL("../src/pages/WholesaleLab.jsx", import.meta.url), "utf8");
-  const css = await readFile(new URL("../src/pages/wholesale-concepts.css", import.meta.url), "utf8");
 
   assert.match(page, /import \{ wholesaleApi \} from "@\/lib\/api"/);
   assert.match(page, /import \{ buildWholesaleEmailUrl, publishedWholesaleLots \} from "@\/lib\/wholesaleLots"/);
@@ -192,9 +211,4 @@ test("the official wholesale shell reads only the fail-closed public API", async
   assert.match(page, /user\?\.role === "admin"/);
   // Wholesale lots are managed on the admin Products page since the owner merged the two.
   assert.match(page, /to="\/admin\/products\?newLot=1#wholesale"/);
-  assert.match(css, /\.ws-coming \{[^}]*border-radius: 14px/s);
-  assert.match(css, /\.ws-contact-link \{[^}]*width: 100%/s);
-  assert.match(css, /\.ws-coming-top > span \{ color: #7a5f00; \}/);
-  assert.match(css, /html\.dark \.ws-coming-top > span \{ color: #f0d36f; \}/);
-  assert.match(css, /\.ws-coming-top > div \{ color: var\(--ws-muted\)/);
 });

@@ -13,7 +13,7 @@ const GUIDES = [
     title: "DDR4 or DDR5? Compatibility, Speed, and Upgrade Guide",
     description: "Compare DDR4 and DDR5 speed, compatibility, price, and upgrade value before buying desktop or laptop RAM in Canada.",
     keywords: "DDR4 vs DDR5, DDR5 RAM Canada, DDR4 upgrade",
-    cta: { label: "Browse RAM by generation", to: "/categories" },
+    cta: { label: "Shop tested server RAM", to: "/shop" },
     relatedLinks: [
       ["Browse tested server RAM", "/shop"],
     ],
@@ -63,7 +63,7 @@ const GUIDES = [
     title: "How Much RAM Do I Need? A Practical Capacity Guide",
     description: "Choose the right RAM capacity for office work, gaming, content creation, virtual machines, and server workloads.",
     keywords: "how much RAM do I need, 16GB vs 32GB RAM, server memory capacity",
-    cta: { label: "Browse RAM by use case", to: "/categories" },
+    cta: { label: "Shop tested server RAM", to: "/shop" },
     relatedLinks: [
       ["Browse current server RAM", "/shop"],
     ],
