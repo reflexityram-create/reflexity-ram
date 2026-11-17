@@ -21,7 +21,6 @@ HEADER
 for entry in \
   "/|daily|1.0" \
   "/shop|daily|0.9" \
-  "/categories|weekly|0.8" \
   "/guides|weekly|0.8" \
   "/guides/ddr4-vs-ddr5|monthly|0.7" \
   "/guides/ecc-rdimm-udimm-explained|monthly|0.7" \

@@ -38,7 +38,6 @@ const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
 const VerifyEmail = lazy(() => import("@/pages/VerifyEmail"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 const AuthCallback = lazy(() => import("@/pages/AuthCallback"));
-const Categories = lazy(() => import("@/pages/Categories"));
 
 const WholesaleLab = import.meta.env.DEV
   ? lazy(() => import("@/pages/WholesaleLab"))
@@ -193,7 +192,8 @@ export default function App() {
           <Route path="/admin/security" element={<AdminSecurity />} />
           <Route path="/admin/more" element={<AdminMore />} />
 
-          <Route path="/categories" element={<Categories />} />
+          {/* We only sell server RAM: the old one-card category page now opens the store (the edge also answers 308). */}
+          <Route path="/categories" element={<Navigate to="/shop" replace />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="*" element={<NotFound />} />
         </Routes></Suspense>

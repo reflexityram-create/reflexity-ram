@@ -5,6 +5,8 @@ const LEGACY_PATHS = new Map([
   ["/sell-to-us", "/liquidators"],
   ["/contact", "/support"],
   ["/about", "/business-info"],
+  // Only server RAM is sold, so the one-card category page was removed (2026-11-17): send it to the store.
+  ["/categories", "/shop"],
 ]);
 
 export function permanentRedirect(request, destination) {

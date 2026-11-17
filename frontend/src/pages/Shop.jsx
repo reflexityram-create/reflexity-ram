@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { ArrowLeft, Inbox } from "lucide-react";
+import { Inbox } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import ProductCard from "@/components/ProductCard";
@@ -70,14 +69,6 @@ export default function Shop() {
       <Header />
       <main className="page" data-testid="shop-page">
         <div className="container-tight pt-10 pb-16">
-          <Link
-            to="/categories"
-            className="tap-target inline-flex items-center gap-1.5 text-[13px] text-neutral-500 hover:text-white transition-colors mb-6"
-            data-testid="shop-back-to-categories"
-          >
-            <ArrowLeft size={13} /> All categories
-          </Link>
-
           <div className="mb-8 pb-6 border-b border-white/5">
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Server RAM</h1>
             <p className="text-[13px] text-neutral-500 mt-1.5">
@@ -112,12 +103,12 @@ export default function Shop() {
           ) : publicProducts.length === 0 ? (
             <EmptyState
               icon={Inbox}
-              title="No products in this category yet"
+              title="No server RAM listed right now"
               description="Check back soon or contact us to source a specific part."
-              ctaLabel="Back to categories"
-              ctaTo="/categories"
-              secondaryLabel="Email us"
-              secondaryTo="/support"
+              ctaLabel="Email us"
+              ctaTo="/support"
+              secondaryLabel="Wholesale"
+              secondaryTo="/wholesale"
               testId="shop-empty-state"
               as="h2"
             />

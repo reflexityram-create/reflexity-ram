@@ -10,5 +10,5 @@
   document.documentElement.classList.remove("light", "dark");
   document.documentElement.classList.add(theme);
   var meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", theme === "light" ? "#fafaf7" : "#08090a");
+  if (meta) meta.setAttribute("content", theme === "light" ? "#ffffff" : "#08090a");
 }());

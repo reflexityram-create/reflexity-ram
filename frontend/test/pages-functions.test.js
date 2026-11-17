@@ -4,6 +4,7 @@ import test from "node:test";
 import { proxyCatalogXml } from "../functions-shared/proxyCatalogXml.js";
 import { renderProductPage } from "../functions-shared/productMetadata.js";
 import { renderStaticPage } from "../functions-shared/staticMetadata.js";
+import { legacyRedirect } from "../functions-shared/legacyRedirects.js";
 import { STOREFRONT_SECURITY_HEADERS } from "../functions-shared/securityHeaders.js";
 import { onRequest as feedHandler } from "../functions/feed.xml.js";
 import { onRequest as feedCsvHandler } from "../functions/feed.csv.js";
@@ -330,6 +331,13 @@ test("every route the app serves is a page the edge answers 200 for", async () =
   assert.ok(routes.includes("/checkout/e-transfer") && routes.includes("/admin/more"), "the route list was read");
   const sample = (path) => (path === "/guides/:slug" ? "/guides/how-to-identify-ram" : path.replace(/:[^/]+/g, "sample-1"));
   for (const route of routes) {
+    // A retired address the app still catches (e.g. /categories) is answered by the edge's permanent redirect first.
+    const redirect = legacyRedirect(new Request(`https://reflexityram.com${sample(route)}`));
+    if (redirect) {
+      assert.equal(redirect.status, 308, route);
+      assert.ok(routes.includes(new URL(redirect.headers.get("location")).pathname), `${route} redirects to a page the app serves`);
+      continue;
+    }
     const response = await renderStaticPage({
       request: new Request(`https://reflexityram.com${sample(route)}`),
       next: async () => new Response(PRODUCT_SHELL, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }),
@@ -351,7 +359,7 @@ test("static unknown routes use a standalone 404 for malformed or oversized shel
 });
 
 test("legacy wholesale-era URLs redirect into restored routes without losing queries", async () => {
-  for (const [from, to] of [["/inventory", "/shop"], ["/sell-to-us", "/liquidators"], ["/contact", "/support"], ["/about", "/business-info"]]) {
+  for (const [from, to] of [["/inventory", "/shop"], ["/sell-to-us", "/liquidators"], ["/contact", "/support"], ["/about", "/business-info"], ["/categories", "/shop"], ["/categories/", "/shop"]]) {
     const response = await staticHandler({ request: new Request(`https://reflexityram.com${from}?legacy=1`), next: async () => new Response(PRODUCT_SHELL) });
     assert.equal(response.status, 308, from);
     assert.equal(response.headers.get("location"), `https://reflexityram.com${to}?legacy=1`);
@@ -379,7 +387,7 @@ test("storefront edge metadata presents Server RAM only while guides remain sepa
     request: new Request(`https://reflexityram.com${path}`),
     next: async () => new Response(PRODUCT_SHELL, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }),
   });
-  for (const path of ["/", "/shop", "/categories"]) {
+  for (const path of ["/", "/shop"]) {
     const html = await (await renderStaticPage(pageContext(path))).text();
     assert.match(html, /Server RAM/);
     assert.doesNotMatch(html, /desktop|laptop/i);
@@ -583,13 +591,13 @@ test("product edge text containing $ sequences is injected verbatim (String.repl
 });
 
 
-test("excluded policy and category pages offer useful initial HTML without client JavaScript", async () => {
-  for (const [path, expected] of [["/shipping", /Tracking and delivery issues/], ["/international", /Import taxes and duties/], ["/categories", /Match the complete manufacturer part number/]]) {
+test("excluded policy pages and guides offer useful initial HTML without client JavaScript", async () => {
+  for (const [path, expected] of [["/shipping", /Tracking and delivery issues/], ["/international", /Import taxes and duties/], ["/guides/ddr4-vs-ddr5", /DDR4 and DDR5 are not interchangeable/]]) {
     const response = await renderStaticPage({ request: new Request(`https://reflexityram.com${path}`), next: async () => new Response(PRODUCT_SHELL, { headers: { "Content-Type": "text/html" } }) });
     const body = (await response.text()).split("<body>")[1];
     assert.match(body, expected, path);
   }
-  const response = await renderStaticPage({ request: new Request("https://reflexityram.com/categories"), next: async () => new Response(PRODUCT_SHELL, { headers: { "Content-Type": "text/html" } }) }, { fetchImpl: async () => Response.json({ products: [{ slug: "server-part", name: "Server RAM", line: "Server", mpn: "PART-123", stock: "in", stockQuantity: 2, price: 20 }] }) });
+  const response = await renderStaticPage({ request: new Request("https://reflexityram.com/guides/ddr4-vs-ddr5"), next: async () => new Response(PRODUCT_SHELL, { headers: { "Content-Type": "text/html" } }) }, { fetchImpl: async () => Response.json({ products: [{ slug: "server-part", name: "Server RAM", line: "Server", mpn: "PART-123", stock: "in", stockQuantity: 2, price: 20 }] }) });
   assert.match(await response.text(), /href="\/shop\/server-part"/);
 });
 
@@ -613,7 +621,7 @@ test("private client routes are noindex on initial GET and HEAD without hiding p
       assert.equal(response.headers.get("Content-Security-Policy"), STOREFRONT_SECURITY_HEADERS["Content-Security-Policy"]);
     }
   }
-  for (const path of ["/", "/shop", "/categories", "/guides", "/shipping"]) {
+  for (const path of ["/", "/shop", "/guides", "/shipping"]) {
     assert.equal((await renderStaticPage(ctx(path, "GET"))).headers.get("X-Robots-Tag"), null, path);
   }
 });

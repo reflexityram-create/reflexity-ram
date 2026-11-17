@@ -12,8 +12,9 @@ import AuthModal from "@/components/AuthModal";
 import useCartStore from "@/lib/cartStore";
 import useAuthStore from "@/lib/authStore";
 
+// We only sell server RAM, so "Shop RAM" opens the store itself; /categories redirects there.
 const NAV = [
-  { to: "/categories", label: "Shop RAM" },
+  { to: "/shop", label: "Shop RAM" },
   { to: "/wholesale", label: "Wholesale" },
   { to: "/liquidators", label: "Liquidation" },
   { to: "/support", label: "Support" },
@@ -73,7 +74,7 @@ export default function Header() {
           {/* A single high-signal shortcut keeps the phone header useful without
               turning it into a cramped row of tiny icons. */}
           <Link
-            to="/categories"
+            to="/shop"
             className="mobile-shop-shortcut lg:hidden"
             aria-label="Shop RAM"
             data-testid="mobile-shop-shortcut"
@@ -87,7 +88,7 @@ export default function Header() {
               <Link
                 key={n.label}
                 to={n.to}
-                className="px-4 py-2 text-[13px] font-medium text-neutral-400 hover:text-white transition-colors duration-150 rounded-lg hover:bg-white/[0.05]"
+                className="px-3 xl:px-4 py-2 whitespace-nowrap text-[13px] font-medium text-neutral-400 hover:text-white transition-colors duration-150 rounded-lg hover:bg-white/[0.05]"
                 data-testid={`nav-${n.label.toLowerCase().replace(/\s+/g, "-")}`}
               >
                 {n.label}
@@ -108,18 +109,19 @@ export default function Header() {
 
             {/* Account dropdown */}
             <div className="hidden md:block relative">
+              {/* Account and Cart are one matched pair: same icon size, label, weight and hover. */}
               <button
+                type="button"
                 onClick={() => setAccountOpen(!accountOpen)}
-                className="inline-flex items-center gap-2 px-3 py-2 text-[13px] font-medium text-neutral-400 hover:text-white transition-colors duration-150 rounded-lg hover:bg-white/[0.05]"
+                aria-expanded={accountOpen}
+                className="header-utility"
                 data-testid="header-account-btn"
               >
-                <User size={15} />
-                {isAuthenticated() ? (
-                  <span className="text-[12px] max-w-[80px] truncate">{user.firstName}</span>
-                ) : (
-                  <span className="text-[12px]">Account</span>
-                )}
-                <ChevronDown size={11} className="opacity-50" />
+                <User size={16} aria-hidden="true" />
+                <span className="header-utility-label max-w-[96px] truncate">
+                  {isAuthenticated() ? user.firstName : "Account"}
+                </span>
+                <ChevronDown size={12} className="opacity-60" aria-hidden="true" />
               </button>
 
               {accountOpen && (
@@ -182,15 +184,13 @@ export default function Header() {
             <Link
               to="/cart"
               aria-label={itemCount > 0 ? `Cart, ${itemCount} ${itemCount === 1 ? "item" : "items"}` : "Cart"}
-              className="relative inline-flex items-center justify-center w-9 h-9 rounded-lg hover:bg-white/[0.05] transition-colors duration-150"
+              className="header-utility header-cart"
               data-testid="header-cart-link"
             >
-              <ShoppingCart size={17} className="text-neutral-300" />
+              <ShoppingCart size={16} aria-hidden="true" />
+              <span className="header-utility-label" aria-hidden="true">Cart</span>
               {itemCount > 0 && (
-                <span
-                  className="cart-count-badge absolute -top-0.5 -right-0.5 min-w-[17px] h-[17px] px-1 rounded-full bg-white text-black text-[9px] font-bold flex items-center justify-center"
-                  data-testid="header-cart-count"
-                >
+                <span className="cart-count-badge" aria-hidden="true" data-testid="header-cart-count">
                   {itemCount}
                 </span>
               )}
