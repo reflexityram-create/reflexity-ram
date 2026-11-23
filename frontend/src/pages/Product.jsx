@@ -28,6 +28,7 @@ import { reviewsApi } from "@/lib/api";
 import { isPublicServerRam } from "@/lib/catalog";
 import { clampQuantity, limitNote, quantityLimit } from "@/lib/quantity";
 import { serializeJsonLd } from "@/lib/safeJsonLd";
+import { RatingSummary } from "@/components/CustomerReviews";
 // The edge function (functions-shared) and this page build the Product schema, title and description with the SAME code.
 import { buildProductSchema, productSeoDescription, productSeoTitle } from "../../functions-shared/productMetadata.js";
 import { ecommerceItem, trackEvent } from "@/lib/analytics";
@@ -408,6 +409,16 @@ export default function Product() {
               <h1 className="text-2xl md:text-3xl font-bold tracking-tight leading-tight mb-4">
                 {p.name}
               </h1>
+              {reviewData.summary.count > 0 && (
+                <button
+                  type="button"
+                  onClick={() => openTab("reviews")}
+                  className="-mt-2 mb-4 inline-flex min-h-11 items-center underline-offset-4 hover:underline"
+                  data-testid="product-rating"
+                >
+                  <RatingSummary summary={reviewData.summary} />
+                </button>
+              )}
 
               <div className="flex flex-wrap gap-1.5 mb-6">
                 <span className="pill">{p.generation}</span>
