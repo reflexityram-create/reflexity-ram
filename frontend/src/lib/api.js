@@ -104,6 +104,7 @@ export const wholesaleApi = {
 // Reviews are public to read, but the server only accepts verified purchases.
 export const reviewsApi = {
   list: (slug, config = {}) => publicApi.get(`/reviews/product/${slug}`, config),
+  store: (config = {}) => publicApi.get('/reviews/store', config),
   create: (slug, data) => api.post(`/reviews/product/${slug}`, data),
 };
 

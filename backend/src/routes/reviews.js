@@ -77,6 +77,43 @@ function emailHint(email) {
   return `${name.slice(0, 1)}${'•'.repeat(Math.max(1, Math.min(name.length - 1, 6)))}@${domain}`;
 }
 
+// Store-wide reviews for the home page: the overall rating across every
+// approved review plus the newest few, each naming the module it was left on.
+// Only approved reviews; a product that is no longer listed keeps its review
+// in the rating but its name is shown without a link.
+const STORE_REVIEW_LIMIT = 6;
+router.get('/store', async (req, res) => {
+  try {
+    const reviews = await Review.find({ status: 'approved' })
+      .select('product displayName rating title body verifiedPurchase createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
+    const ids = [...new Set(reviews.slice(0, STORE_REVIEW_LIMIT).map((review) => String(review.product)))];
+    const products = ids.length
+      ? await Product.find({ _id: { $in: ids } }).select('_id slug name isActive').lean()
+      : [];
+    const productFor = (id) => products.find((product) => String(product._id) === String(id));
+    const count = reviews.length;
+    const total = reviews.reduce((sum, review) => sum + review.rating, 0);
+    res.set('Cache-Control', 'public, max-age=300');
+    res.json({
+      summary: { count, average: count ? Number((total / count).toFixed(1)) : 0 },
+      reviews: reviews.slice(0, STORE_REVIEW_LIMIT).map(({ product: productId, ...review }) => {
+        const product = productFor(productId);
+        return {
+          ...review,
+          product: product
+            ? { name: product.name, slug: product.isActive ? product.slug : null }
+            : null,
+        };
+      }),
+    });
+  } catch (err) {
+    console.error('Store reviews fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch reviews' });
+  }
+});
+
 // Public reviews contain only approved feedback from authenticated purchasers.
 router.get('/product/:slug', async (req, res) => {
   try {

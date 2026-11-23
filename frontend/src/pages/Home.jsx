@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Check } from "lucide-react";
 import Header from "@/components/Header";
@@ -16,6 +17,9 @@ import {
 import { useSEO } from "@/lib/seo";
 import { useStock } from "@/lib/useStock";
 import { pickHomeExactParts } from "@/lib/homeProducts";
+import { reviewsApi } from "@/lib/api";
+import { EMPTY_REVIEWS, normalizeStoreReviews } from "@/lib/reviews";
+import { RatingSummary, StoreReviewsSection } from "@/components/CustomerReviews";
 
 /**
  * Storefront home: the headline and trust points on the left, the featured
@@ -86,6 +90,15 @@ export default function Home() {
   const featured = pickFeatured(publicProducts);
   const rest = publicProducts.filter((p) => p !== featured);
   const exactParts = pickHomeExactParts(catalog);
+  const [storeReviews, setStoreReviews] = useState(EMPTY_REVIEWS);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    reviewsApi.store({ signal: controller.signal })
+      .then(({ data }) => setStoreReviews(normalizeStoreReviews(data)))
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
 
   return (
     <>
@@ -101,6 +114,11 @@ export default function Home() {
                 <h1 className="display-2 max-w-[15ch]">
                   Memory that's been <span className="hl">tested first.</span>
                 </h1>
+                {storeReviews.summary.count > 0 && (
+                  <a href="#reviews" className="mt-4 inline-flex min-h-11 items-center gap-2 underline-offset-4 hover:underline" data-testid="home-rating">
+                    <RatingSummary summary={storeReviews.summary} />
+                  </a>
+                )}
                 <p className="mt-5 text-[15px] max-w-[34rem]" style={{ color: "var(--fg-muted)" }}>
                   Ships from Toronto to Canada and 70+ countries.{" "}
                   {formatStorePriceWithCode(STANDARD_SHIPPING_PRICE, 0)} flat in Canada ({formatStorePriceWithCode(LARGE_ORDER_SHIPPING_PRICE, 0)} for {LARGE_ORDER_MIN_STICKS}+ sticks); abroad, Canada Post's price at checkout.
@@ -193,6 +211,8 @@ export default function Home() {
                 )}
               </>
             )}
+
+            <StoreReviewsSection data={storeReviews} number={rest.length > 0 || loading ? "03" : "02"} />
 
             <div className="callout-brand mt-14 rounded-xl px-6 py-5 flex flex-wrap items-center justify-between gap-4">
               <div>
