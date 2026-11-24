@@ -52,7 +52,7 @@ test("trimmed card images crop the background before resizing", () => {
 
 
 test("viewer uses retained higher-resolution photos only for the matching asset", () => {
-  assert.equal(viewerImageUrl('https://res.cloudinary.com/fike/image/upload/v123/reflexity-ram/products/product-1787350172844-r4hhb2chy.jpg'), '/feed-images/rfx-sk-hynix-16gb-ddr4-3200-ecc-rd-1600-v1.jpg');
+  assert.equal(viewerImageUrl('https://res.cloudinary.com/fike/image/upload/v123/reflexity-ram/products/product-1787350172844-r4hhb2chy.jpg'), '/feed-images/rfx-sk-hynix-16gb-ddr4-3200-ecc-rd-detail-v1.jpg');
   const replacement = 'https://res.cloudinary.com/fike/image/upload/v456/reflexity-ram/products/actual-new-photo.jpg';
   assert.equal(viewerImageUrl(replacement), imageUrl(replacement, { width: 2400, trim: true }));
   assert.equal(viewerImageUrl(null), null);
