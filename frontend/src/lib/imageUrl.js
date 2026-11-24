@@ -45,3 +45,15 @@ export function imageSrcSet(image, widths = CARD_IMAGE_WIDTHS, { trim = false } 
   if (candidates.length === 0) return undefined;
   return candidates.map(([candidate, width]) => `${candidate} ${width}w`).join(", ");
 }
+
+// The viewer may use the larger retained-original derivative. Cards keep their
+// responsive CDN deliveries; pinning to exact asset names avoids stale SKU maps.
+const VIEWER_ORIGINALS = {
+  'product-1787350684119-9h9uobzbd': '/feed-images/rfx-lenovo-16gb-ddr4-3200-ecc-rdim-1600-v1.jpg',
+  'product-1787350172844-r4hhb2chy': '/feed-images/rfx-sk-hynix-16gb-ddr4-3200-ecc-rd-1600-v1.jpg',
+};
+export function viewerImageUrl(image) {
+  const source = imageUrl(image);
+  const asset = /\/(product-\d+-[a-z0-9]+)\.[a-z0-9]+(?:\?.*)?$/i.exec(source || '')?.[1];
+  return VIEWER_ORIGINALS[asset] || imageUrl(source, { width: 2400, trim: true });
+}

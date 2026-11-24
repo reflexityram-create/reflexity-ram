@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { imageUrl } from "@/lib/imageUrl";
+import { viewerImageUrl } from "@/lib/imageUrl";
 import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 
 export default function ImageModal({ open, images, startIndex = 0, onClose, alt }) {
@@ -139,7 +139,7 @@ export default function ImageModal({ open, images, startIndex = 0, onClose, alt 
           data-testid="image-modal-viewport"
         >
           <img
-            src={imageUrl(images[idx], { width: 2400, trim: true })}
+            src={viewerImageUrl(images[idx])}
             alt={alt}
             className="h-auto w-auto max-h-full max-w-full object-contain select-none"
             style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`, transformOrigin: 'center' }}

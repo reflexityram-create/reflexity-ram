@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { imageSrcSet, imageUrl } from "../src/lib/imageUrl.js";
+import { imageSrcSet, imageUrl, viewerImageUrl } from "../src/lib/imageUrl.js";
 
 test("imageUrl accepts API image objects and historical string values without rewriting hosts", () => {
   const current = "https://res.cloudinary.com/fike/image/upload/product.jpg";
@@ -48,4 +48,12 @@ test("trimmed card images crop the background before resizing", () => {
     "https://res.cloudinary.com/fike/image/upload/e_trim:12/c_limit,f_auto,q_auto:best,w_960/e_sharpen:40/v123/product.jpg",
   );
   assert.match(imageSrcSet(source, [640, 1280], { trim: true }), /e_trim:12\/c_limit,f_auto,q_auto:best,w_1280\/e_sharpen:40\/v123\/product\.jpg 1280w$/);
+});
+
+
+test("viewer uses retained higher-resolution photos only for the matching asset", () => {
+  assert.equal(viewerImageUrl('https://res.cloudinary.com/fike/image/upload/v123/reflexity-ram/products/product-1787350172844-r4hhb2chy.jpg'), '/feed-images/rfx-sk-hynix-16gb-ddr4-3200-ecc-rd-1600-v1.jpg');
+  const replacement = 'https://res.cloudinary.com/fike/image/upload/v456/reflexity-ram/products/actual-new-photo.jpg';
+  assert.equal(viewerImageUrl(replacement), imageUrl(replacement, { width: 2400, trim: true }));
+  assert.equal(viewerImageUrl(null), null);
 });
