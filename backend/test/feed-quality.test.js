@@ -310,3 +310,12 @@ test('the feed adds one shipping line per checkout country at the cheapest track
   assert.match(mx, /Xpresspost[\s\S]*<g:price>30\.00 CAD<\/g:price>/, 'the cheaper service wins');
   for (const missing of ['AU', 'JP', 'US', 'DE', 'KR']) assert.doesNotMatch(xml, new RegExp(`<g:country>${missing}</g:country>`), missing);
 });
+
+test('the viewer derivatives retain the higher-resolution photo without square feed padding', () => {
+  for (const name of ['rfx-lenovo-16gb-ddr4-3200-ecc-rdim', 'rfx-sk-hynix-16gb-ddr4-3200-ecc-rd']) {
+    const info = inspectJpeg(fs.readFileSync(path.join(FEED_IMAGE_DIR, '/feed-images', `${name}-detail-v1.jpg`)));
+    assert.equal(info.width, 1480);
+    assert.ok(info.height > 100 && info.height < 1000);
+    assert.match(info.xmp, /trainedAlgorithmicMedia/);
+  }
+});

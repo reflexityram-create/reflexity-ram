@@ -2,7 +2,7 @@
 """Rebuild 1600px feed derivatives from existing photos, without generative edits.
 
 Run with the retained photo archive path; originals remain untouched. Assets are
-pinned to exact catalog URLs. Output is bounded to three JPEGs in frontend/public.
+pinned to exact catalog URLs. Output is bounded to three feed JPEGs and two viewer JPEGs in frontend/public.
 No new views, labels, parts or other product details are synthesized.
 """
 import argparse
@@ -35,6 +35,10 @@ def main():
             picture = archive.trimmed(im.convert('RGB'))
             ratio = min(1480 / picture.width, 1480 / picture.height)
             picture = picture.resize((round(picture.width * ratio), round(picture.height * ratio)), Image.Resampling.LANCZOS)
+            if not sku.startswith('rfx-samsung-16gb'):
+                detail = io.BytesIO()
+                picture.save(detail, 'JPEG', quality=95, subsampling=0, optimize=True)
+                (output / f'{sku}-detail-v1.jpg').write_bytes(archive.with_xmp(detail.getvalue()))
             canvas = Image.new('RGB', (1600, 1600), 'white')
             canvas.paste(picture, ((1600 - picture.width) // 2, (1600 - picture.height) // 2))
             data = io.BytesIO()
