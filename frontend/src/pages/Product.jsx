@@ -965,9 +965,9 @@ function SpecsTable({ p }) {
     <div data-testid="product-specs-content">
       <div className="divide-y divide-white/5">
         {rows.map(([k, v]) => v ? (
-          <div key={k} className="grid grid-cols-[160px_1fr] gap-4 py-2.5 text-[13.5px]">
+          <div key={k} className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] sm:grid-cols-[160px_1fr] gap-4 py-2.5 text-[13.5px]">
             <div className="text-neutral-500">{k}</div>
-            <div className="text-neutral-100">{v}</div>
+            <div className="text-neutral-100 min-w-0 break-words">{v}</div>
           </div>
         ) : null)}
       </div>

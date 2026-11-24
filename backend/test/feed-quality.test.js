@@ -143,12 +143,12 @@ test('US feed shipping matches each product checkout total including prepaid dut
   assert.ok(asked.every(([, qty]) => qty === 1));
 });
 
-test('the feed image is a trimmed, padded 1200x900 delivery of the Cloudinary original', async () => {
+test('the feed image is a trimmed, padded 1600x1600 delivery of the Cloudinary original', async () => {
   const xml = await feedItems([product()]);
   const link = xml.match(/<g:image_link>(.*?)<\/g:image_link>/)[1];
   assert.equal(
     link,
-    'https://res.cloudinary.com/demo/image/upload/e_trim:12/c_fit,w_1100,h_800/c_pad,w_1200,h_900,b_white/f_jpg,q_auto:good/v1700000000/reflexity-ram/products/module.jpg',
+    'https://res.cloudinary.com/demo/image/upload/e_trim:12/c_fit,w_1480,h_1480/c_pad,w_1600,h_1600,b_white/f_jpg,q_auto:best/v1700000000/reflexity-ram/products/module.jpg',
   );
   // Never transformed twice, and non-Cloudinary URLs are left alone.
   const twice = await feedItems([product({ images: [{ url: link }] })]);
@@ -185,7 +185,7 @@ test('spec values are XML-escaped and the CSV feed uses the same delivery image'
   const xml = await feedItems([product({ speedLabel: 'PC4 <3200> & "fast"' })]);
   assert.match(xml, /<g:attribute_value>PC4 &lt;3200&gt; &amp; &quot;fast&quot;<\/g:attribute_value>/);
   const csv = await feedItems([product()], '/feed.csv');
-  assert.match(csv, /e_trim:12\/c_fit,w_1100,h_800\/c_pad,w_1200,h_900,b_white\/f_jpg,q_auto:good\/v1700000000/);
+  assert.match(csv, /e_trim:12\/c_fit,w_1480,h_1480\/c_pad,w_1600,h_1600,b_white\/f_jpg,q_auto:best\/v1700000000/);
 });
 
 // ---- AI-generated pictures must keep Google's IPTC label (DigitalSourceType trainedAlgorithmicMedia) ----
@@ -228,7 +228,7 @@ const withoutXmp = (buffer) => {
   return Buffer.concat(out);
 };
 
-test('every labeled feed image exists, is 1200x900 and carries the IPTC AI-generated label', () => {
+test('every labeled feed image exists, is 1600x1600 and carries the IPTC AI-generated label', () => {
   const entries = Object.entries(AI_LABELED_FEED_IMAGES);
   assert.ok(entries.length >= 3);
   for (const [asset, publicPath] of entries) {
@@ -237,7 +237,7 @@ test('every labeled feed image exists, is 1200x900 and carries the IPTC AI-gener
     const file = path.join(FEED_IMAGE_DIR, publicPath);
     assert.ok(fs.existsSync(file), `${publicPath} is missing from frontend/public`);
     const info = inspectJpeg(fs.readFileSync(file));
-    assert.deepEqual([info.width, info.height], [1200, 900], publicPath);
+    assert.deepEqual([info.width, info.height], [1600, 1600], publicPath);
     assert.match(info.xmp, /<Iptc4xmpExt:DigitalSourceType>http:\/\/cv\.iptc\.org\/newscodes\/digitalsourcetype\/trainedAlgorithmicMedia<\/Iptc4xmpExt:DigitalSourceType>/, publicPath);
   }
 });
@@ -249,15 +249,15 @@ test('the label check itself fails on an image whose XMP was stripped (negative 
   const stripped = withoutXmp(original);
   assert.ok(stripped.length < original.length);
   assert.equal(inspectJpeg(stripped).xmp, '');
-  assert.deepEqual([inspectJpeg(stripped).width, inspectJpeg(stripped).height], [1200, 900]);
+  assert.deepEqual([inspectJpeg(stripped).width, inspectJpeg(stripped).height], [1600, 1600]);
 });
 
 test('the feed serves the labeled copy for a known AI picture, in the XML and the CSV', async () => {
   const items = [product({ images: [{ url: AI_URL }] })];
   const xml = await feedItems(items);
-  assert.equal(xml.match(/<g:image_link>(.*?)<\/g:image_link>/)[1], 'https://reflexityram.com/feed-images/rfx-lenovo-16gb-ddr4-3200-ecc-rdim.jpg');
+  assert.equal(xml.match(/<g:image_link>(.*?)<\/g:image_link>/)[1], 'https://reflexityram.com/feed-images/rfx-lenovo-16gb-ddr4-3200-ecc-rdim-1600-v1.jpg');
   const csv = await feedItems(items, '/feed.csv');
-  assert.match(csv, /https:\/\/reflexityram\.com\/feed-images\/rfx-lenovo-16gb-ddr4-3200-ecc-rdim\.jpg/);
+  assert.match(csv, /https:\/\/reflexityram\.com\/feed-images\/rfx-lenovo-16gb-ddr4-3200-ecc-rdim-1600-v1\.jpg/);
   assert.equal(csv.includes('res.cloudinary.com'), false);
 });
 
@@ -268,7 +268,7 @@ test('a real photo never gets the AI copy: the override is keyed by the picture,
   const xml = await feedItems([product({ images: [{ url: realUrl }] })]);
   const link = xml.match(/<g:image_link>(.*?)<\/g:image_link>/)[1];
   assert.equal(link.includes('feed-images'), false);
-  assert.match(link, /e_trim:12\/c_fit,w_1100,h_800\/c_pad,w_1200,h_900/);
+  assert.match(link, /e_trim:12\/c_fit,w_1480,h_1480\/c_pad,w_1600,h_1600/);
   assert.match(link, /product-1790000000000-realphoto1\.jpg$/);
 });
 

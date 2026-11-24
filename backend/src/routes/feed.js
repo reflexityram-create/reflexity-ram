@@ -26,9 +26,9 @@ const condition = (value) => ({
   New: 'new', 'Open Box — Tested': 'refurbished', 'Refurbished — Tested': 'refurbished', Used: 'used',
 }[value] || 'used');
 // Shopping surfaces rate image resolution and how much of the frame the product fills.
-// Our Cloudinary originals are 960-1200px with wide white margins, so serve a trimmed,
-// padded 1200x900 JPEG for the feed only (the storefront keeps the original URLs).
-const FEED_IMAGE_TRANSFORM = 'e_trim:12/c_fit,w_1100,h_800/c_pad,w_1200,h_900,b_white/f_jpg,q_auto:good';
+// Deliver a 1600px square, using existing photo pixels only. Trimming preserves
+// the whole product; no generative detail or extra product views are introduced.
+const FEED_IMAGE_TRANSFORM = 'e_trim:12/c_fit,w_1480,h_1480/c_pad,w_1600,h_1600,b_white/f_jpg,q_auto:best';
 const feedImageUrl = (url) => {
   const value = String(url || '');
   const marker = '/image/upload/';
