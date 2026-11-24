@@ -7,6 +7,7 @@ No new views, labels, parts or other product details are synthesized.
 """
 import argparse
 import io
+import sys
 from pathlib import Path
 from PIL import Image
 
@@ -23,6 +24,7 @@ def main():
     args = parser.parse_args()
     # Reuse the archive's XMP insertion so existing AI provenance stays intact.
     import importlib.util
+    sys.dont_write_bytecode = True  # keep the retained archive read-only
     spec = importlib.util.spec_from_file_location('archive_images', args.photo_archive / 'tools/make_feed_images.py')
     archive = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(archive)
