@@ -274,6 +274,9 @@ export function injectProductMetadata(html, product, requestedSlug) {
   const formFactor = normalizeText(product.formFactor, 40);
   const schema = buildProductSchema(product, { url: metadata.canonicalUrl, description: metadata.description, images: [metadata.imageUrl] });
   output = insertBeforeHeadClose(output, `<script type="application/ld+json" data-edge-product>${safeJson(schema)}</script>`);
+  // The page reads this before calling the API, so a sleeping backend (Render free plan) cannot swap the content for a
+  // skeleton or "Could not load" while Google renders it (Search Console called a live product a Soft 404, 2026-11-26).
+  output = insertBeforeHeadClose(output, `<script type="application/json" id="edge-product-data">${safeJson({ slug: product.slug, product })}</script>`);
   // The description snippet is intentionally short; the initial document must also contain
   // the actual catalog description and offer, even before the client loads.
   const description = normalizeText(product.description, 12000) || metadata.description;

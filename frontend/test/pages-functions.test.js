@@ -625,3 +625,16 @@ test("private client routes are noindex on initial GET and HEAD without hiding p
     assert.equal((await renderStaticPage(ctx(path, "GET"))).headers.get("X-Robots-Tag"), null, path);
   }
 });
+
+test("product edge embeds the live product so the page never waits on a sleeping backend (Soft 404, 2026-11-26)", async () => {
+  const slug = "rfx-edge-data";
+  const product = { name: "Edge </script><b>RAM</b>", slug, line: "Server", formFactor: "RDIMM", price: 170, stock: "in", stockQuantity: 3 };
+  const response = await renderProductPage(productContext(slug), { fetchImpl: async () => Response.json({ product, related: [] }) });
+  const html = await response.text();
+  const m = html.match(/<script type="application\/json" id="edge-product-data">([^<]*)<\/script>/);
+  assert.ok(m, "the edge product data block is in the page");
+  assert.doesNotMatch(m[1], /<\/script/i);
+  const data = JSON.parse(m[1]);
+  assert.equal(data.slug, slug);
+  assert.deepEqual(data.product, product);
+});

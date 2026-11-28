@@ -25,7 +25,7 @@ test('only a 404 is "not found"; a timeout, a 5xx or no connection is a failure 
 test('the product page offers a retry for a failed load and keeps "not in our catalog" for a real 404', async () => {
   const source = await read('../src/pages/Product.jsx');
   assert.match(source, /const outcome = loadFailure\(error\);/);
-  assert.match(source, /if \(outcome === 'not-found'\) setNotFound\(true\);\s*else setLoadFailed\(true\);/);
+  assert.match(source, /if \(outcome === 'not-found'\) setNotFound\(true\);\s*else if \(!edge\) setLoadFailed\(true\);/);
   assert.match(source, /\}, \[slug, attempt\]\);/, 'Try again reads the product again');
   assert.match(source, /title="Could not load this product"[\s\S]{0,300}onCta=\{\(\) => setAttempt\(\(n\) => n \+ 1\)\}/);
   assert.doesNotMatch(source, /error\?\.code !== 'ERR_CANCELED'\) setNotFound\(true\)/, 'every failure used to read as "not found"');

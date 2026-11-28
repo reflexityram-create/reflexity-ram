@@ -26,6 +26,7 @@ import { useSEO } from "@/lib/seo";
 import { productsApi } from "@/lib/api";
 import { reviewsApi } from "@/lib/api";
 import { isPublicServerRam } from "@/lib/catalog";
+import { readEdgeProduct } from "@/lib/edgeProduct";
 import { clampQuantity, limitNote, quantityLimit } from "@/lib/quantity";
 import { serializeJsonLd } from "@/lib/safeJsonLd";
 import { RatingSummary } from "@/components/CustomerReviews";
@@ -56,9 +57,15 @@ export default function Product() {
   const { slug } = useParams();
   const navigate = useNavigate();
 
-  const [p, setP] = useState(null);
+  // Start from the product the edge put in the page: the API refresh below runs in the background, and a slow or
+  // sleeping backend never replaces real content with a skeleton or an error (that is what Google saw as a Soft 404).
+  const [initialEdge] = useState(() => {
+    const edge = readEdgeProduct(slug);
+    return edge && isPublicServerRam(edge) ? edge : null;
+  });
+  const [p, setP] = useState(initialEdge);
   const [related, setRelated] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialEdge);
   const [notFound, setNotFound] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [attempt, setAttempt] = useState(0); // "Try again" after a failed load reads the product again
@@ -96,10 +103,13 @@ export default function Product() {
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
-    setLoading(true);
+    const found = readEdgeProduct(slug);
+    const edge = found && isPublicServerRam(found) ? found : null;
+    setLoading(!edge);
     setNotFound(false);
     setLoadFailed(false);
-    setP(null);
+    setP(edge);
+    if (edge) addViewed(edge.slug);
     setImgIdx(0);
     productsApi.getBySlug(slug, { signal: controller.signal })
       .then(({ data }) => {
@@ -121,7 +131,7 @@ export default function Product() {
         const outcome = loadFailure(error);
         if (!active || outcome === 'cancelled') return;
         if (outcome === 'not-found') setNotFound(true);
-        else setLoadFailed(true);
+        else if (!edge) setLoadFailed(true);
       })
       .finally(() => active && setLoading(false));
     return () => { active = false; controller.abort(); };
